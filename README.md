@@ -66,9 +66,12 @@ UPSTAGE_VECTOR_STORE_ID=
 
 ## 팀 협업
 
-작업 전 최신 코드를 받고, 기능별 브랜치에서 작업합니다.
+모든 작업은 `main`에서 만든 작업 브랜치에서 진행하고, PR 리뷰 후 `main`으로 병합합니다.
 
 ```bash
+git switch main
 git pull origin main
-git checkout -b feature/기능이름
+git switch -c feature/short-description
 ```
+
+자세한 규칙은 [협업 가이드](docs/branch_strategy.md)를 참고하세요.
