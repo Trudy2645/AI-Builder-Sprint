@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+
+# React / Vite
+node_modules/
+dist/
+coverage/
+*.log
+.vite/
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Supabase local runtime
+supabase/.temp/
+
+# Local contract files and RAG processing artifacts
+uploads/
+storage/
+tmp/
+temp/
+
+# Editor settings
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
