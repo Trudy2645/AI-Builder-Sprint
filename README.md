@@ -44,11 +44,14 @@ npm run dev
 
 ```bash
 cd backend
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -e '.[dev]'
+cp .env.example .env
 uvicorn app.main:app --reload
 ```
+
+API 문서는 서버 실행 후 `http://localhost:8000/docs`에서 확인할 수 있습니다.
 
 ## 환경 변수
 
