@@ -1,5 +1,7 @@
 # BusanLink Backend
 
+구현 기준 문서는 [`docs/`](docs/)에서 확인할 수 있습니다.
+
 ## Local setup
 
 Python 3.12 is required.

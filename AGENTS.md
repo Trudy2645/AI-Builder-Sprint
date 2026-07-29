@@ -32,6 +32,7 @@ BusanLink는 부산 관광 셀러가 계약 가능한 상품 공고를 게시하
 ```text
 frontend/                 React 애플리케이션
 backend/
+  docs/                   백엔드 API, DB, AI, RAG 구현 명세
   app/
     api/                  FastAPI router
     core/                 설정, 인증, 오류, 공통 기능
@@ -45,7 +46,7 @@ backend/
       tools/              Agent가 사용할 수 있는 제한된 도구
       prompts/            버전이 지정된 prompt
   tests/
-docs/                     API, DB, AI 및 협업 문서
+docs/                     저장소 공통 협업 문서
 supabase/migrations/      순서대로 적용하는 SQL migration
 ```
 
