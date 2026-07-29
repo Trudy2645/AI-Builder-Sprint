@@ -129,14 +129,15 @@ FastAPI는 토큰을 검증한 뒤 바이어 계약은 `contracts.buyer_user_id`
 
 | HTTP | 코드 | 의미 |
 | --- | --- | --- |
-| 400 | `VALIDATION_ERROR` | 입력/업무 규칙 오류 |
+| 400 | `VALIDATION_ERROR`, `ORGANIZATION_HEADER_REQUIRED` | 입력/업무 규칙 또는 조직 header 오류 |
 | 401 | `AUTH_REQUIRED`, `TOKEN_INVALID` | 인증 실패 |
 | 403 | `ORG_ACCESS_DENIED`, `SELLER_NOT_VERIFIED` | 조직 권한 또는 셀러 검증 문제 |
-| 404 | `LISTING_NOT_FOUND`, `CONTRACT_NOT_FOUND` | 리소스 없음 또는 비공개 |
-| 409 | `VERSION_CONFLICT`, `INVALID_STATE_TRANSITION` | 동시 수정 또는 상태 전이 충돌 |
+| 404 | `PROFILE_NOT_FOUND`, `ORGANIZATION_NOT_FOUND`, `LISTING_NOT_FOUND`, `CONTRACT_NOT_FOUND` | 리소스 없음 또는 비공개 |
+| 409 | `USERNAME_CONFLICT`, `VERSION_CONFLICT`, `INVALID_STATE_TRANSITION` | 고유값·동시 수정 또는 상태 전이 충돌 |
 | 422 | `LISTING_NOT_PUBLISHABLE`, `AI_INPUT_INSUFFICIENT` | 필수 공개/AI 입력 부족 |
 | 429 | `RATE_LIMITED` | API/AI 호출 제한 |
 | 502 | `AI_PROVIDER_ERROR`, `SIGN_PROVIDER_ERROR` | 외부 제공자 실패 |
+| 503 | `AUTH_PROVIDER_UNAVAILABLE`, `DATABASE_UNAVAILABLE` | 인증 제공자 또는 DB 연결 실패 |
 
 비용이나 외부 부작용이 있는 POST에는 `Idempotency-Key`를 사용한다.
 
@@ -267,6 +268,22 @@ Supabase session을 반환한다. 가능하면 프론트가 Supabase Auth SDK를
 ### `GET /me` / `PATCH /me`
 
 이름, username, 전화번호, 이메일, 나라/언어, 선호 통화, 선택적 기본 단체명, 가입일과 역할을 반환/수정한다. 셀러에게만 소속 organization과 검증 상태를 함께 반환한다. 이메일과 비밀번호 변경은 Supabase Auth 전용 흐름을 사용한다.
+
+`PATCH /me`는 다음 필드만 부분 수정할 수 있다.
+
+```json
+{
+  "username": "globaltrip_aiko",
+  "display_name": "Tanaka Aiko",
+  "phone": "+81-90-0000-0000",
+  "country_code": "JP",
+  "locale": "ja-JP",
+  "preferred_currency": "JPY",
+  "default_group_name": "부산 여름여행 모임"
+}
+```
+
+`id`, `email`, `role`, 비밀번호 및 organization 관련 필드는 이 요청으로 변경할 수 없다. `username`은 대소문자를 구분하지 않고 unique이며 충돌 시 `USERNAME_CONFLICT`를 반환한다. profile 조회와 수정 대상은 항상 검증된 access token의 `sub = auth.users.id`다.
 
 ### `GET /me/contracts?bucket=draft|seller_review|requested|signed|finished`
 
@@ -712,6 +729,8 @@ GET <https://api.modusign.co.kr/documents/{provider_document_id}>
 ### `GET /organizations/{id}` / `PATCH /organizations/{id}`
 
 셀러 회사·사업자 정보 등을 조회/수정한다. 개인 바이어의 이름·전화번호·국가·언어·통화·선택적 기본 단체명은 `GET/PATCH /me`에서 처리한다. 비밀번호는 이 API에서 다루지 않는다.
+
+두 API 모두 path의 `{id}`와 같은 `X-Organization-Id`가 필요하고, 로그인 사용자의 `organization_members` 행을 먼저 확인한다. 구성원은 조회할 수 있지만 수정은 `owner|admin`만 가능하다. 수정 가능 필드는 `name`, `legal_name`, `business_registration_no`뿐이다. `verification_status`, 검증 메모, 평점 집계, 생성자 같은 운영 필드는 수정할 수 없다.
 
 ### `GET /contracts/{id}/audit-events`
 
