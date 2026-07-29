@@ -210,6 +210,7 @@ AI 기능은 추가로 다음을 검사한다.
 
 ## 11. Git 협업 규칙
 
+- Git 작업 전 `docs/branch_strategy.md`, `docs/commit_strategy.md`, `docs/issue_strategy.md`, `docs/pr_strategy.md`의 세부 규칙을 확인하고 따른다.
 - PR, 이슈, 커밋은 원본 저장소(`ApptiveDev/AI-Builder-Sprint`)가 아닌 팀에서 포크한 저장소에서만 진행한다.
 - `main`에 직접 커밋하거나 push하지 않는다.
 - 최신 `main`에서 작업 브랜치를 만든다.
