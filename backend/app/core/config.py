@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     docs_enabled: bool = True
     api_v1_prefix: str = "/api/v1"
     database_url: str | None = Field(default=None, repr=False)
+    supabase_url: str | None = None
+    supabase_publishable_key: str | None = Field(default=None, repr=False)
+    supabase_service_role_key: str | None = Field(default=None, repr=False)
+    supabase_jwt_audience: str = "authenticated"
+    supabase_jwks_url: str | None = None
+    supabase_jwks_cache_seconds: int = Field(default=600, ge=60, le=1200)
+    supabase_auth_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
 
 
 @lru_cache
