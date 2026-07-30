@@ -326,7 +326,11 @@ Supabase session을 반환한다. 가능하면 프론트가 Supabase Auth SDK를
 
 ### `GET /me/contracts?bucket=draft|seller_review|revision_requested|signing|signed|cancelled|finished`
 
-바이어 마이페이지 상태 탭용 목록이다. `finished`는 서비스 기간이 끝난 signed 계약을 계산해 반환한다. 취소 건은 `cancelled`이며, `has_unread_response=true`이면 Figma에서 `응답 도착` badge를 함께 표시한다.
+바이어가 보낸 계약 요청과 진행 상태를 확인하는 목록이다. 각 항목은 화면에서 바로 사용할
+`bucket`, 쉬운 한국어 `status_label`, 셀러명, 계약 기간과 예상 금액을 반환한다.
+`finished`는 서비스 기간이 끝난 signed 계약을 계산해 반환한다. 취소 건은 `cancelled`이며,
+`has_unread_response=true`이면 Figma에서 `응답 도착` badge를 함께 표시한다. 응답 도착은
+알림 여부일 뿐 새로운 contract status가 아니다.
 
 ## 6. 공개 바이어 탐색
 
@@ -442,7 +446,8 @@ Query:
 
 ### `GET /seller/dashboard?contract_status=&listing_status=`
 
-계약 테이블과 내 공고문 목록을 반환한다. 계약 행은 `공고문, 바이어 이름 또는 선택적 단체명, 인원, 날짜, 진행 상황, contract_id`를 포함한다.
+셀러 첫 화면에 필요한 숫자와 최근 요청을 한 번에 반환한다. 공개 중인 공고 수, 받은 요청 수,
+상태별 계약 수, 최근 계약 요청 5건과 공고별 요청 수를 포함한다.
 
 ### `GET /seller/listings`
 
@@ -664,9 +669,10 @@ AI summary는 seller description과 공개 계약 버전을 근거로 재생성�
 
 ### 계약 상세와 버전
 
-- `GET /contracts/{contract_id}`: 당사자, 현재 상태, 현재 버전, 조건, 열린 수정 요청과 다음 가능한 행동을 반환한다.
-- `GET /me/contracts`: 로그인한 개인 바이어의 계약 목록을 반환한다.
-- `GET /seller/contracts/received`: `X-Organization-Id` 조직이 받은 계약 요청만 반환한다.
+- `GET /contracts/{contract_id}`: 계약 내용과 지금 진행 상태를 확인한다.
+- `GET /me/contracts`: 로그인한 바이어가 보낸 계약 요청 목록을 확인한다.
+- `GET /seller/contracts/received`: 셀러가 받은 계약 요청을 확인한다. 바이어명, 인원,
+  계약 기간, 예상 금액, 요청 종류와 요청일을 반환하며 `X-Organization-Id` 조직의 계약만 보인다.
 - `POST /contracts/{contract_id}/cancel`: `draft|seller_review|revision_requested` 계약을
   `cancelled`로 전이하고 열린 수정 요청도 취소한다. `Idempotency-Key`가 필요하다.
 - `GET /contracts/{contract_id}/versions`: immutable 계약 버전 목록과 생성 사유를 반환한다.

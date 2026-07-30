@@ -16,6 +16,16 @@ class InitialRequestKind(StrEnum):
     REVISION = "revision"
 
 
+class ContractBucket(StrEnum):
+    DRAFT = "draft"
+    SELLER_REVIEW = "seller_review"
+    REVISION_REQUESTED = "revision_requested"
+    SIGNING = "signing"
+    SIGNED = "signed"
+    CANCELLED = "cancelled"
+    FINISHED = "finished"
+
+
 class ContractRequestCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -89,6 +99,9 @@ class ContractSummary(BaseModel):
     listing_id: UUID | None
     listing_title: str
     status: str
+    bucket: ContractBucket
+    status_label: str
+    has_unread_response: bool
     initial_request_kind: InitialRequestKind
     request_message: str | None
     requested_people: int
@@ -106,6 +119,51 @@ class ContractDetail(ContractSummary):
     parties: list[ContractPartySummary]
     terms: ContractTermsResponse
     current_version: ContractVersionResponse
+
+
+class BuyerContractListItem(ContractSummary):
+    seller_name: str
+
+
+class SellerContractListItem(BaseModel):
+    contract_id: UUID
+    listing_id: UUID | None
+    listing_title: str
+    buyer_name: str
+    buyer_group_name: str | None
+    requested_people: int
+    service_start_date: date
+    service_end_date: date
+    amount_minor: int | None
+    currency: str | None
+    initial_request_kind: InitialRequestKind
+    request_kind_label: str
+    status: str
+    status_label: str
+    requested_at: datetime
+
+
+class SellerDashboardStats(BaseModel):
+    published_listings: int = Field(ge=0)
+    received_requests: int = Field(ge=0)
+    seller_review: int = Field(ge=0)
+    revision_requested: int = Field(ge=0)
+    signing: int = Field(ge=0)
+    signed: int = Field(ge=0)
+    cancelled: int = Field(ge=0)
+
+
+class ListingRequestCount(BaseModel):
+    listing_id: UUID
+    listing_title: str
+    listing_status: str
+    request_count: int = Field(ge=0)
+
+
+class SellerDashboard(BaseModel):
+    stats: SellerDashboardStats
+    recent_requests: list[SellerContractListItem]
+    listing_request_counts: list[ListingRequestCount]
 
 
 class ContractCancelResponse(BaseModel):

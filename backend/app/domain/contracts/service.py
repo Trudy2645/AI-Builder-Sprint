@@ -1,5 +1,7 @@
 import hashlib
 import json
+from collections.abc import Callable
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -20,6 +22,8 @@ from app.repositories.contracts import (
 )
 from app.repositories.pricing import ListingPriceTermsRecord
 from app.schemas.contracts import (
+    BuyerContractListItem,
+    ContractBucket,
     ContractCancelResponse,
     ContractClauseResponse,
     ContractDetail,
@@ -30,10 +34,23 @@ from app.schemas.contracts import (
     ContractTermsResponse,
     ContractVersionResponse,
     InitialRequestKind,
+    ListingRequestCount,
+    SellerContractListItem,
+    SellerDashboard,
+    SellerDashboardStats,
 )
 from app.schemas.pricing import PriceEstimateRequest
 
 _CANCELLABLE_STATUSES = {"draft", "seller_review", "revision_requested"}
+_STATUS_LABELS = {
+    "draft": "보낸 요청",
+    "seller_review": "셀러 검토 중",
+    "revision_requested": "협상 중",
+    "signing": "서명 대기",
+    "signed": "체결 완료",
+    "cancelled": "종료",
+}
+_REQUEST_KIND_LABELS = {"as_is": "조건 그대로", "revision": "수정 요청"}
 
 
 class ContractService:
@@ -41,9 +58,12 @@ class ContractService:
         self,
         repository: ContractRepository,
         price_calculator: PriceCalculator,
+        *,
+        today: Callable[[], date] | None = None,
     ) -> None:
         self._repository = repository
         self._price_calculator = price_calculator
+        self._today = today or date.today
 
     async def create_request(
         self,
@@ -171,7 +191,7 @@ class ContractService:
         header_organization_id: str | None,
     ) -> ContractDetail:
         record = await self._get_record(contract_id)
-        await self._authorize_contract(record, actor, header_organization_id)
+        actor_role = await self._authorize_contract(record, actor, header_organization_id)
         if record.current_version_id is None:
             self._raise(
                 status.HTTP_409_CONFLICT,
@@ -188,8 +208,11 @@ class ContractService:
                 "CONTRACT_VERSION_REQUIRED",
                 "The contract does not have a current version.",
             )
+        unread = False
+        if actor_role == "buyer":
+            unread = contract_id in await self._unread_contract_ids(actor.id, [contract_id])
         return ContractDetail(
-            **self._summary(record).model_dump(),
+            **self._summary(record, has_unread_response=unread).model_dump(),
             parties=[
                 ContractPartySummary(
                     role="buyer",
@@ -219,24 +242,77 @@ class ContractService:
             ),
         )
 
-    async def list_my_contracts(self, actor: AuthenticatedUser) -> list[ContractSummary]:
+    async def list_my_contracts(
+        self, actor: AuthenticatedUser, bucket: ContractBucket | None
+    ) -> list[BuyerContractListItem]:
         try:
             records = await self._repository.list_buyer_contracts(actor.id)
         except ContractRepositoryUnavailableError as exc:
             self._database_unavailable(exc)
-        return [self._summary(record) for record in records]
+        unread_ids = await self._unread_contract_ids(actor.id, [record.id for record in records])
+        items = [
+            BuyerContractListItem(
+                **self._summary(record, has_unread_response=record.id in unread_ids).model_dump(),
+                seller_name=record.seller_name,
+            )
+            for record in records
+        ]
+        return [item for item in items if bucket is None or item.bucket == bucket]
 
     async def list_received_contracts(
         self,
         actor: AuthenticatedUser,
         header_organization_id: str | None,
-    ) -> list[ContractSummary]:
+    ) -> list[SellerContractListItem]:
         organization_id = await self._authorize_seller_header(actor, header_organization_id)
         try:
             records = await self._repository.list_seller_contracts(organization_id)
         except ContractRepositoryUnavailableError as exc:
             self._database_unavailable(exc)
-        return [self._summary(record) for record in records]
+        return [self._seller_item(record) for record in records]
+
+    async def get_seller_dashboard(
+        self,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+    ) -> SellerDashboard:
+        organization_id = await self._authorize_seller_header(actor, header_organization_id)
+        try:
+            records = await self._repository.list_seller_contracts(organization_id)
+            listing_counts = await self._repository.list_seller_listing_request_counts(
+                organization_id
+            )
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        status_counts = {
+            contract_status: sum(record.status == contract_status for record in records)
+            for contract_status in (
+                "seller_review",
+                "revision_requested",
+                "signing",
+                "signed",
+                "cancelled",
+            )
+        }
+        return SellerDashboard(
+            stats=SellerDashboardStats(
+                published_listings=sum(
+                    listing.listing_status == "published" for listing in listing_counts
+                ),
+                received_requests=len(records),
+                **status_counts,
+            ),
+            recent_requests=[self._seller_item(record) for record in records[:5]],
+            listing_request_counts=[
+                ListingRequestCount(
+                    listing_id=listing.listing_id,
+                    listing_title=listing.listing_title,
+                    listing_status=listing.listing_status,
+                    request_count=listing.request_count,
+                )
+                for listing in listing_counts
+            ],
+        )
 
     async def cancel_contract(
         self,
@@ -339,13 +415,20 @@ class ContractService:
                 message="X-Organization-Id must be a UUID.",
             ) from exc
 
-    @staticmethod
-    def _summary(record: ContractRecord) -> ContractSummary:
+    def _summary(
+        self, record: ContractRecord, *, has_unread_response: bool = False
+    ) -> ContractSummary:
+        bucket = self._bucket(record)
         return ContractSummary(
             id=record.id,
             listing_id=record.listing_id,
             listing_title=record.listing_title,
             status=record.status,
+            bucket=bucket,
+            status_label=(
+                "종료" if bucket == ContractBucket.FINISHED else _STATUS_LABELS[record.status]
+            ),
+            has_unread_response=has_unread_response,
             initial_request_kind=record.initial_request_kind,
             request_message=record.request_message,
             requested_people=record.requested_people,
@@ -358,6 +441,41 @@ class ContractService:
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
+
+    @classmethod
+    def _seller_item(cls, record: ContractRecord) -> SellerContractListItem:
+        return SellerContractListItem(
+            contract_id=record.id,
+            listing_id=record.listing_id,
+            listing_title=record.listing_title,
+            buyer_name=record.buyer_name,
+            buyer_group_name=record.buyer_group_name,
+            requested_people=record.requested_people,
+            service_start_date=record.service_start_date,
+            service_end_date=record.service_end_date,
+            amount_minor=record.amount_minor,
+            currency=record.currency,
+            initial_request_kind=record.initial_request_kind,
+            request_kind_label=_REQUEST_KIND_LABELS[record.initial_request_kind],
+            status=record.status,
+            status_label=_STATUS_LABELS[record.status],
+            requested_at=record.created_at,
+        )
+
+    def _bucket(self, record: ContractRecord) -> ContractBucket:
+        if record.status == "signed" and record.service_end_date < self._today():
+            return ContractBucket.FINISHED
+        return ContractBucket(record.status)
+
+    async def _unread_contract_ids(
+        self, buyer_user_id: UUID, contract_ids: list[UUID]
+    ) -> set[UUID]:
+        try:
+            return await self._repository.list_unread_response_contract_ids(
+                buyer_user_id, contract_ids
+            )
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
 
     @staticmethod
     def _terms_response(record: ContractRecord) -> ContractTermsResponse:
