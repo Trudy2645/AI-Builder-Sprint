@@ -1,8 +1,10 @@
 > 기준: 특별상 과제 요구사항 + 외국인 개인 바이어/셀러 와이어프레임 반영 v1.4
 > 
 > 
-> 적용 순서: `001_initial_schema.sql` → `002_marketplace_wireframe.sql` → `003_individual_buyer.sql` → `004_rag_challenge_alignment.sql` → `005_single_contract_review_agent.sql`(구현 예정)
+> 현재 적용 순서: `001_initial_schema.sql` → `002_marketplace_wireframe.sql` → `003_individual_buyer.sql` → `004_rag_challenge_alignment.sql`
 > 
+
+이 문서의 Figma 정렬 목표 중 현재 001~004에 없는 컬럼·테이블은 구현 시 다음 번호의 새 migration으로 추가한다. 기존 migration은 수정하지 않는다.
 
 AI 중간 데이터와 역할별 분석은 `AI_UPSTAGE_ARCHITECTURE.md`, RAG 저장·검색·근거 연결은 `RAG_KNOWLEDGE_BASE.md`를 따른다.
 
@@ -41,6 +43,7 @@ erDiagram
     AUTH_USERS ||--|| PROFILES : extends
     AUTH_USERS ||--o{ ORGANIZATION_MEMBERS : joins
     ORGANIZATIONS ||--o{ ORGANIZATION_MEMBERS : has
+    ORGANIZATIONS ||--o{ DOCUMENTS : verifies
 
     ORGANIZATIONS ||--o{ LISTINGS : publishes
     LISTINGS ||--|| LISTING_TERMS : has
@@ -54,6 +57,7 @@ erDiagram
     CONTRACTS ||--|| CONTRACT_TERMS : has
     CONTRACTS ||--o{ CONTRACT_VERSIONS : versions
     CONTRACT_VERSIONS ||--o{ CONTRACT_CLAUSES : contains
+    CONTRACT_VERSIONS ||--o{ CONTRACT_VERSION_APPROVALS : approved
 
     LISTINGS ||--o{ DOCUMENTS : owns
     CONTRACTS ||--o{ DOCUMENTS : owns
@@ -91,6 +95,7 @@ erDiagram
 | `display_name`, `phone` | 담당자 기본 정보 |
 | `country_code`, `locale` | 바이어 국가/화면 언어. locale은 `ko-KR/en-US/ja-JP/zh-CN` |
 | `preferred_currency` | 예상 가격 표시 통화 |
+| `affiliation_name`, `business_type` | 개인 바이어의 선택적 소속명·활동 업종. 계약 당사자 조직을 의미하지 않음 |
 | `default_group_name` | 선택적인 기본 여행 단체명 |
 | `active_organization_id`, `active_business_role` | 현재 역할 컨텍스트 |
 
@@ -103,7 +108,11 @@ erDiagram
 | `organization_type` | `buyer` 또는 `seller` |
 | `verification_status` | `pending`, `verified`, `rejected` |
 | `business_registration_no` | 셀러 검증 정보 |
+| `representative_name`, `business_address` | Figma 셀러 가입 화면의 대표자와 사업장 정보 |
+| `supply_categories` | 제공 가능한 상품 카테고리 배열. 공고 하나의 category와는 별도 |
 | `rating_average`, `rating_count` | 상세 화면 표시용 집계값 |
+
+`organization_members.job_title`은 셀러 담당자의 선택적 직책이다. 사업자등록증 document는 `organization_id`에 연결하고 `purpose=business_verification`으로 구분한다.
 
 바이어는 Supabase Auth 사용자와 `profiles`로 표현하며 buyer organization을 자동 생성하지 않는다. 단체명은 개인 profile 또는 특정 contract의 선택 정보일 뿐 별도 계약 당사자가 아니다.
 
@@ -133,20 +142,37 @@ erDiagram
 
 `published_at`, `paused_at`, `expires_at`로 공개 수명주기를 기록한다.
 
+별도 `contract_available` boolean은 저장하지 않는다. API는 `status=published`이면 true, `status=paused`이면 false로 계산한다.
+
+### Figma 정렬용 새 migration이 필요한 이유
+
+현재 001~004에는 아래 목표 필드와 테이블이 모두 존재하지 않는다. 기능 구현 시 기존 migration을 고치지 않고 다음 번호의 새 migration으로 추가해야 깨끗한 DB와 이미 운영 중인 DB에 같은 순서로 적용할 수 있다.
+
+- 개인 바이어 선택 정보: `profiles.affiliation_name`, `profiles.business_type`
+- 셀러 가입 정보: `organizations.representative_name`, `business_address`, `supply_categories`, `organization_members.job_title`
+- 사업자 검증 문서의 organization 소유권과 `business_verification` purpose
+- 공고 조건: `people_per_unit`, 노쇼·해지·특약
+- 계약 계산 snapshot: 명시 수량·단위·박수
+- 서명 전 합의: `contract_version_approvals`
+
 ### `listing_terms`
 
 공고 폼과 필터에 필요한 현재 구조화 조건이다.
 
 - 공급 시작/종료일
 - 공급 수량과 단위
+- 단위당 기본 인원(`people_per_unit`, 선택). 가격 계산 시 이를 가정값으로 숨기지 않고 화면에 표시한다.
 - 기준 단가, 통화, 가격 단위
 - 최소/최대 인원
 - 취소 조건
+- 노쇼 조건
 - 환불 조건
 - 정산 조건
 - 안전 조건
 - 보상 조건
 - 책임·면책 조건
+- 계약 해지 조건
+- 특약 사항
 - 가격 표시 기준과 계약 가능 안내
 
 ### `listing_versions`, `listing_clauses`
@@ -158,9 +184,9 @@ erDiagram
 
 ### `price_estimates`
 
-예상 가격 요청과 결과의 근거를 저장한다.
+계약 요청에 실제로 사용된 예상 가격과 결과 근거를 저장한다. 공개 화면에서 조건을 바꿀 때마다 실행되는 preview 계산은 기본적으로 저장하지 않는다.
 
-- 입력 인원/기간/표시 통화
+- 입력 인원, 실제 과금 수량·단위, 박수/기간, 표시 통화
 - 결과 금액
 - 계산 방식 `deterministic`, `historical_adjusted`
 - 사용한 기준 단가와 환율 metadata
@@ -177,7 +203,7 @@ LLM이 숫자를 직접 계산한 값을 source of truth로 사용하지 않는�
 - buyer 개인의 이름·국가·연락처와 seller organization
 - 선택적 여행 단체명, 인원수, 서명 자격(`self|group_representative`)
 - listing current version/clauses
-- 요청 인원과 서비스 기간
+- 요청 인원, 실제 과금 수량·단위, 박수와 서비스 기간
 - 당시 계산된 예상 가격/통화
 
 `buyer_organization_id`는 이전 B2B 구조와 기존 데이터 호환을 위한 nullable legacy 컬럼이다. 신규 계약 권한과 조회는 `buyer_user_id`를 기준으로 한다. `listing_id`는 nullable로 두어 향후 직접 등록 계약이나 기존 계약 import도 지원한다.
@@ -195,6 +221,19 @@ LLM이 숫자를 직접 계산한 값을 source of truth로 사용하지 않는�
 ### `contract_versions`, `contract_clauses`
 
 협상 결과는 기존 내용을 update하지 않고 새 version으로 만든다. `contracts.current_version_id`만 최신 버전을 가리킨다. 서명 요청은 특정 version에 고정된다.
+
+### `contract_version_approvals`
+
+Figma의 서명 전 최종 승인 기록이다. 계약 상태를 추가하지 않고 특정 immutable version에 대한 당사자 동의만 저장한다.
+
+| 컬럼 | 의미 |
+| --- | --- |
+| `contract_version_id` | 승인한 계약 버전 |
+| `party_role` | `buyer` 또는 `seller` |
+| `approved_by_user_id` | 실제 승인 사용자 |
+| `approved_at` | 승인 시각 |
+
+`(contract_version_id, party_role)`은 unique다. 새 계약 version이 생기면 이전 승인을 복사하지 않으며 buyer와 seller가 모두 현재 version을 승인해야 signature request를 생성할 수 있다.
 
 ### `revision_requests`
 
@@ -226,11 +265,12 @@ LLM이 숫자를 직접 계산한 값을 source of truth로 사용하지 않는�
 
 ### `documents`
 
-`listing_id/listing_version_id` 또는 `contract_id/contract_version_id`에 연결할 수 있다.
+`organization_id`, `listing_id/listing_version_id` 또는 `contract_id/contract_version_id`에 연결할 수 있다. 소유 대상은 정확히 하나만 지정한다.
 
 | purpose | 용도 |
 | --- | --- |
 | `source_contract` | 셀러가 올린 PDF/DOCX/이미지 |
+| `business_verification` | 셀러 사업자등록증 등 검증 문서 |
 | `reference` | AI 참고 자료 |
 | `listing_hero` | 공개 카드 대표 이미지 |
 | `draft_pdf` | 서명 전 렌더링 PDF |
@@ -249,7 +289,7 @@ AI target은 listing version 또는 contract version 중 정확히 하나다.
 - 공개 API는 buyer 분석만 반환한다.
 - 모든 finding은 모델명, prompt version, evidence와 disclaimer를 가진다.
 
-`005_single_contract_review_agent.sql`에서는 `ai_analysis_runs`에 다음 실행 metadata를 추가한다.
+향후 AI 구현용 새 migration에서는 `ai_analysis_runs`에 다음 실행 metadata를 추가한다.
 
 | 컬럼 | 의미 |
 | --- | --- |
@@ -338,9 +378,11 @@ MVP 공식 자료는 PDF를 그대로 Upstage Files/Vector Store에 적재한다
 | `contract-artifacts` | private | parse JSON과 draft PDF |
 | `signed-contracts` | private | 완료 PDF와 audit trail |
 | `rag-knowledge` | private | 공식/템플릿 PDF 원본 snapshot, 선택적 parse/page artifact, manifest |
+| `business-verification` | private | 셀러 가입·검증 문서 |
 
 ```
 {seller_org_id}/listings/{listing_id}/{document_id}/original.pdf
+{seller_org_id}/verification/{document_id}/{original_filename}
 {seller_org_id}/listings/{listing_id}/{document_id}/parsed.json
 {seller_org_id}/listings/{listing_id}/hero/{document_id}.{ext}
 {seller_org_id}/contracts/{contract_id}/{version_id}/draft.pdf
@@ -350,11 +392,12 @@ MVP 공식 자료는 PDF를 그대로 Upstage Files/Vector Store에 적재한다
 
 ## 10. RLS와 공개 접근
 
-- 공개 browsing은 FastAPI의 `/public` endpoint가 service role로 필요한 컬럼만 projection한다.
+- 공개 browsing은 FastAPI의 `/public` endpoint가 service role로 필요한 컬럼만 projection한다. 기간이 유효한 `published`와 `paused`만 조회하며 `paused`에는 `contract_available=false`를 계산해 반환한다.
 - 브라우저가 Supabase 테이블을 직접 조회해 계약 원문이나 내부 finding을 가져가지 않는다.
 - seller listing 쓰기는 seller organization member만 가능하다.
 - `publish`는 organization이 verified인지 domain service에서 확인한다.
 - 계약/수정 요청/서명 정보는 `buyer_user_id = auth.uid()`인 개인 바이어 또는 seller organization 구성원만 접근한다.
+- organization 검증 문서는 해당 seller organization의 owner/admin과 승인된 운영 검증자만 접근한다.
 - `profiles`, `notifications`는 본인만 조회한다.
 - `audit_events`, `provider_events`, `ai_*`는 클라이언트 직접 쓰기를 허용하지 않는다.
 
@@ -375,7 +418,7 @@ FastAPI service role은 RLS를 우회하므로 repository 호출 전 개인 바�
 | --- | --- |
 | Seller | 해운대 오션스테이, verified, accommodation |
 | Listing | 2026 부산 여름 객실 공급, published, 해운대구 |
-| Listing terms | 7~8월, 30실, 145,000 KRW/room-night, 최소 20명 |
+| Listing terms | 7~8월, 객실당 2명, 15실·2박 예시, 145,000 KRW/room-night, 최소 20명 |
 | Buyer | Yuki Tanaka, JP, ja-JP, JPY, 선택 단체명 `GlobalTrip 여행 모임` |
 | Contract request | 개인 대표자, 30명 단체, 2박, 취소 조건 수정 요청 |
 | Finding | 취소 수수료 확정 시점 모호 `medium` |
