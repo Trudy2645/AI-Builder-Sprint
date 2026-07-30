@@ -40,52 +40,7 @@ class PriceEstimateService:
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._repository = repository
-        self._exchange_rate_provider = exchange_rate_provider
-        self._now = now or (lambda: datetime.now(UTC))
-
-    async def estimate(self, listing_id: UUID, request: PriceEstimateRequest) -> PriceEstimate:
-        terms = await self._get_terms(listing_id)
-        now = self._now()
-        self._validate_listing(terms, request, now)
-        expected_quantity_unit, uses_nights = self._validate_units(terms, request)
-
-        if terms.price_unit == "person" and request.people != request.quantity:
-            self._raise(
-                status.HTTP_400_BAD_REQUEST,
-                "INVALID_BILLING_QUANTITY",
-                "For per-person pricing, quantity must equal people.",
-            )
-
-        multiplier = request.quantity * (request.nights if uses_nights else 1)
-        base_total = terms.base_price_amount_minor * multiplier  # type: ignore[operator]
-        quote = await self._exchange_rate(terms.currency, request.currency, now)
-        display_total = int(
-            (Decimal(base_total) * quote.rate).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        )
-        formula = (
-            f"{terms.base_price_amount_minor} {terms.currency} × "
-            f"{request.quantity} {expected_quantity_unit}"
-        )
-        if uses_nights:
-            formula += f" × {request.nights} nights"
-        if request.currency != terms.currency:
-            formula += f" × {quote.rate} {request.currency}/{terms.currency}"
-
-        return PriceEstimate(
-            base_unit_price_amount_minor=terms.base_price_amount_minor,
-            billing_quantity=request.quantity,
-            quantity_unit=expected_quantity_unit,
-            nights=request.nights,
-            start_date=request.start_date,
-            end_date=request.end_date,
-            formula=formula,
-            total_estimated_amount_minor=display_total,
-            base_currency=terms.currency,
-            display_currency=request.currency,
-            exchange_rate=quote.rate,
-            exchange_rate_as_of=quote.as_of,
-            disclaimer=PRICE_ESTIMATE_DISCLAIMER,
-        )
+        self._calculator = PriceCalculator(exchange_rate_provider, now=now)
 
     async def _get_terms(self, listing_id: UUID) -> ListingPriceTermsRecord:
         try:
@@ -97,12 +52,73 @@ class PriceEstimateService:
                 message="Database connection is unavailable.",
             ) from exc
         if terms is None:
-            self._raise(
-                status.HTTP_404_NOT_FOUND,
-                "LISTING_NOT_FOUND",
-                "Listing was not found.",
+            raise AppError(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="LISTING_NOT_FOUND",
+                message="Listing was not found.",
             )
         return terms
+
+    async def estimate(self, listing_id: UUID, request: PriceEstimateRequest) -> PriceEstimate:
+        terms = await self._get_terms(listing_id)
+        return await self._calculator.calculate(terms, request)
+
+
+class PriceCalculator:
+    def __init__(
+        self,
+        exchange_rate_provider: ExchangeRateProvider,
+        *,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._exchange_rate_provider = exchange_rate_provider
+        self._now = now or (lambda: datetime.now(UTC))
+
+    async def calculate(
+        self, terms: ListingPriceTermsRecord, request: PriceEstimateRequest
+    ) -> PriceEstimate:
+        now = self._now()
+        self._validate_listing(terms, request, now)
+        expected_quantity_unit, uses_nights = self._validate_units(terms, request)
+
+        if terms.price_unit == "person" and request.people != request.quantity:
+            self._raise(
+                status.HTTP_400_BAD_REQUEST,
+                "INVALID_BILLING_QUANTITY",
+                "For per-person pricing, quantity must equal people.",
+            )
+
+        base_price = terms.base_price_amount_minor
+        base_currency = terms.currency
+        if base_price is None or base_currency is None:  # narrowed by _validate_listing
+            raise AssertionError("validated price terms are incomplete")
+        multiplier = request.quantity * (request.nights if uses_nights else 1)
+        base_total = base_price * multiplier
+        quote = await self._exchange_rate(base_currency, request.currency, now)
+        display_total = int(
+            (Decimal(base_total) * quote.rate).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
+        formula = f"{base_price} {base_currency} × {request.quantity} {expected_quantity_unit}"
+        if uses_nights:
+            formula += f" × {request.nights} nights"
+        if request.currency != base_currency:
+            formula += f" × {quote.rate} {request.currency}/{base_currency}"
+
+        return PriceEstimate(
+            base_unit_price_amount_minor=base_price,
+            billing_quantity=request.quantity,
+            quantity_unit=expected_quantity_unit,
+            nights=request.nights,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            formula=formula,
+            total_estimated_amount_minor=display_total,
+            base_currency=base_currency,
+            display_currency=request.currency,
+            exchange_rate=quote.rate,
+            exchange_rate_as_of=quote.as_of,
+            disclaimer=PRICE_ESTIMATE_DISCLAIMER,
+        )
 
     @classmethod
     def _validate_listing(

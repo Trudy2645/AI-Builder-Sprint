@@ -636,12 +636,13 @@ AI summary는 seller description과 공개 계약 버전을 근거로 재생성�
   "quantity": 15,
   "quantity_unit": "room",
   "nights": 2,
+  "start_date": "2026-07-11",
+  "end_date": "2026-07-13",
+  "currency": "KRW",
   "group_name": "부산 여름여행 모임",
   "signing_capacity": "group_representative",
-  "service_start_date": "2026-07-11",
-  "service_end_date": "2026-07-13",
-  "message": "금연 트윈룸 위주 배정을 요청합니다.",
-  "action": "request_revision"
+  "request_message": "금연 트윈룸 위주 배정을 요청합니다.",
+  "initial_request_kind": "revision"
 }
 ```
 
@@ -652,15 +653,22 @@ AI summary는 seller description과 공개 계약 버전을 근거로 재생성�
 - buyer 이름·국가·이메일, 선택적 단체명, 인원수와 서명 자격을 계약 당시 값으로 보존
 - listing current version/clauses를 contract version 1로 복사
 - 인원·명시 수량/단위·박수·기간·예상 가격과 계산 근거를 contract terms에 저장
-- `action=sign`이면 buyer의 현재 버전 승인을 함께 기록하고 `seller_review`, `request_revision`이면 `draft`
+- `initial_request_kind=as_is`이면 `draft → seller_review`
+- `initial_request_kind=revision`이면 `draft → revision_requested`
+- 같은 사용자와 `Idempotency-Key`의 동일 요청은 기존 계약 생성 결과를 반환하고,
+  다른 요청 본문으로 key를 재사용하면 거절
 
-셀러가 같은 version을 승인하면 그때 `signing`으로 전이하고 실제 전자서명 요청을 진행한다. 공고 게시를 seller의 사전 서명으로 간주하지 않는다. 응답은 `contract_id`, `version_no`, 다음 행동 endpoint를 반환한다.
+셀러가 같은 version을 승인하면 그때 `signing`으로 전이하고 실제 전자서명 요청을 진행한다. 공고 게시를 seller의 사전 서명으로 간주하지 않는다. 응답은 `contract_id`, `version_no`, 현재 상태를 반환한다.
 
 바이어 이름·이메일·전화번호는 로그인 profile에서 읽어 화면에 표시하며 request로 임의의 계약 당사자를 덮어쓰지 않는다. `paused` 공고는 조회할 수 있지만 이 endpoint는 `INVALID_STATE_TRANSITION`으로 거절한다.
 
 ### 계약 상세와 버전
 
 - `GET /contracts/{contract_id}`: 당사자, 현재 상태, 현재 버전, 조건, 열린 수정 요청과 다음 가능한 행동을 반환한다.
+- `GET /me/contracts`: 로그인한 개인 바이어의 계약 목록을 반환한다.
+- `GET /seller/contracts/received`: `X-Organization-Id` 조직이 받은 계약 요청만 반환한다.
+- `POST /contracts/{contract_id}/cancel`: `draft|seller_review|revision_requested` 계약을
+  `cancelled`로 전이하고 열린 수정 요청도 취소한다. `Idempotency-Key`가 필요하다.
 - `GET /contracts/{contract_id}/versions`: immutable 계약 버전 목록과 생성 사유를 반환한다.
 - `GET /contracts/{contract_id}/versions/compare?from=1&to=2`: 두 버전의 조항별 추가·삭제·변경을 반환한다. AI가 아니라 저장된 버전을 코드로 비교한다.
 
