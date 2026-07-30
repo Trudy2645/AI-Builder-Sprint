@@ -97,6 +97,14 @@ class ContractClauseRecord:
     body: str
 
 
+@dataclass(frozen=True, slots=True)
+class SellerListingRequestCountRecord:
+    listing_id: UUID
+    listing_title: str
+    listing_status: str
+    request_count: int
+
+
 class ContractRepositoryUnavailableError(Exception):
     pass
 
@@ -129,6 +137,14 @@ class ContractRepository(Protocol):
     async def list_buyer_contracts(self, buyer_user_id: UUID) -> list[ContractRecord]: ...
 
     async def list_seller_contracts(self, seller_organization_id: UUID) -> list[ContractRecord]: ...
+
+    async def list_unread_response_contract_ids(
+        self, buyer_user_id: UUID, contract_ids: list[UUID]
+    ) -> set[UUID]: ...
+
+    async def list_seller_listing_request_counts(
+        self, seller_organization_id: UUID
+    ) -> list[SellerListingRequestCountRecord]: ...
 
     async def list_contract_clauses(
         self, contract_version_id: UUID
@@ -528,6 +544,55 @@ class SqlAlchemyContractRepository:
             "c.seller_organization_id = :seller_organization_id",
             {"seller_organization_id": seller_organization_id},
         )
+
+    async def list_unread_response_contract_ids(
+        self, buyer_user_id: UUID, contract_ids: list[UUID]
+    ) -> set[UUID]:
+        if not contract_ids:
+            return set()
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select distinct resource_id
+                    from public.notifications
+                    where user_id = :buyer_user_id
+                      and resource_type = 'contract'
+                      and resource_id = any(cast(:contract_ids as uuid[]))
+                      and read_at is null
+                      and notification_type in (
+                          'seller_response', 'revision_requested', 'revision_decided',
+                          'signature_requested', 'signature_completed', 'contract_cancelled'
+                      )
+                    """
+                ),
+                {"buyer_user_id": buyer_user_id, "contract_ids": contract_ids},
+            )
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+        return set(result.scalars().all())
+
+    async def list_seller_listing_request_counts(
+        self, seller_organization_id: UUID
+    ) -> list[SellerListingRequestCountRecord]:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select l.id as listing_id, coalesce(l.display_title, l.title) as listing_title,
+                           l.status::text as listing_status, count(c.id)::integer as request_count
+                    from public.listings l
+                    left join public.contracts c on c.listing_id = l.id
+                    where l.seller_organization_id = :seller_organization_id
+                    group by l.id, l.display_title, l.title, l.status
+                    order by request_count desc, listing_title, l.id
+                    """
+                ),
+                {"seller_organization_id": seller_organization_id},
+            )
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+        return [SellerListingRequestCountRecord(**row) for row in result.mappings().all()]
 
     async def _contract_records(
         self, condition: str, params: dict[str, object]

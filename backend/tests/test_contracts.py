@@ -21,6 +21,7 @@ from app.repositories.contracts import (
     ContractStateConflictError,
     IdempotencyConflictError,
     NewContractData,
+    SellerListingRequestCountRecord,
 )
 
 LISTING_ID = UUID("80000000-0000-0000-0000-000000000001")
@@ -125,6 +126,15 @@ class FakeContractRepository:
             )
         ]
         self.memberships = {(SELLER_ID, ORGANIZATION_ID)}
+        self.unread_contract_ids: set[UUID] = set()
+        self.listing_request_counts = [
+            SellerListingRequestCountRecord(
+                listing_id=LISTING_ID,
+                listing_title="부산 객실 공급 계약",
+                listing_status="published",
+                request_count=1,
+            )
+        ]
         self.idempotency: dict[str, tuple[str, ContractCreatedRecord]] = {}
         self.created_data: list[NewContractData] = []
         self.party_snapshots: list[dict[str, object]] = []
@@ -189,10 +199,30 @@ class FakeContractRepository:
         return next((row for row in self.records if row.id == contract_id), None)
 
     async def list_buyer_contracts(self, buyer_user_id: UUID) -> list[ContractRecord]:
+        if self.unavailable:
+            raise ContractRepositoryUnavailableError
         return [row for row in self.records if row.buyer_user_id == buyer_user_id]
 
     async def list_seller_contracts(self, seller_organization_id: UUID) -> list[ContractRecord]:
+        if self.unavailable:
+            raise ContractRepositoryUnavailableError
         return [row for row in self.records if row.seller_organization_id == seller_organization_id]
+
+    async def list_unread_response_contract_ids(
+        self, buyer_user_id: UUID, contract_ids: list[UUID]
+    ) -> set[UUID]:
+        if self.unavailable:
+            raise ContractRepositoryUnavailableError
+        if buyer_user_id != BUYER_ID:
+            return set()
+        return self.unread_contract_ids.intersection(contract_ids)
+
+    async def list_seller_listing_request_counts(
+        self, seller_organization_id: UUID
+    ) -> list[SellerListingRequestCountRecord]:
+        if self.unavailable:
+            raise ContractRepositoryUnavailableError
+        return self.listing_request_counts if seller_organization_id == ORGANIZATION_ID else []
 
     async def list_contract_clauses(self, contract_version_id: UUID) -> list[ContractClauseRecord]:
         return self.clauses if contract_version_id == VERSION_ID else []
@@ -252,7 +282,11 @@ def contract_client(
     buyer: AuthenticatedUser,
 ) -> TestClient:
     calculator = PriceCalculator(FakeExchangeRateProvider(), now=lambda: NOW)
-    service = ContractService(contract_repository, calculator)
+    service = ContractService(
+        contract_repository,
+        calculator,
+        today=lambda: date(2026, 7, 31),
+    )
     app.dependency_overrides[get_contract_service] = lambda: service
     app.dependency_overrides[get_current_user] = lambda: buyer
     with TestClient(app) as client:
@@ -465,6 +499,89 @@ def test_buyer_contract_list_is_scoped_to_authenticated_user(
     assert [row["id"] for row in response.json()["data"]] == [str(CONTRACT_ID)]
 
 
+def test_buyer_contract_list_returns_screen_labels_and_unread_badge(
+    contract_client: TestClient,
+    contract_repository: FakeContractRepository,
+) -> None:
+    statuses = [
+        ("seller_review", date(2026, 8, 12), "seller_review", "셀러 검토 중"),
+        ("revision_requested", date(2026, 8, 12), "revision_requested", "협상 중"),
+        ("signing", date(2026, 8, 12), "signing", "서명 대기"),
+        ("signed", date(2026, 8, 12), "signed", "체결 완료"),
+        ("signed", date(2026, 7, 30), "finished", "종료"),
+        ("cancelled", date(2026, 8, 12), "cancelled", "종료"),
+    ]
+    contract_repository.records = [
+        contract_record(
+            id=UUID(int=900 + index),
+            status=contract_status,
+            service_end_date=end_date,
+        )
+        for index, (contract_status, end_date, _, _) in enumerate(statuses)
+    ]
+    unread_id = contract_repository.records[1].id
+    contract_repository.unread_contract_ids = {unread_id}
+
+    response = contract_client.get("/api/v1/me/contracts")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert [(row["bucket"], row["status_label"]) for row in data] == [
+        (bucket, label) for _, _, bucket, label in statuses
+    ]
+    assert [row["has_unread_response"] for row in data] == [
+        False,
+        True,
+        False,
+        False,
+        False,
+        False,
+    ]
+    assert data[1]["status"] == "revision_requested"
+    assert "응답 도착" not in {row["status"] for row in data}
+
+
+def test_buyer_contract_list_filters_by_screen_bucket(
+    contract_client: TestClient,
+    contract_repository: FakeContractRepository,
+) -> None:
+    negotiating_id = UUID("81000000-0000-0000-0000-000000000002")
+    contract_repository.records = [
+        contract_record(),
+        contract_record(id=negotiating_id, status="revision_requested"),
+    ]
+
+    response = contract_client.get("/api/v1/me/contracts", params={"bucket": "revision_requested"})
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == [str(negotiating_id)]
+
+
+def test_buyer_contract_list_database_failure_is_safe(
+    contract_client: TestClient,
+    contract_repository: FakeContractRepository,
+) -> None:
+    contract_repository.unavailable = True
+
+    response = contract_client.get("/api/v1/me/contracts")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DATABASE_UNAVAILABLE"
+    assert "SQL" not in response.text
+
+
+def test_contract_detail_returns_unread_response_for_buyer(
+    contract_client: TestClient,
+    contract_repository: FakeContractRepository,
+) -> None:
+    contract_repository.unread_contract_ids = {CONTRACT_ID}
+
+    response = contract_client.get(f"/api/v1/contracts/{CONTRACT_ID}")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["has_unread_response"] is True
+
+
 def test_unauthorized_seller_received_list_is_rejected(
     app: FastAPI,
     contract_repository: FakeContractRepository,
@@ -508,6 +625,148 @@ def test_authorized_seller_can_list_and_read_received_contracts(
     assert detail.status_code == 200
 
 
+def test_seller_received_list_contains_requested_screen_fields(
+    app: FastAPI,
+    contract_repository: FakeContractRepository,
+) -> None:
+    service = ContractService(
+        contract_repository,
+        PriceCalculator(FakeExchangeRateProvider(), now=lambda: NOW),
+    )
+    app.dependency_overrides[get_contract_service] = lambda: service
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=SELLER_ID, email="seller@example.test"
+    )
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/seller/contracts/received",
+            headers={"X-Organization-Id": str(ORGANIZATION_ID)},
+        )
+
+    assert response.status_code == 200
+    row = response.json()["data"][0]
+    assert row == {
+        "contract_id": str(CONTRACT_ID),
+        "listing_id": str(LISTING_ID),
+        "listing_title": "부산 객실 공급 계약",
+        "buyer_name": "Buyer Snapshot",
+        "buyer_group_name": "부산 여름여행 모임",
+        "requested_people": 30,
+        "service_start_date": "2026-08-10",
+        "service_end_date": "2026-08-12",
+        "amount_minor": 3_000_000,
+        "currency": "KRW",
+        "initial_request_kind": "as_is",
+        "request_kind_label": "조건 그대로",
+        "status": "seller_review",
+        "status_label": "셀러 검토 중",
+        "requested_at": NOW.isoformat().replace("+00:00", "Z"),
+    }
+    assert "email" not in response.text
+    assert "phone" not in response.text
+    assert "registration" not in response.text
+
+
+def test_seller_dashboard_returns_status_and_listing_request_counts(
+    app: FastAPI,
+    contract_repository: FakeContractRepository,
+) -> None:
+    contract_repository.records = [
+        contract_record(id=UUID(int=1001), status="seller_review"),
+        contract_record(id=UUID(int=1002), status="revision_requested"),
+        contract_record(id=UUID(int=1003), status="signing"),
+        contract_record(id=UUID(int=1004), status="signed"),
+        contract_record(id=UUID(int=1005), status="cancelled"),
+    ]
+    second_listing_id = UUID("80000000-0000-0000-0000-000000000002")
+    contract_repository.listing_request_counts = [
+        SellerListingRequestCountRecord(
+            listing_id=LISTING_ID,
+            listing_title="부산 객실 공급 계약",
+            listing_status="published",
+            request_count=5,
+        ),
+        SellerListingRequestCountRecord(
+            listing_id=second_listing_id,
+            listing_title="요청 없는 공고",
+            listing_status="draft",
+            request_count=0,
+        ),
+    ]
+    service = ContractService(
+        contract_repository,
+        PriceCalculator(FakeExchangeRateProvider(), now=lambda: NOW),
+    )
+    app.dependency_overrides[get_contract_service] = lambda: service
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=SELLER_ID, email="seller@example.test"
+    )
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/seller/dashboard",
+            headers={"X-Organization-Id": str(ORGANIZATION_ID)},
+        )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["stats"] == {
+        "published_listings": 1,
+        "received_requests": 5,
+        "seller_review": 1,
+        "revision_requested": 1,
+        "signing": 1,
+        "signed": 1,
+        "cancelled": 1,
+    }
+    assert len(data["recent_requests"]) == 5
+    assert [row["request_count"] for row in data["listing_request_counts"]] == [5, 0]
+
+
+def test_unauthorized_seller_dashboard_is_rejected(
+    app: FastAPI,
+    contract_repository: FakeContractRepository,
+) -> None:
+    service = ContractService(
+        contract_repository,
+        PriceCalculator(FakeExchangeRateProvider(), now=lambda: NOW),
+    )
+    app.dependency_overrides[get_contract_service] = lambda: service
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=OUTSIDER_ID, email="outsider@example.test"
+    )
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/seller/dashboard",
+            headers={"X-Organization-Id": str(ORGANIZATION_ID)},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CONTRACT_ACCESS_DENIED"
+
+
+def test_seller_dashboard_database_failure_is_safe(
+    app: FastAPI,
+    contract_repository: FakeContractRepository,
+) -> None:
+    service = ContractService(
+        contract_repository,
+        PriceCalculator(FakeExchangeRateProvider(), now=lambda: NOW),
+    )
+    app.dependency_overrides[get_contract_service] = lambda: service
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=SELLER_ID, email="seller@example.test"
+    )
+    contract_repository.unavailable = True
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/seller/dashboard",
+            headers={"X-Organization-Id": str(ORGANIZATION_ID)},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DATABASE_UNAVAILABLE"
+
+
 def test_contract_can_be_cancelled_idempotently(
     contract_client: TestClient,
     contract_repository: FakeContractRepository,
@@ -547,4 +806,5 @@ def test_openapi_contains_contract_request_and_query_endpoints(
     assert "/api/v1/contracts/{contract_id}" in paths
     assert "/api/v1/me/contracts" in paths
     assert "/api/v1/seller/contracts/received" in paths
+    assert "/api/v1/seller/dashboard" in paths
     assert "/api/v1/contracts/{contract_id}/cancel" in paths
