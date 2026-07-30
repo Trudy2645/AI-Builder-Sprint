@@ -1,0 +1,547 @@
+from dataclasses import replace
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from uuid import UUID
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.dependencies import get_public_listing_repository
+from app.repositories.listings import (
+    ListingCursor,
+    ListingRepositoryUnavailableError,
+    ListingSearchFilters,
+    PublicClauseRecord,
+    PublicFindingRecord,
+    PublicListingRecord,
+    PublicListingVersionRecord,
+)
+
+PUBLISHED_ID = UUID("20000000-0000-0000-0000-000000000001")
+PAUSED_ID = UUID("20000000-0000-0000-0000-000000000002")
+ACTIVITY_ID = UUID("20000000-0000-0000-0000-000000000003")
+DRAFT_ID = UUID("20000000-0000-0000-0000-000000000004")
+EXPIRED_ID = UUID("20000000-0000-0000-0000-000000000005")
+VERSION_ID = UUID("30000000-0000-0000-0000-000000000001")
+PAUSED_VERSION_ID = UUID("30000000-0000-0000-0000-000000000002")
+ACTIVITY_VERSION_ID = UUID("30000000-0000-0000-0000-000000000003")
+CLAUSE_ID = UUID("40000000-0000-0000-0000-000000000001")
+TODAY = date(2026, 7, 30)
+
+
+def listing(
+    listing_id: UUID,
+    *,
+    title: str,
+    seller_name: str,
+    district: str,
+    category: str,
+    status: str,
+    price: int,
+    service_start: date,
+    service_end: date,
+    minimum_people: int,
+    maximum_people: int,
+    version_id: UUID,
+    verified: bool = True,
+) -> PublicListingRecord:
+    return PublicListingRecord(
+        id=listing_id,
+        title=title,
+        district=district,
+        category=category,
+        language="ko-KR",
+        ai_summary=f"{title} 공개 요약",
+        status=status,
+        seller_name=seller_name,
+        verification_status="verified" if verified else "pending",
+        rating_average=Decimal("4.80"),
+        rating_count=24,
+        service_start_date=service_start,
+        service_end_date=service_end,
+        supply_quantity=30,
+        quantity_unit="room" if category == "accommodation" else "person",
+        base_price_amount_minor=price,
+        currency="KRW",
+        price_unit="room_night" if category == "accommodation" else "person",
+        minimum_people=minimum_people,
+        maximum_people=maximum_people,
+        current_version_id=version_id,
+        sort_value=Decimal(0),
+    )
+
+
+class FakePublicListingRepository:
+    def __init__(self) -> None:
+        self.unavailable = False
+        self.internal_seller_note = "never expose seller-only analysis"
+        self.listings = [
+            listing(
+                PUBLISHED_ID,
+                title="2026 부산 여름 객실 공급",
+                seller_name="해운대 오션스테이",
+                district="해운대구",
+                category="accommodation",
+                status="published",
+                price=145_000,
+                service_start=date(2026, 7, 1),
+                service_end=date(2026, 8, 31),
+                minimum_people=10,
+                maximum_people=40,
+                version_id=VERSION_ID,
+            ),
+            listing(
+                PAUSED_ID,
+                title="부산 원도심 버스 투어",
+                seller_name="부산 링크 투어",
+                district="중구",
+                category="tour",
+                status="paused",
+                price=90_000,
+                service_start=date(2026, 7, 1),
+                service_end=date(2026, 9, 30),
+                minimum_people=1,
+                maximum_people=50,
+                version_id=PAUSED_VERSION_ID,
+            ),
+            listing(
+                ACTIVITY_ID,
+                title="광안리 요트 체험",
+                seller_name="부산 마린",
+                district="수영구",
+                category="activity",
+                status="published",
+                price=200_000,
+                service_start=date(2026, 8, 1),
+                service_end=date(2026, 12, 31),
+                minimum_people=2,
+                maximum_people=12,
+                version_id=ACTIVITY_VERSION_ID,
+                verified=False,
+            ),
+            listing(
+                DRAFT_ID,
+                title="내부 작성 중 공고",
+                seller_name="비공개 셀러",
+                district="해운대구",
+                category="tour",
+                status="draft",
+                price=1,
+                service_start=date(2026, 7, 1),
+                service_end=date(2026, 12, 31),
+                minimum_people=1,
+                maximum_people=100,
+                version_id=UUID("30000000-0000-0000-0000-000000000004"),
+            ),
+            listing(
+                EXPIRED_ID,
+                title="공급 기간 종료 공고",
+                seller_name="지난 상품 셀러",
+                district="해운대구",
+                category="accommodation",
+                status="published",
+                price=50_000,
+                service_start=date(2026, 6, 1),
+                service_end=date(2026, 7, 29),
+                minimum_people=1,
+                maximum_people=100,
+                version_id=UUID("30000000-0000-0000-0000-000000000005"),
+            ),
+        ]
+        self.versions = {
+            VERSION_ID: PublicListingVersionRecord(
+                id=VERSION_ID,
+                body="공개 계약 본문입니다.",
+            ),
+            PAUSED_VERSION_ID: PublicListingVersionRecord(
+                id=PAUSED_VERSION_ID,
+                body="일시 중지된 공고의 공개 계약 본문입니다.",
+            ),
+            ACTIVITY_VERSION_ID: PublicListingVersionRecord(
+                id=ACTIVITY_VERSION_ID,
+                body="요트 체험 계약 본문입니다.",
+            ),
+        }
+        self.clauses = {
+            VERSION_ID: [
+                PublicClauseRecord(
+                    id=CLAUSE_ID,
+                    clause_key="cancellation",
+                    title="제3조 취소 및 변경",
+                    body="최종 수량과 취소 수수료는 협상 후 확정됩니다.",
+                )
+            ]
+        }
+        self.findings = {
+            VERSION_ID: [
+                PublicFindingRecord(
+                    clause_id=CLAUSE_ID,
+                    severity="medium",
+                    explanation="취소 수수료 확정 시점이 모호합니다.",
+                    suggested_text="무료 취소 기한을 명시해 보세요.",
+                    disclaimer="법률 자문이 아닌 계약 검토 보조 의견입니다.",
+                )
+            ]
+        }
+
+    def _check_available(self) -> None:
+        if self.unavailable:
+            raise ListingRepositoryUnavailableError
+
+    async def search_public_listings(
+        self,
+        filters: ListingSearchFilters,
+        cursor: ListingCursor | None,
+        limit: int,
+    ) -> list[PublicListingRecord]:
+        self._check_available()
+        rows = [
+            row
+            for row in self.listings
+            if row.status in {"published", "paused"}
+            and (row.service_end_date is None or row.service_end_date >= TODAY)
+        ]
+        if filters.q:
+            keyword = filters.q.lower()
+            rows = [row for row in rows if keyword in f"{row.title} {row.seller_name}".lower()]
+        if filters.districts:
+            rows = [row for row in rows if row.district in filters.districts]
+        if filters.people is not None:
+            rows = [
+                row
+                for row in rows
+                if (row.minimum_people is None or row.minimum_people <= filters.people)
+                and (row.maximum_people is None or row.maximum_people >= filters.people)
+            ]
+        if filters.min_price is not None:
+            rows = [
+                row
+                for row in rows
+                if row.base_price_amount_minor is not None
+                and row.base_price_amount_minor >= filters.min_price
+            ]
+        if filters.max_price is not None:
+            rows = [
+                row
+                for row in rows
+                if row.base_price_amount_minor is not None
+                and row.base_price_amount_minor <= filters.max_price
+            ]
+        if filters.currency is not None:
+            rows = [row for row in rows if row.currency == filters.currency]
+        if filters.category is not None:
+            rows = [row for row in rows if row.category == filters.category.value]
+        if filters.start_date is not None:
+            rows = [
+                row
+                for row in rows
+                if row.service_start_date is None or row.service_start_date <= filters.start_date
+            ]
+        if filters.end_date is not None:
+            rows = [
+                row
+                for row in rows
+                if row.service_end_date is None or row.service_end_date >= filters.end_date
+            ]
+
+        values: dict[str, dict[UUID, Decimal | int | datetime]] = {
+            "recommended": {
+                PUBLISHED_ID: Decimal("1110020"),
+                PAUSED_ID: Decimal("1010050"),
+                ACTIVITY_ID: Decimal("110010"),
+            },
+            "popular": {
+                PUBLISHED_ID: Decimal(20),
+                PAUSED_ID: Decimal(50),
+                ACTIVITY_ID: Decimal(10),
+            },
+            "latest": {
+                PUBLISHED_ID: datetime(2026, 7, 20, tzinfo=UTC),
+                PAUSED_ID: datetime(2026, 7, 15, tzinfo=UTC),
+                ACTIVITY_ID: datetime(2026, 7, 25, tzinfo=UTC),
+            },
+            "price_asc": {
+                PUBLISHED_ID: 145_000,
+                PAUSED_ID: 90_000,
+                ACTIVITY_ID: 200_000,
+            },
+            "price_desc": {
+                PUBLISHED_ID: 145_000,
+                PAUSED_ID: 90_000,
+                ACTIVITY_ID: 200_000,
+            },
+        }
+        sort_values = values[filters.sort.value]
+        rows = [replace(row, sort_value=sort_values[row.id]) for row in rows]
+        descending = filters.sort.value not in {"price_asc"}
+        rows.sort(key=lambda row: (row.sort_value, row.id), reverse=descending)
+        if cursor is not None:
+            cursor_index = next(
+                (index for index, row in enumerate(rows) if row.id == cursor.listing_id), None
+            )
+            rows = [] if cursor_index is None else rows[cursor_index + 1 :]
+        return rows[:limit]
+
+    async def get_public_listing(self, listing_id: UUID) -> PublicListingRecord | None:
+        self._check_available()
+        return next(
+            (
+                row
+                for row in self.listings
+                if row.id == listing_id
+                and row.status in {"published", "paused"}
+                and (row.service_end_date is None or row.service_end_date >= TODAY)
+            ),
+            None,
+        )
+
+    async def get_public_version(
+        self, listing_id: UUID, version_id: UUID
+    ) -> PublicListingVersionRecord | None:
+        self._check_available()
+        listing_row = await self.get_public_listing(listing_id)
+        if listing_row is None or listing_row.current_version_id != version_id:
+            return None
+        return self.versions.get(version_id)
+
+    async def list_public_clauses(self, version_id: UUID) -> list[PublicClauseRecord]:
+        self._check_available()
+        return self.clauses.get(version_id, [])
+
+    async def list_public_findings(self, version_id: UUID) -> list[PublicFindingRecord]:
+        self._check_available()
+        return self.findings.get(version_id, [])
+
+
+@pytest.fixture
+def listing_repository() -> FakePublicListingRepository:
+    return FakePublicListingRepository()
+
+
+@pytest.fixture
+def public_client(app: FastAPI, listing_repository: FakePublicListingRepository) -> TestClient:
+    app.dependency_overrides[get_public_listing_repository] = lambda: listing_repository
+    with TestClient(app) as client:
+        yield client
+
+
+def test_public_listings_are_available_without_authentication(
+    public_client: TestClient,
+) -> None:
+    response = public_client.get("/api/v1/public/listings")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [row["id"] for row in payload["data"]] == [
+        str(PUBLISHED_ID),
+        str(PAUSED_ID),
+        str(ACTIVITY_ID),
+    ]
+    assert payload["data"][0]["contract_available"] is True
+    assert payload["data"][1]["status"] == "paused"
+    assert payload["data"][1]["contract_available"] is False
+    assert payload["meta"]["has_more"] is False
+
+
+@pytest.mark.parametrize(
+    ("params", "expected_ids"),
+    [
+        ({"q": "오션스테이"}, [PUBLISHED_ID]),
+        ({"district": ["해운대구", "중구"]}, [PUBLISHED_ID, PAUSED_ID]),
+        ({"category": "activity"}, [ACTIVITY_ID]),
+        ({"people": 30}, [PUBLISHED_ID, PAUSED_ID]),
+        ({"min_price": 100_000, "max_price": 150_000, "currency": "KRW"}, [PUBLISHED_ID]),
+        ({"start_date": "2026-08-15", "end_date": "2026-09-15"}, [PAUSED_ID, ACTIVITY_ID]),
+    ],
+)
+def test_public_listing_filters(
+    public_client: TestClient,
+    params: dict[str, object],
+    expected_ids: list[UUID],
+) -> None:
+    response = public_client.get("/api/v1/public/listings", params=params)
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == [
+        str(listing_id) for listing_id in expected_ids
+    ]
+
+
+@pytest.mark.parametrize(
+    ("sort", "expected_ids"),
+    [
+        ("recommended", [PUBLISHED_ID, PAUSED_ID, ACTIVITY_ID]),
+        ("popular", [PAUSED_ID, PUBLISHED_ID, ACTIVITY_ID]),
+        ("latest", [ACTIVITY_ID, PUBLISHED_ID, PAUSED_ID]),
+        ("price_asc", [PAUSED_ID, PUBLISHED_ID, ACTIVITY_ID]),
+        ("price_desc", [ACTIVITY_ID, PUBLISHED_ID, PAUSED_ID]),
+    ],
+)
+def test_public_listing_sort_orders_are_deterministic(
+    public_client: TestClient, sort: str, expected_ids: list[UUID]
+) -> None:
+    response = public_client.get("/api/v1/public/listings", params={"sort": sort})
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == [
+        str(listing_id) for listing_id in expected_ids
+    ]
+
+
+def test_cursor_pagination_has_no_duplicates(public_client: TestClient) -> None:
+    first = public_client.get("/api/v1/public/listings", params={"limit": 2})
+    cursor = first.json()["meta"]["next_cursor"]
+    second = public_client.get("/api/v1/public/listings", params={"limit": 2, "cursor": cursor})
+
+    assert first.status_code == 200
+    assert first.json()["meta"]["has_more"] is True
+    assert [row["id"] for row in first.json()["data"]] == [
+        str(PUBLISHED_ID),
+        str(PAUSED_ID),
+    ]
+    assert second.status_code == 200
+    assert [row["id"] for row in second.json()["data"]] == [str(ACTIVITY_ID)]
+    assert second.json()["meta"]["next_cursor"] is None
+
+
+def test_cursor_cannot_be_reused_with_another_sort(public_client: TestClient) -> None:
+    first = public_client.get("/api/v1/public/listings", params={"limit": 1})
+
+    response = public_client.get(
+        "/api/v1/public/listings",
+        params={"sort": "popular", "cursor": first.json()["meta"]["next_cursor"]},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_CURSOR"
+
+
+def test_listing_detail_returns_public_terms_and_locale_fallback(
+    public_client: TestClient,
+) -> None:
+    response = public_client.get(
+        f"/api/v1/public/listings/{PUBLISHED_ID}", params={"locale": "en-US"}
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["supply_quantity"] == 30
+    assert data["minimum_people"] == 10
+    assert data["clauses"][0]["highlight"] == "warning"
+    assert data["requested_locale"] == "en-US"
+    assert data["content_locale"] == "ko-KR"
+    assert data["fallback_locale"] == "ko-KR"
+
+
+def test_paused_listing_remains_readable_but_is_not_contractable(
+    public_client: TestClient,
+) -> None:
+    response = public_client.get(f"/api/v1/public/listings/{PAUSED_ID}")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "paused"
+    assert response.json()["data"]["contract_available"] is False
+
+
+def test_contract_preview_returns_only_public_buyer_finding(
+    public_client: TestClient,
+) -> None:
+    response = public_client.get(f"/api/v1/public/listings/{PUBLISHED_ID}/contract-preview")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["listing_version_id"] == str(VERSION_ID)
+    assert data["body"] == "공개 계약 본문입니다."
+    assert data["findings"] == [
+        {
+            "clause_id": str(CLAUSE_ID),
+            "severity": "medium",
+            "explanation": "취소 수수료 확정 시점이 모호합니다.",
+            "suggested_text": "무료 취소 기한을 명시해 보세요.",
+            "disclaimer": "법률 자문이 아닌 계약 검토 보조 의견입니다.",
+        }
+    ]
+
+
+@pytest.mark.parametrize("listing_id", [DRAFT_ID, EXPIRED_ID, UUID(int=999)])
+def test_non_public_or_missing_listing_is_not_found(
+    public_client: TestClient, listing_id: UUID
+) -> None:
+    response = public_client.get(f"/api/v1/public/listings/{listing_id}")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "LISTING_NOT_FOUND"
+
+
+def test_malformed_cursor_is_rejected(public_client: TestClient) -> None:
+    response = public_client.get("/api/v1/public/listings", params={"cursor": "not-a-valid-cursor"})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_CURSOR"
+
+
+def test_public_responses_do_not_expose_internal_or_personal_data(
+    public_client: TestClient,
+) -> None:
+    responses = [
+        public_client.get("/api/v1/public/listings"),
+        public_client.get(f"/api/v1/public/listings/{PUBLISHED_ID}"),
+        public_client.get(f"/api/v1/public/listings/{PUBLISHED_ID}/contract-preview"),
+    ]
+
+    combined = " ".join(str(response.json()).lower() for response in responses)
+    for forbidden in (
+        "business_registration_no",
+        "verification_note",
+        "storage_object_path",
+        "provider_request_id",
+        "seller-only analysis",
+        "created_by",
+        "email",
+        "phone",
+    ):
+        assert forbidden not in combined
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"category": "restaurant"},
+        {"locale": "fr-FR"},
+        {"people": 0},
+        {"min_price": 200, "max_price": 100},
+        {"start_date": "2026-09-01", "end_date": "2026-08-01"},
+        {"limit": 101},
+        {"currency": "krw"},
+    ],
+)
+def test_invalid_public_listing_query_is_rejected(
+    public_client: TestClient, params: dict[str, object]
+) -> None:
+    response = public_client.get("/api/v1/public/listings", params=params)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_database_failure_uses_safe_error_envelope(
+    public_client: TestClient, listing_repository: FakePublicListingRepository
+) -> None:
+    listing_repository.unavailable = True
+
+    response = public_client.get("/api/v1/public/listings")
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DATABASE_UNAVAILABLE"
+    assert response.json()["error"]["details"] == {}
+
+
+def test_openapi_exposes_public_listing_schemas(public_client: TestClient) -> None:
+    response = public_client.get("/openapi.json")
+
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    assert "get" in paths["/api/v1/public/listings"]
+    assert "get" in paths["/api/v1/public/listings/{listing_id}"]
+    assert "get" in paths["/api/v1/public/listings/{listing_id}/contract-preview"]
