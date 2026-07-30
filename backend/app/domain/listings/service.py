@@ -43,6 +43,7 @@ class PublicListingService:
         cursor = self._decode_cursor(query.cursor, query.sort.value) if query.cursor else None
         filters = ListingSearchFilters(
             q=query.q,
+            contract_available_only=query.contract_available_only,
             districts=tuple(dict.fromkeys(query.district)),
             people=query.people,
             min_price=query.min_price,
@@ -87,6 +88,14 @@ class PublicListingService:
             quantity_unit=listing.quantity_unit,
             minimum_people=listing.minimum_people,
             maximum_people=listing.maximum_people,
+            cancellation_policy=listing.cancellation_policy,
+            refund_policy=listing.refund_policy,
+            settlement_policy=listing.settlement_policy,
+            safety_policy=listing.safety_policy,
+            compensation_policy=listing.compensation_policy,
+            liability_policy=listing.liability_policy,
+            price_display_basis=listing.price_display_basis,
+            contract_availability_note=listing.contract_availability_note,
             clauses=self._clauses(clauses, findings),
             requested_locale=requested_locale,
             content_locale=content_locale,
@@ -159,6 +168,7 @@ class PublicListingService:
             ),
             status=record.status,  # type: ignore[arg-type]
             contract_available=record.status == "published",
+            attention_required_count=record.attention_required_count,
         )
 
     @classmethod

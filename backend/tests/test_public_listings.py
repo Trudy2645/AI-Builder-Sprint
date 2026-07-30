@@ -16,7 +16,9 @@ from app.repositories.listings import (
     PublicFindingRecord,
     PublicListingRecord,
     PublicListingVersionRecord,
+    SqlAlchemyPublicListingRepository,
 )
+from app.schemas.listings import PublicListingSort
 
 PUBLISHED_ID = UUID("20000000-0000-0000-0000-000000000001")
 PAUSED_ID = UUID("20000000-0000-0000-0000-000000000002")
@@ -67,6 +69,15 @@ def listing(
         price_unit="room_night" if category == "accommodation" else "person",
         minimum_people=minimum_people,
         maximum_people=maximum_people,
+        cancellation_policy="이용 7일 전까지 무료 취소",
+        refund_policy="취소 승인 후 원 결제수단으로 환불",
+        settlement_policy="이용 완료 후 15일 이내 정산",
+        safety_policy="시설 안전점검과 긴급 연락체계 제공",
+        compensation_policy="셀러 귀책 시 대체 서비스 또는 환불",
+        liability_policy="당사자별 고의 또는 과실 범위에서 책임",
+        price_display_basis="1인 기준 가격",
+        contract_availability_note="잔여 수량 확인 후 계약 확정",
+        attention_required_count=1 if version_id == VERSION_ID else 0,
         current_version_id=version_id,
         sort_value=Decimal(0),
     )
@@ -202,6 +213,8 @@ class FakePublicListingRepository:
             if row.status in {"published", "paused"}
             and (row.service_end_date is None or row.service_end_date >= TODAY)
         ]
+        if filters.contract_available_only:
+            rows = [row for row in rows if row.status == "published"]
         if filters.q:
             keyword = filters.q.lower()
             rows = [row for row in rows if keyword in f"{row.title} {row.seller_name}".lower()]
@@ -314,6 +327,23 @@ class FakePublicListingRepository:
         return self.findings.get(version_id, [])
 
 
+class EmptyMappingResult:
+    def mappings(self) -> "EmptyMappingResult":
+        return self
+
+    def all(self) -> list[dict[str, object]]:
+        return []
+
+
+class CapturingSession:
+    def __init__(self) -> None:
+        self.statement: object | None = None
+
+    async def execute(self, statement: object, params: dict[str, object]) -> EmptyMappingResult:
+        self.statement = statement
+        return EmptyMappingResult()
+
+
 @pytest.fixture
 def listing_repository() -> FakePublicListingRepository:
     return FakePublicListingRepository()
@@ -339,9 +369,71 @@ def test_public_listings_are_available_without_authentication(
         str(ACTIVITY_ID),
     ]
     assert payload["data"][0]["contract_available"] is True
+    assert payload["data"][0]["attention_required_count"] == 1
     assert payload["data"][1]["status"] == "paused"
     assert payload["data"][1]["contract_available"] is False
     assert payload["meta"]["has_more"] is False
+
+
+def test_contract_available_only_returns_published_listings(
+    public_client: TestClient,
+) -> None:
+    response = public_client.get(
+        "/api/v1/public/listings", params={"contract_available_only": "true"}
+    )
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == [
+        str(PUBLISHED_ID),
+        str(ACTIVITY_ID),
+    ]
+    assert all(row["contract_available"] for row in response.json()["data"])
+
+
+@pytest.mark.asyncio
+async def test_contract_availability_is_filtered_in_database_before_pagination() -> None:
+    session = CapturingSession()
+    repository = SqlAlchemyPublicListingRepository(session)  # type: ignore[arg-type]
+    filters = ListingSearchFilters(
+        q=None,
+        contract_available_only=True,
+        districts=(),
+        people=None,
+        min_price=None,
+        max_price=None,
+        currency=None,
+        category=None,
+        start_date=None,
+        end_date=None,
+        sort=PublicListingSort.LATEST,
+    )
+
+    await repository.search_public_listings(filters, cursor=None, limit=21)
+
+    sql = " ".join(str(session.statement).split())
+    availability_position = sql.index("(l.status = 'published')")
+    pagination_position = sql.index("order by sort_value")
+    assert availability_position < pagination_position
+    assert "ar.viewer_role = 'buyer'" in sql
+    assert "ar.status = 'succeeded'" in sql
+    assert "af.status in ('open', 'applied')" in sql
+
+
+def test_availability_filter_combines_with_search_filters_and_sort(
+    public_client: TestClient,
+) -> None:
+    response = public_client.get(
+        "/api/v1/public/listings",
+        params={
+            "contract_available_only": "true",
+            "category": "activity",
+            "people": 4,
+            "sort": "price_desc",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == [str(ACTIVITY_ID)]
 
 
 @pytest.mark.parametrize(
@@ -405,6 +497,24 @@ def test_cursor_pagination_has_no_duplicates(public_client: TestClient) -> None:
     assert second.json()["meta"]["next_cursor"] is None
 
 
+def test_cursor_pagination_combines_with_availability_filter(
+    public_client: TestClient,
+) -> None:
+    params = {"contract_available_only": "true", "limit": 1, "sort": "latest"}
+    first = public_client.get("/api/v1/public/listings", params=params)
+    second = public_client.get(
+        "/api/v1/public/listings",
+        params={**params, "cursor": first.json()["meta"]["next_cursor"]},
+    )
+
+    assert first.status_code == 200
+    assert [row["id"] for row in first.json()["data"]] == [str(ACTIVITY_ID)]
+    assert first.json()["meta"]["has_more"] is True
+    assert second.status_code == 200
+    assert [row["id"] for row in second.json()["data"]] == [str(PUBLISHED_ID)]
+    assert second.json()["meta"]["has_more"] is False
+
+
 def test_cursor_cannot_be_reused_with_another_sort(public_client: TestClient) -> None:
     first = public_client.get("/api/v1/public/listings", params={"limit": 1})
 
@@ -428,6 +538,18 @@ def test_listing_detail_returns_public_terms_and_locale_fallback(
     data = response.json()["data"]
     assert data["supply_quantity"] == 30
     assert data["minimum_people"] == 10
+    assert data["cancellation_policy"] == "이용 7일 전까지 무료 취소"
+    assert data["refund_policy"] == "취소 승인 후 원 결제수단으로 환불"
+    assert data["settlement_policy"] == "이용 완료 후 15일 이내 정산"
+    assert data["safety_policy"] == "시설 안전점검과 긴급 연락체계 제공"
+    assert data["compensation_policy"] == "셀러 귀책 시 대체 서비스 또는 환불"
+    assert data["liability_policy"] == "당사자별 고의 또는 과실 범위에서 책임"
+    assert data["price_display_basis"] == "1인 기준 가격"
+    assert data["contract_availability_note"] == "잔여 수량 확인 후 계약 확정"
+    assert data["attention_required_count"] == 1
+    assert data["no_show_policy"] is None
+    assert data["vat_included"] is None
+    assert data["hero_image_url"] is None
     assert data["clauses"][0]["highlight"] == "warning"
     assert data["requested_locale"] == "en-US"
     assert data["content_locale"] == "ko-KR"
@@ -541,7 +663,27 @@ def test_openapi_exposes_public_listing_schemas(public_client: TestClient) -> No
     response = public_client.get("/openapi.json")
 
     assert response.status_code == 200
-    paths = response.json()["paths"]
+    openapi = response.json()
+    paths = openapi["paths"]
     assert "get" in paths["/api/v1/public/listings"]
     assert "get" in paths["/api/v1/public/listings/{listing_id}"]
     assert "get" in paths["/api/v1/public/listings/{listing_id}/contract-preview"]
+    parameter_names = {
+        parameter["name"] for parameter in paths["/api/v1/public/listings"]["get"]["parameters"]
+    }
+    assert "contract_available_only" in parameter_names
+    detail_properties = openapi["components"]["schemas"]["PublicListingDetail"]["properties"]
+    for field in (
+        "cancellation_policy",
+        "refund_policy",
+        "settlement_policy",
+        "safety_policy",
+        "compensation_policy",
+        "liability_policy",
+        "price_display_basis",
+        "contract_availability_note",
+        "attention_required_count",
+        "no_show_policy",
+        "vat_included",
+    ):
+        assert field in detail_properties

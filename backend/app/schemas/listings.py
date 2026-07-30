@@ -35,6 +35,10 @@ class PublicListingQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     q: str | None = Field(default=None, min_length=1, max_length=200)
+    contract_available_only: bool = Field(
+        default=False,
+        description="Return only published listings that accept new contract requests.",
+    )
     sort: PublicListingSort = PublicListingSort.RECOMMENDED
     district: list[str] = Field(default_factory=list)
     people: int | None = Field(default=None, gt=0)
@@ -89,6 +93,13 @@ class PublicListingCard(BaseModel):
     availability: Availability
     status: Literal["published", "paused"]
     contract_available: bool
+    attention_required_count: int = Field(
+        ge=0,
+        description=(
+            "Distinct clauses with non-dismissed findings from the latest successful "
+            "buyer analysis."
+        ),
+    )
 
 
 class PublicListingListMeta(ResponseMeta):
@@ -114,6 +125,22 @@ class PublicListingDetail(PublicListingCard):
     quantity_unit: str | None
     minimum_people: int | None
     maximum_people: int | None
+    cancellation_policy: str | None
+    refund_policy: str | None
+    settlement_policy: str | None
+    safety_policy: str | None
+    compensation_policy: str | None
+    liability_policy: str | None
+    price_display_basis: str | None
+    contract_availability_note: str | None
+    no_show_policy: None = Field(
+        default=None,
+        description="Unsupported until a canonical no-show policy source is available.",
+    )
+    vat_included: None = Field(
+        default=None,
+        description="Unsupported until a canonical VAT inclusion source is available.",
+    )
     clauses: list[PublicClause]
     requested_locale: SupportedLocale
     content_locale: SupportedLocale

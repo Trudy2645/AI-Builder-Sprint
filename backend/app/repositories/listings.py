@@ -16,6 +16,7 @@ from app.schemas.listings import ListingCategory, PublicListingSort
 @dataclass(frozen=True, slots=True)
 class ListingSearchFilters:
     q: str | None
+    contract_available_only: bool
     districts: tuple[str, ...]
     people: int | None
     min_price: int | None
@@ -55,6 +56,15 @@ class PublicListingRecord:
     price_unit: str | None
     minimum_people: int | None
     maximum_people: int | None
+    cancellation_policy: str | None
+    refund_policy: str | None
+    settlement_policy: str | None
+    safety_policy: str | None
+    compensation_policy: str | None
+    liability_policy: str | None
+    price_display_basis: str | None
+    contract_availability_note: str | None
+    attention_required_count: int
     current_version_id: UUID | None
     sort_value: Decimal | int | datetime
 
@@ -132,6 +142,23 @@ class SqlAlchemyPublicListingRepository:
             "bigint",
         ),
     }
+    _ATTENTION_REQUIRED_COUNT = """
+        coalesce((
+            select count(distinct af.listing_clause_id)
+            from public.ai_findings af
+            where af.analysis_run_id = (
+                select ar.id
+                from public.ai_analysis_runs ar
+                where ar.listing_version_id = l.current_version_id
+                  and ar.viewer_role = 'buyer'
+                  and ar.status = 'succeeded'
+                order by ar.completed_at desc nulls last, ar.created_at desc
+                limit 1
+            )
+              and af.status in ('open', 'applied')
+              and af.listing_clause_id is not null
+        ), 0)::integer
+    """
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -150,6 +177,8 @@ class SqlAlchemyPublicListingRepository:
         ]
         params: dict[str, object] = {"limit": limit}
 
+        if filters.contract_available_only:
+            conditions.append("l.status = 'published'")
         if filters.q:
             conditions.append(
                 """position(lower(:q) in lower(
@@ -213,7 +242,12 @@ class SqlAlchemyPublicListingRepository:
                    o.rating_average, o.rating_count,
                    lt.service_start_date, lt.service_end_date, lt.supply_quantity,
                    lt.quantity_unit, lt.base_price_amount_minor, lt.currency, lt.price_unit,
-                   lt.minimum_people, lt.maximum_people, l.current_version_id,
+                   lt.minimum_people, lt.maximum_people,
+                   lt.cancellation_policy, lt.refund_policy, lt.settlement_policy,
+                   lt.safety_policy, lt.compensation_policy, lt.liability_policy,
+                   lt.price_display_basis, lt.contract_availability_note,
+                   {self._ATTENTION_REQUIRED_COUNT} as attention_required_count,
+                   l.current_version_id,
                    {sort_expression} as sort_value
             from public.listings l
             join public.organizations o on o.id = l.seller_organization_id
@@ -236,7 +270,12 @@ class SqlAlchemyPublicListingRepository:
                    o.rating_average, o.rating_count,
                    lt.service_start_date, lt.service_end_date, lt.supply_quantity,
                    lt.quantity_unit, lt.base_price_amount_minor, lt.currency, lt.price_unit,
-                   lt.minimum_people, lt.maximum_people, l.current_version_id,
+                   lt.minimum_people, lt.maximum_people,
+                   lt.cancellation_policy, lt.refund_policy, lt.settlement_policy,
+                   lt.safety_policy, lt.compensation_policy, lt.liability_policy,
+                   lt.price_display_basis, lt.contract_availability_note,
+                   {self._ATTENTION_REQUIRED_COUNT} as attention_required_count,
+                   l.current_version_id,
                    {self._RECOMMENDED_SCORE} as sort_value
             from public.listings l
             join public.organizations o on o.id = l.seller_organization_id
