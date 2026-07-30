@@ -4,10 +4,12 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_database_session
+from app.domain.contracts.service import ContractService
 from app.domain.listings.service import PublicListingService
-from app.domain.pricing.service import PriceEstimateService
+from app.domain.pricing.service import PriceCalculator, PriceEstimateService
 from app.domain.profiles.service import ProfileService
 from app.integrations.exchange_rates import ExchangeRateProvider, FakeExchangeRateProvider
+from app.repositories.contracts import ContractRepository, SqlAlchemyContractRepository
 from app.repositories.listings import PublicListingRepository, SqlAlchemyPublicListingRepository
 from app.repositories.pricing import PriceTermsRepository, SqlAlchemyPriceTermsRepository
 from app.repositories.profiles import ProfileRepository, SqlAlchemyProfileRepository
@@ -40,6 +42,19 @@ def get_price_estimate_service(
     exchange_rate_provider: Annotated[ExchangeRateProvider, Depends(get_exchange_rate_provider)],
 ) -> PriceEstimateService:
     return PriceEstimateService(repository, exchange_rate_provider)
+
+
+def get_contract_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> ContractRepository:
+    return SqlAlchemyContractRepository(session)
+
+
+def get_contract_service(
+    repository: Annotated[ContractRepository, Depends(get_contract_repository)],
+    exchange_rate_provider: Annotated[ExchangeRateProvider, Depends(get_exchange_rate_provider)],
+) -> ContractService:
+    return ContractService(repository, PriceCalculator(exchange_rate_provider))
 
 
 def get_profile_repository(
