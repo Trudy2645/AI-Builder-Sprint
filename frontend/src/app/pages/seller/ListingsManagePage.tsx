@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -32,7 +32,9 @@ export function ListingsManagePage() {
   const { t } = useApp();
   const navigate = useNavigate();
   const { listings } = useListings();
-  const [tab, setTab] = useState<Tab>("all");
+  const [params, setParams] = useSearchParams();
+  const initialStatus = params.get("status") as Tab | null;
+  const [tab, setTab] = useState<Tab>(initialStatus && TABS.includes(initialStatus) ? initialStatus : "all");
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: listings.length };
@@ -63,7 +65,11 @@ export function ListingsManagePage() {
             <button
               key={tb}
               type="button"
-              onClick={() => setTab(tb)}
+              onClick={() => {
+                setTab(tb);
+                if (tb === "all") setParams({});
+                else setParams({ status: tb });
+              }}
               className="flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 transition-colors"
               style={{
                 fontSize: "13px",

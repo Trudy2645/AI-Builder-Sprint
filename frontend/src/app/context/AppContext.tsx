@@ -18,7 +18,7 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>("ko");
-  const [companyName, setCompanyName] = useState<string>("GlobalTrip Japan");
+  const [companyName, setCompanyName] = useState<string>("");
   const [currentRole, setCurrentRole] = useState<Role | null>(null);
 
   const login = (role: Role, company?: string) => {
