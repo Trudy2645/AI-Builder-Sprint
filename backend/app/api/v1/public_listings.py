@@ -3,8 +3,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.api.dependencies import get_public_listing_service
+from app.api.dependencies import get_price_estimate_service, get_public_listing_service
 from app.domain.listings.service import PublicListingService
+from app.domain.pricing.service import PriceEstimateService
 from app.schemas.common import SuccessEnvelope, typed_envelope
 from app.schemas.listings import (
     PublicContractPreview,
@@ -14,8 +15,22 @@ from app.schemas.listings import (
     PublicListingQuery,
     SupportedLocale,
 )
+from app.schemas.pricing import PriceEstimate, PriceEstimateRequest
 
 router = APIRouter(prefix="/public/listings", tags=["public-listings"])
+
+
+@router.post(
+    "/{listing_id}/price-estimates",
+    response_model=SuccessEnvelope[PriceEstimate],
+)
+async def create_price_estimate(
+    request: Request,
+    listing_id: UUID,
+    payload: PriceEstimateRequest,
+    service: Annotated[PriceEstimateService, Depends(get_price_estimate_service)],
+) -> SuccessEnvelope[PriceEstimate]:
+    return typed_envelope(request, await service.estimate(listing_id, payload))
 
 
 @router.get("", response_model=PublicListingListEnvelope)
