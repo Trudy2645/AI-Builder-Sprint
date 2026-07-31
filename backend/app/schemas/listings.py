@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
@@ -29,6 +29,21 @@ class PublicListingSort(StrEnum):
     LATEST = "latest"
     PRICE_ASC = "price_asc"
     PRICE_DESC = "price_desc"
+
+
+class ListingStatus(StrEnum):
+    DRAFT = "draft"
+    PROCESSING = "processing"
+    READY = "ready"
+    PUBLISHED = "published"
+    PAUSED = "paused"
+    EXPIRED = "expired"
+    ARCHIVED = "archived"
+
+
+class ListingCreationMethod(StrEnum):
+    MANUAL = "manual"
+    UPLOAD = "upload"
 
 
 class PublicListingQuery(BaseModel):
@@ -123,20 +138,20 @@ class PublicClause(BaseModel):
 class PublicListingDetail(PublicListingCard):
     supply_quantity: int | None
     quantity_unit: str | None
+    people_per_unit: int | None
     minimum_people: int | None
     maximum_people: int | None
     cancellation_policy: str | None
+    no_show_policy: str | None
     refund_policy: str | None
     settlement_policy: str | None
     safety_policy: str | None
     compensation_policy: str | None
     liability_policy: str | None
+    termination_policy: str | None
+    special_terms: str | None
     price_display_basis: str | None
     contract_availability_note: str | None
-    no_show_policy: None = Field(
-        default=None,
-        description="Unsupported until a canonical no-show policy source is available.",
-    )
     vat_included: None = Field(
         default=None,
         description="Unsupported until a canonical VAT inclusion source is available.",
@@ -163,3 +178,139 @@ class PublicContractPreview(BaseModel):
     requested_locale: SupportedLocale
     content_locale: SupportedLocale
     fallback_locale: SupportedLocale | None
+
+
+class SellerListingCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    creation_method: ListingCreationMethod
+    title: str = Field(min_length=1, max_length=200)
+    category: ListingCategory
+    district: str = Field(min_length=1, max_length=100)
+    language: SupportedLocale = SupportedLocale.KO_KR
+
+
+class SellerListingTermsPatchValues(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    service_start_date: date | None = None
+    service_end_date: date | None = None
+    supply_quantity: int | None = Field(default=None, gt=0)
+    quantity_unit: str | None = Field(default=None, min_length=1, max_length=32)
+    people_per_unit: int | None = Field(default=None, gt=0)
+    base_price_amount_minor: int | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    price_unit: str | None = Field(default=None, min_length=1, max_length=32)
+    minimum_people: int | None = Field(default=None, gt=0)
+    maximum_people: int | None = Field(default=None, gt=0)
+    cancellation_policy: str | None = Field(default=None, max_length=10000)
+    no_show_policy: str | None = Field(default=None, max_length=10000)
+    refund_policy: str | None = Field(default=None, max_length=10000)
+    settlement_policy: str | None = Field(default=None, max_length=10000)
+    safety_policy: str | None = Field(default=None, max_length=10000)
+    compensation_policy: str | None = Field(default=None, max_length=10000)
+    liability_policy: str | None = Field(default=None, max_length=10000)
+    termination_policy: str | None = Field(default=None, max_length=10000)
+    special_terms: str | None = Field(default=None, max_length=10000)
+    price_display_basis: str | None = Field(default=None, max_length=500)
+    contract_availability_note: str | None = Field(default=None, max_length=1000)
+
+
+class SellerListingTermsPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_version_no: int = Field(gt=0)
+    terms: SellerListingTermsPatchValues
+
+
+class SellerListingPresentationPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    display_company_name: str | None = Field(default=None, max_length=200)
+    display_title: str | None = Field(default=None, max_length=200)
+    hero_document_id: UUID | None = None
+    seller_description: str | None = Field(default=None, max_length=5000)
+    price_display_basis: str | None = Field(default=None, max_length=500)
+    contract_availability_note: str | None = Field(default=None, max_length=1000)
+
+
+class SellerListingClause(BaseModel):
+    id: UUID
+    clause_order: int = Field(gt=0)
+    clause_key: str | None
+    title: str
+    body: str
+
+
+class SellerListingVersion(BaseModel):
+    id: UUID
+    version_no: int = Field(gt=0)
+    title: str
+    body: str
+    created_at: datetime
+    clauses: list[SellerListingClause]
+
+
+class SellerListingTerms(BaseModel):
+    service_start_date: date | None
+    service_end_date: date | None
+    supply_quantity: int | None
+    quantity_unit: str | None
+    people_per_unit: int | None
+    base_price_amount_minor: int | None
+    currency: str | None
+    price_unit: str | None
+    minimum_people: int | None
+    maximum_people: int | None
+    cancellation_policy: str | None
+    no_show_policy: str | None
+    refund_policy: str | None
+    settlement_policy: str | None
+    safety_policy: str | None
+    compensation_policy: str | None
+    liability_policy: str | None
+    termination_policy: str | None
+    special_terms: str | None
+    price_display_basis: str | None
+    contract_availability_note: str | None
+
+
+class SellerListingSummary(BaseModel):
+    id: UUID
+    title: str
+    display_title: str | None
+    category: ListingCategory
+    district: str
+    status: ListingStatus
+    creation_method: ListingCreationMethod
+    current_version_no: int
+    contract_request_count: int = Field(ge=0)
+    missing_fields: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class SellerListingDetail(SellerListingSummary):
+    language: SupportedLocale
+    display_company_name: str | None
+    seller_description: str | None
+    ai_summary: str | None
+    hero_document_id: UUID | None
+    terms: SellerListingTerms
+    current_version: SellerListingVersion
+    processing_job: None = None
+    published_at: datetime | None
+    paused_at: datetime | None
+
+
+class SellerListingCreated(BaseModel):
+    listing_id: UUID
+    status: Literal["draft"] = "draft"
+    version_no: int = 1
+
+
+class SellerListingMutationResponse(BaseModel):
+    listing_id: UUID
+    status: ListingStatus
+    version_no: int
+    missing_fields: list[str]

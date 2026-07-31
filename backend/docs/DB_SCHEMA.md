@@ -177,12 +177,16 @@ erDiagram
 - 특약 사항
 - 가격 표시 기준과 계약 가능 안내
 
+`008_seller_listing_alignment.sql`은 초기 schema에 없던 `people_per_unit`, `no_show_policy`, `termination_policy`, `special_terms`를 추가한다. `people_per_unit`은 입력된 경우 양수여야 하며 서버가 객실당 인원 같은 값을 임의로 추론하지 않는다. 계약 요청 존재 여부를 빠르게 확인하도록 `contracts(listing_id)` partial index도 추가한다.
+
 ### `listing_versions`, `listing_clauses`
 
 - OCR 추출 또는 AI 생성 결과를 immutable version으로 보존한다.
 - `(listing_id, version_no)`는 unique다.
 - publish된 버전을 수정하지 않고 새 version을 만든다.
 - 공개 시 buyer 관점 AI 분석을 별도로 실행한다.
+- manual 공고 생성 시 빈 V1을 만들고 terms 임시저장마다 기존 행을 수정하지 않은 채 구조화 snapshot과 clauses를 가진 새 version을 만든다.
+- 계약 요청이 하나라도 연결된 뒤에는 listing terms 변경을 차단한다. 기존 contract snapshot과 listing version은 계속 immutable하게 보존한다.
 
 ### `price_estimates`
 
