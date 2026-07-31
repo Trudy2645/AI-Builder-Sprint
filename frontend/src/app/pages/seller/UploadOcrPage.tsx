@@ -16,7 +16,7 @@ const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
 // OCR로 추출했다고 가정하는 데모 데이터 (위험 조항이 포함되도록 구성).
 const OCR_PREFILL: Partial<ListingDraft> = {
   productName: "2026 오션뷰 루프탑 바비큐 패키지",
-  category: "package",
+  category: "tour",
   district: "해운대구",
   start: "2026-06-01",
   end: "2026-09-30",

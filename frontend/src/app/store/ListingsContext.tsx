@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useApp } from "../context/AppContext";
 import type { Category } from "../data/contracts";
 
 // 계약 공고 상태: 임시저장 / AI 검토 필요 / 공개 중 / 공개 중지 / 기간 만료
@@ -88,7 +89,7 @@ export function draftToListing(
 ): Omit<Listing, "id" | "updatedAt"> {
   return {
     productName: draft.productName || "제목 없는 공고",
-    category: (draft.category || "stay") as Category,
+    category: (draft.category || "accommodation") as Category,
     district: draft.district || "해운대구",
     start: draft.start,
     end: draft.end,
@@ -114,7 +115,7 @@ const seed: Listing[] = [
   {
     id: "lst-summer-room",
     productName: "2026 부산 여름 패키지 객실 공급 계약",
-    category: "stay",
+    category: "accommodation",
     district: "해운대구",
     start: "2026.07.01",
     end: "2026.08.31",
@@ -130,7 +131,7 @@ const seed: Listing[] = [
   {
     id: "lst-weekday-room",
     productName: "2026 해운대 평일 비즈니스 객실 공급 계약",
-    category: "stay",
+    category: "accommodation",
     district: "해운대구",
     start: "2026.03.01",
     end: "2026.12.31",
@@ -146,7 +147,7 @@ const seed: Listing[] = [
   {
     id: "lst-bbq-package",
     productName: "2026 오션뷰 루프탑 바비큐 패키지",
-    category: "package",
+    category: "tour",
     district: "해운대구",
     start: "2026.06.01",
     end: "2026.09.30",
@@ -162,7 +163,7 @@ const seed: Listing[] = [
   {
     id: "lst-spa-draft",
     productName: "2026 스파·웰니스 이용권 공급 (작성 중)",
-    category: "leisure",
+    category: "activity",
     district: "해운대구",
     start: "",
     end: "",
@@ -178,7 +179,7 @@ const seed: Listing[] = [
   {
     id: "lst-winter-paused",
     productName: "2025 겨울 시즌 객실 공급 계약",
-    category: "stay",
+    category: "accommodation",
     district: "해운대구",
     start: "2025.12.01",
     end: "2026.02.28",
@@ -194,7 +195,7 @@ const seed: Listing[] = [
   {
     id: "lst-spring-expired",
     productName: "2026 봄 벚꽃 시즌 객실 공급 계약",
-    category: "stay",
+    category: "accommodation",
     district: "해운대구",
     start: "2026.03.20",
     end: "2026.04.15",
@@ -210,7 +211,12 @@ const seed: Listing[] = [
 ];
 
 export function ListingsProvider({ children }: { children: ReactNode }) {
-  const [listings, setListings] = useState<Listing[]>(seed);
+  const { isDemoSession } = useApp();
+  const [listings, setListings] = useState<Listing[]>([]);
+
+  useEffect(() => {
+    setListings(isDemoSession ? seed : []);
+  }, [isDemoSession]);
 
   const addListing: ListingsContextValue["addListing"] = (l) => {
     const now = new Date();

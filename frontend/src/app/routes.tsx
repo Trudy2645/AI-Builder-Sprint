@@ -32,6 +32,7 @@ import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { FinalApprovePage } from "./pages/negotiation/FinalApprovePage";
 import { ESignaturePage } from "./pages/negotiation/ESignaturePage";
 import { CompletionPage } from "./pages/negotiation/CompletionPage";
+import { NegotiatingPage } from "./pages/negotiation/NegotiatingPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { buyerNav, sellerNav } from "./config/nav";
 import { useApp, type Role } from "./context/AppContext";
@@ -66,6 +67,10 @@ const buyerContractRoutes = [
   { path: "contracts/:id/complete", element: <BuyerContractCompletePage /> },
 ];
 
+const buyerNegotiationRoutes = [
+  { path: "negotiating", element: <NegotiatingPage /> },
+];
+
 // Shared final-negotiation → signing → completion flow (buyer & seller).
 // Mounted under both /buyer and /seller; pages detect the role from the URL.
 const signingRoutes = [
@@ -87,6 +92,7 @@ const buyerChildren = buyerNav
   .filter(
     (item) =>
       item.path !== "/buyer/explore" &&
+      item.path !== "/buyer/negotiating" &&
       item.path !== "/buyer/signing" &&
       item.path !== "/buyer/contracts",
   )
@@ -114,6 +120,7 @@ const sellerChildren = sellerNav
   .filter(
     (item) =>
       item.path !== "/seller/listings" &&
+      item.path !== "/seller/listings/new" &&
       item.path !== "/seller/received" &&
       item.path !== "/seller/signing",
   )
@@ -146,6 +153,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/buyer/explore" replace /> },
       ...buyerExploreRoutes,
       ...buyerContractRoutes,
+      ...buyerNegotiationRoutes,
       ...signingRoutes,
       ...buyerChildren,
     ],

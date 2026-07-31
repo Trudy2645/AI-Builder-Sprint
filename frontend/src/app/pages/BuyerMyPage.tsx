@@ -36,9 +36,22 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
 const STAT_ORDER: RequestStatus[] = ["draft", "reviewing", "responded", "negotiating", "signing", "completed", "closed"];
 
 export function BuyerMyPage() {
-  const { t, companyName } = useApp();
+  const { t, companyName, isDemoSession } = useApp();
   const { requests } = useRequests();
-  const company = companyName || buyerProfile.company;
+  const company = companyName || (isDemoSession ? buyerProfile.company : "계정 정보 없음");
+  const profile = isDemoSession
+    ? buyerProfile
+    : {
+        ...buyerProfile,
+        company,
+        contactName: "-",
+        email: companyName || "-",
+        phone: "-",
+        country: "-",
+        language: "-",
+        currency: "-",
+        joinedAt: "-",
+      };
 
   const stats = useMemo(() => {
     const c: Record<string, number> = {};
@@ -59,7 +72,7 @@ export function BuyerMyPage() {
         </Avatar>
         <div className="min-w-0">
           <div style={{ color: "var(--navy)", fontWeight: 700, fontSize: "18px" }}>{company}</div>
-          <div className="text-muted-foreground" style={{ fontSize: "13px" }}>{t("role.buyer")} · {buyerProfile.country}</div>
+          <div className="text-muted-foreground" style={{ fontSize: "13px" }}>{t("role.buyer")} · {profile.country}</div>
         </div>
       </div>
 
@@ -68,13 +81,13 @@ export function BuyerMyPage() {
         <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
           <h3 className="mb-3" style={{ color: "var(--navy)" }}>{t("my.profile")}</h3>
           <InfoRow icon={<Building2 className="size-4" />} label={t("my.company")} value={company} />
-          <InfoRow icon={<User className="size-4" />} label={t("my.contact")} value={buyerProfile.contactName} />
-          <InfoRow icon={<Mail className="size-4" />} label={t("my.email")} value={buyerProfile.email} />
-          <InfoRow icon={<Phone className="size-4" />} label={t("my.phone")} value={buyerProfile.phone} />
-          <InfoRow icon={<Globe2 className="size-4" />} label={t("my.country")} value={buyerProfile.country} />
-          <InfoRow icon={<Languages className="size-4" />} label={t("my.language")} value={buyerProfile.language} />
-          <InfoRow icon={<Coins className="size-4" />} label={t("my.currency")} value={buyerProfile.currency} />
-          <InfoRow icon={<CalendarDays className="size-4" />} label={t("my.joined")} value={buyerProfile.joinedAt} />
+          <InfoRow icon={<User className="size-4" />} label={t("my.contact")} value={profile.contactName} />
+          <InfoRow icon={<Mail className="size-4" />} label={t("my.email")} value={profile.email} />
+          <InfoRow icon={<Phone className="size-4" />} label={t("my.phone")} value={profile.phone} />
+          <InfoRow icon={<Globe2 className="size-4" />} label={t("my.country")} value={profile.country} />
+          <InfoRow icon={<Languages className="size-4" />} label={t("my.language")} value={profile.language} />
+          <InfoRow icon={<Coins className="size-4" />} label={t("my.currency")} value={profile.currency} />
+          <InfoRow icon={<CalendarDays className="size-4" />} label={t("my.joined")} value={profile.joinedAt} />
         </div>
 
         {/* Password + stats */}

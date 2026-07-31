@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useApp } from "../context/AppContext";
 
 export type BuyerContractStatus =
   | "draft"
@@ -96,7 +97,12 @@ function withSignatureMock(contract: BuyerContract, status: BuyerContractStatus)
 }
 
 export function BuyerContractsProvider({ children }: { children: ReactNode }) {
-  const [contracts, setContracts] = useState<BuyerContract[]>(seed);
+  const { isDemoSession } = useApp();
+  const [contracts, setContracts] = useState<BuyerContract[]>([]);
+
+  useEffect(() => {
+    setContracts(isDemoSession ? seed : []);
+  }, [isDemoSession]);
 
   const createContractRequest: BuyerContractsContextValue["createContractRequest"] = (
     draft,

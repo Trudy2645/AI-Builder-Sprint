@@ -13,12 +13,13 @@ export function ContractCard({ contract, base, guests, from, to }: { contract: C
   const navigate = useNavigate();
   const risks = riskCount(contract);
   const guestCount = parseInt(guests ?? "", 10) || 0;
-  const units = contract.category === "stay" ? Math.ceil(guestCount / 2) : guestCount;
+  const isAccommodation = contract.category === "accommodation";
+  const units = isAccommodation ? Math.ceil(guestCount / 2) : guestCount;
   const requestedFrom = from ? new Date(from) : undefined;
   const requestedTo = to ? new Date(to) : undefined;
   const calculatedNights = requestedFrom && requestedTo
     ? Math.max(1, Math.ceil((requestedTo.getTime() - requestedFrom.getTime()) / 86400000))
-    : contract.category === "stay" ? 2 : 1;
+    : isAccommodation ? 2 : 1;
   const estimate = units * calculatedNights * contract.unitPrice;
 
   return (
@@ -92,7 +93,7 @@ export function ContractCard({ contract, base, guests, from, to }: { contract: C
             </div>
             <div className="mt-1" style={{ color: "var(--navy)", fontWeight: 700 }}>{formatKRW(estimate)}</div>
             <div className="text-muted-foreground" style={{ fontSize: "11px" }}>
-              {contract.category === "stay" ? `${units}실 × ${calculatedNights}박` : `${units}명`} × {formatKRW(contract.unitPrice)}
+              {isAccommodation ? `${units}실 × ${calculatedNights}박` : `${units}명`} × {formatKRW(contract.unitPrice)}
             </div>
           </div>
         )}

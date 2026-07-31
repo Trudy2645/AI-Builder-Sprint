@@ -28,10 +28,10 @@ const strings: Record<string, Dict> = {
     zh: "旅行社·学校·公司·团体代表",
   },
   "role.seller.desc": {
-    ko: "호텔 · 숙박 · 레저 · 스포츠",
-    en: "Hotel · Stay · Leisure · Sports",
-    ja: "ホテル · 宿泊 · レジャー · スポーツ",
-    zh: "酒店 · 住宿 · 休闲 · 运动",
+    ko: "자동차 렌탈 · 액티비티 · 투어 · 숙박",
+    en: "Vehicle rental · Activity · Tour · Accommodation",
+    ja: "レンタカー · アクティビティ · ツアー · 宿泊",
+    zh: "汽车租赁 · 活动 · 旅游 · 住宿",
   },
 
   // Header
@@ -54,6 +54,7 @@ const strings: Record<string, Dict> = {
   // Seller nav
   "nav.seller.dashboard": { ko: "대시보드", en: "Dashboard", ja: "ダッシュボード", zh: "仪表板" },
   "nav.seller.listings": { ko: "계약 공고 관리", en: "Contract Listings", ja: "契約公告管理", zh: "合约公告管理" },
+  "nav.seller.newListing": { ko: "새 공고 등록", en: "New Listing", ja: "新規公告登録", zh: "新建公告" },
   "nav.seller.received": { ko: "받은 요청", en: "Received Requests", ja: "受信した要請", zh: "收到的请求" },
 
   // Contract steps
@@ -164,9 +165,9 @@ const strings: Record<string, Dict> = {
   "opt.bt.companyGroup": { ko: "회사 단체 이용", en: "Company group use", ja: "会社団体利用", zh: "公司团体使用" },
   "opt.bt.otherGroup": { ko: "기타 단체 대표", en: "Other group representative", ja: "その他団体代表", zh: "其他团体代表" },
   // Supply field options
-  "opt.sf.hotel": { ko: "호텔·숙박", en: "Hotel & stay", ja: "ホテル・宿泊", zh: "酒店·住宿" },
-  "opt.sf.leisure": { ko: "레저·체험", en: "Leisure & activity", ja: "レジャー・体験", zh: "休闲·体验" },
-  "opt.sf.sports": { ko: "스포츠", en: "Sports", ja: "スポーツ", zh: "运动" },
+  "opt.sf.hotel": { ko: "숙박", en: "Accommodation", ja: "宿泊", zh: "住宿" },
+  "opt.sf.leisure": { ko: "액티비티", en: "Activity", ja: "アクティビティ", zh: "活动" },
+  "opt.sf.sports": { ko: "투어", en: "Tour", ja: "ツアー", zh: "旅游" },
 
   // Validation
   "err.required": { ko: "필수 입력 항목입니다.", en: "This field is required.", ja: "必須項目です。", zh: "此为必填项。" },
@@ -231,10 +232,10 @@ const strings: Record<string, Dict> = {
 
   // Categories
   "cat.all": { ko: "전체", en: "All", ja: "すべて", zh: "全部" },
-  "cat.stay": { ko: "숙박", en: "Stay", ja: "宿泊", zh: "住宿" },
-  "cat.leisure": { ko: "레저·체험", en: "Leisure", ja: "レジャー・体験", zh: "休闲体验" },
-  "cat.sports": { ko: "스포츠·액티비티", en: "Sports", ja: "スポーツ", zh: "运动" },
-  "cat.package": { ko: "패키지", en: "Package", ja: "パッケージ", zh: "套餐" },
+  "cat.vehicleRental": { ko: "자동차 렌탈", en: "Vehicle rental", ja: "レンタカー", zh: "汽车租赁" },
+  "cat.activity": { ko: "액티비티", en: "Activity", ja: "アクティビティ", zh: "活动" },
+  "cat.tour": { ko: "투어", en: "Tour", ja: "ツアー", zh: "旅游" },
+  "cat.accommodation": { ko: "숙박", en: "Accommodation", ja: "宿泊", zh: "住宿" },
 
   // Sort
   "sort.label": { ko: "정렬", en: "Sort", ja: "並び替え", zh: "排序" },

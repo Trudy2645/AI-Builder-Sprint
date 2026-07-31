@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useApp } from "../context/AppContext";
 
 export type RequestStatus =
   | "draft" // 작성 중
@@ -157,7 +158,12 @@ const seed: SentRequest[] = [
 ];
 
 export function RequestsProvider({ children }: { children: ReactNode }) {
-  const [requests, setRequests] = useState<SentRequest[]>(seed);
+  const { isDemoSession } = useApp();
+  const [requests, setRequests] = useState<SentRequest[]>([]);
+
+  useEffect(() => {
+    setRequests(isDemoSession ? seed : []);
+  }, [isDemoSession]);
 
   const addRequest: RequestsContextValue["addRequest"] = (r) => {
     const now = new Date();

@@ -1,4 +1,4 @@
-export type Category = "stay" | "leisure" | "sports" | "package";
+export type Category = "vehicle_rental" | "activity" | "tour" | "accommodation";
 
 export interface RiskInfo {
   reason: string;
@@ -43,10 +43,10 @@ export interface Contract {
 
 export const CATEGORIES: { value: Category | "all"; labelKey: string }[] = [
   { value: "all", labelKey: "cat.all" },
-  { value: "stay", labelKey: "cat.stay" },
-  { value: "leisure", labelKey: "cat.leisure" },
-  { value: "sports", labelKey: "cat.sports" },
-  { value: "package", labelKey: "cat.package" },
+  { value: "vehicle_rental", labelKey: "cat.vehicleRental" },
+  { value: "activity", labelKey: "cat.activity" },
+  { value: "tour", labelKey: "cat.tour" },
+  { value: "accommodation", labelKey: "cat.accommodation" },
 ];
 
 export const DISTRICTS = [
@@ -65,7 +65,7 @@ export const contracts: Contract[] = [
     id: "ocean-stay-2026-summer",
     seller: "해운대 오션스테이",
     title: "2026 부산 여름 패키지 객실 공급 계약",
-    category: "stay",
+    category: "accommodation",
     district: "해운대구",
     start: "2026.07.01",
     end: "2026.08.31",
@@ -146,7 +146,7 @@ export const contracts: Contract[] = [
     id: "gwangan-seabreeze",
     seller: "광안 씨브리즈 호텔",
     title: "2026 광안리 오션뷰 객실 공급 계약",
-    category: "stay",
+    category: "accommodation",
     district: "수영구",
     start: "2026.06.15",
     end: "2026.09.15",
@@ -206,7 +206,7 @@ export const contracts: Contract[] = [
     id: "marina-yacht-tour",
     seller: "부산 마리나 요트클럽",
     title: "2026 요트 선셋 투어 좌석 공급 계약",
-    category: "leisure",
+    category: "tour",
     district: "수영구",
     start: "2026.05.01",
     end: "2026.10.31",
@@ -253,7 +253,7 @@ export const contracts: Contract[] = [
     id: "songjeong-surf",
     seller: "송정 서핑클럽",
     title: "2026 송정 서핑 강습 패키지 공급 계약",
-    category: "sports",
+    category: "activity",
     district: "해운대구",
     start: "2026.06.01",
     end: "2026.09.30",
@@ -299,7 +299,7 @@ export const contracts: Contract[] = [
     id: "busan-city-package",
     seller: "부산 시티투어 파트너스",
     title: "2026 부산 시티 하이라이트 패키지 공급 계약",
-    category: "package",
+    category: "tour",
     district: "부산진구",
     start: "2026.04.01",
     end: "2026.12.31",
@@ -335,7 +335,7 @@ export const contracts: Contract[] = [
     id: "gijang-glamping",
     seller: "기장 오션 글램핑",
     title: "2026 기장 오션뷰 글램핑 공급 계약",
-    category: "stay",
+    category: "accommodation",
     district: "기장군",
     start: "2026.05.01",
     end: "2026.10.31",

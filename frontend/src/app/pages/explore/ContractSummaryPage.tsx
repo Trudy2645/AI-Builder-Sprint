@@ -102,7 +102,7 @@ export function ContractSummaryPage() {
           <h3 className="mb-2" style={{ color: "var(--navy)" }}>{t("summary.period")} · {t("summary.settlement")}</h3>
           <DetailRow icon={<CalendarDays className="size-4" />} label={t("summary.period")} value={d.period} />
           <DetailRow icon={<Package className="size-4" />} label={t("summary.quantity")} value={d.supplyQuantity} />
-          <DetailRow icon={<UsersRound className="size-4" />} label="최소 제안 기준" value={contract.category === "stay" ? "10실 이상 · 객실당 기준 인원 2명" : "최소 20명"} />
+          <DetailRow icon={<UsersRound className="size-4" />} label="최소 제안 기준" value={contract.category === "accommodation" ? "10실 이상 · 객실당 기준 인원 2명" : "최소 20명"} />
           <DetailRow icon={<Coins className="size-4" />} label={t("summary.unitPrice")} value={d.unitPrice} />
           <DetailRow icon={<Ban className="size-4" />} label={t("summary.cancellation")} value={d.cancellation} />
           <DetailRow icon={<UserX className="size-4" />} label={t("summary.noShow")} value={d.noShow} />
