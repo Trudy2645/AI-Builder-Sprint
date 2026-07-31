@@ -15,6 +15,8 @@ from app.schemas.contracts import (
     ContractDetail,
     ContractRequestCreate,
     ContractRequestCreated,
+    ContractVersionCompareResponse,
+    ContractVersionListItem,
     SellerContractListItem,
     SellerDashboard,
 )
@@ -48,6 +50,40 @@ async def get_contract(
 ) -> SuccessEnvelope[ContractDetail]:
     contract = await service.get_contract(contract_id, actor, organization_id)
     return typed_envelope(request, contract)
+
+
+@router.get(
+    "/contracts/{contract_id}/versions",
+    response_model=SuccessEnvelope[list[ContractVersionListItem]],
+)
+async def list_contract_versions(
+    request: Request,
+    contract_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractService, Depends(get_contract_service)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[list[ContractVersionListItem]]:
+    versions = await service.list_contract_versions(contract_id, actor, organization_id)
+    return typed_envelope(request, versions)
+
+
+@router.get(
+    "/contracts/{contract_id}/versions/compare",
+    response_model=SuccessEnvelope[ContractVersionCompareResponse],
+)
+async def compare_contract_versions(
+    request: Request,
+    contract_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractService, Depends(get_contract_service)],
+    from_version: Annotated[int, Query(alias="from", gt=0)],
+    to_version: Annotated[int, Query(alias="to", gt=0)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[ContractVersionCompareResponse]:
+    comparison = await service.compare_contract_versions(
+        contract_id, from_version, to_version, actor, organization_id
+    )
+    return typed_envelope(request, comparison)
 
 
 @router.get("/me/contracts", response_model=SuccessEnvelope[list[BuyerContractListItem]])

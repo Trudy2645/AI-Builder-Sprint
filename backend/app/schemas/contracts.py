@@ -94,6 +94,86 @@ class ContractVersionResponse(BaseModel):
     clauses: list[ContractClauseResponse]
 
 
+class ContractVersionRiskSummary(BaseModel):
+    score: int | None = Field(ge=0)
+    finding_count: int = Field(ge=0)
+
+
+class ContractVersionListItem(BaseModel):
+    id: UUID
+    version_no: int = Field(gt=0)
+    version_label: str
+    title: str
+    created_by_role: Literal["buyer", "seller", "system"]
+    creation_reason: Literal["contract_created", "revision_agreement", "manual_version"]
+    created_from_revision_request_id: UUID | None
+    created_at: datetime
+    clause_count: int = Field(ge=0)
+    risk: ContractVersionRiskSummary
+
+
+class VersionClauseSnapshot(BaseModel):
+    id: UUID
+    clause_order: int
+    clause_key: str | None
+    title: str
+    body: str
+
+
+class VersionClauseChange(BaseModel):
+    change_type: Literal["added", "deleted", "modified"]
+    before: VersionClauseSnapshot | None
+    after: VersionClauseSnapshot | None
+
+
+class VersionClauseChangeSummary(BaseModel):
+    added: int = Field(ge=0)
+    deleted: int = Field(ge=0)
+    modified: int = Field(ge=0)
+
+
+class VersionPriceSnapshot(BaseModel):
+    amount_minor: int | None
+    currency: str | None
+
+
+class VersionPriceChange(BaseModel):
+    direction: Literal["increased", "decreased", "unchanged", "unknown"]
+    before: VersionPriceSnapshot
+    after: VersionPriceSnapshot
+    delta_amount_minor: int | None
+
+
+class VersionPeriodSnapshot(BaseModel):
+    start_date: date | None
+    end_date: date | None
+
+
+class VersionPeriodChange(BaseModel):
+    changed: bool | None
+    before: VersionPeriodSnapshot
+    after: VersionPeriodSnapshot
+
+
+class VersionRiskChange(BaseModel):
+    direction: Literal["increased", "decreased", "unchanged", "unknown"]
+    before_score: int | None = Field(ge=0)
+    after_score: int | None = Field(ge=0)
+    before_finding_count: int = Field(ge=0)
+    after_finding_count: int = Field(ge=0)
+
+
+class ContractVersionCompareResponse(BaseModel):
+    contract_id: UUID
+    from_version: ContractVersionListItem
+    to_version: ContractVersionListItem
+    clause_summary: VersionClauseChangeSummary
+    clause_changes: list[VersionClauseChange]
+    price_change: VersionPriceChange
+    period_change: VersionPeriodChange
+    risk_change: VersionRiskChange
+
+
 class ContractSummary(BaseModel):
     id: UUID
     listing_id: UUID | None

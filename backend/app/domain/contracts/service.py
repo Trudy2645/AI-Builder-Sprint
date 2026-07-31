@@ -17,6 +17,8 @@ from app.repositories.contracts import (
     ContractRepositoryUnavailableError,
     ContractRequestSourceRecord,
     ContractStateConflictError,
+    ContractVersionClauseRecord,
+    ContractVersionRecord,
     IdempotencyConflictError,
     NewContractData,
 )
@@ -32,12 +34,23 @@ from app.schemas.contracts import (
     ContractRequestCreated,
     ContractSummary,
     ContractTermsResponse,
+    ContractVersionCompareResponse,
+    ContractVersionListItem,
     ContractVersionResponse,
+    ContractVersionRiskSummary,
     InitialRequestKind,
     ListingRequestCount,
     SellerContractListItem,
     SellerDashboard,
     SellerDashboardStats,
+    VersionClauseChange,
+    VersionClauseChangeSummary,
+    VersionClauseSnapshot,
+    VersionPeriodChange,
+    VersionPeriodSnapshot,
+    VersionPriceChange,
+    VersionPriceSnapshot,
+    VersionRiskChange,
 )
 from app.schemas.pricing import PriceEstimateRequest
 
@@ -259,6 +272,59 @@ class ContractService:
         ]
         return [item for item in items if bucket is None or item.bucket == bucket]
 
+    async def list_contract_versions(
+        self,
+        contract_id: UUID,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+    ) -> list[ContractVersionListItem]:
+        record = await self._get_record(contract_id)
+        await self._authorize_contract(record, actor, header_organization_id)
+        versions = await self._versions(contract_id)
+        return [self._version_item(version) for version in versions]
+
+    async def compare_contract_versions(
+        self,
+        contract_id: UUID,
+        from_version_no: int,
+        to_version_no: int,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+    ) -> ContractVersionCompareResponse:
+        if from_version_no == to_version_no:
+            self._raise(
+                status.HTTP_400_BAD_REQUEST,
+                "VERSION_COMPARE_INVALID",
+                "from and to must identify different contract versions.",
+            )
+        record = await self._get_record(contract_id)
+        await self._authorize_contract(record, actor, header_organization_id)
+        versions = await self._versions(contract_id)
+        by_number = {version.version_no: version for version in versions}
+        before = by_number.get(from_version_no)
+        after = by_number.get(to_version_no)
+        if before is None or after is None:
+            self._raise(
+                status.HTTP_404_NOT_FOUND,
+                "CONTRACT_VERSION_NOT_FOUND",
+                "One or more requested contract versions were not found.",
+            )
+        changes = self._compare_clauses(before.clauses, after.clauses)
+        return ContractVersionCompareResponse(
+            contract_id=contract_id,
+            from_version=self._version_item(before),
+            to_version=self._version_item(after),
+            clause_summary=VersionClauseChangeSummary(
+                added=sum(change.change_type == "added" for change in changes),
+                deleted=sum(change.change_type == "deleted" for change in changes),
+                modified=sum(change.change_type == "modified" for change in changes),
+            ),
+            clause_changes=changes,
+            price_change=self._price_change(before, after),
+            period_change=self._period_change(before, after),
+            risk_change=self._risk_change(before, after),
+        )
+
     async def list_received_contracts(
         self,
         actor: AuthenticatedUser,
@@ -476,6 +542,198 @@ class ContractService:
             )
         except ContractRepositoryUnavailableError as exc:
             self._database_unavailable(exc)
+
+    async def _versions(self, contract_id: UUID) -> list[ContractVersionRecord]:
+        try:
+            return await self._repository.list_contract_versions(contract_id)
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+
+    @staticmethod
+    def _version_item(version: ContractVersionRecord) -> ContractVersionListItem:
+        return ContractVersionListItem(
+            id=version.id,
+            version_no=version.version_no,
+            version_label=f"V{version.version_no}",
+            title=version.title,
+            created_by_role=version.created_by_role,
+            creation_reason=version.creation_reason,
+            created_from_revision_request_id=version.created_from_revision_request_id,
+            created_at=version.created_at,
+            clause_count=len(version.clauses),
+            risk=ContractVersionRiskSummary(
+                score=version.risk_score,
+                finding_count=version.risk_finding_count,
+            ),
+        )
+
+    @classmethod
+    def _compare_clauses(
+        cls,
+        before: list[ContractVersionClauseRecord],
+        after: list[ContractVersionClauseRecord],
+    ) -> list[VersionClauseChange]:
+        unmatched_before = set(range(len(before)))
+        unmatched_after = set(range(len(after)))
+        matches: list[tuple[int, int]] = []
+
+        def match_by(key_builder) -> None:
+            after_keys: dict[object, list[int]] = {}
+            for after_index in sorted(unmatched_after):
+                key = key_builder(after[after_index])
+                if key is not None:
+                    after_keys.setdefault(key, []).append(after_index)
+            for before_index in sorted(tuple(unmatched_before)):
+                key = key_builder(before[before_index])
+                candidates = after_keys.get(key) if key is not None else None
+                if not candidates:
+                    continue
+                after_index = candidates.pop(0)
+                unmatched_before.remove(before_index)
+                unmatched_after.remove(after_index)
+                matches.append((before_index, after_index))
+
+        match_by(cls._clause_identity)
+        match_by(lambda clause: (clause.title.strip(), clause.body.strip()))
+        match_by(lambda clause: clause.title.strip())
+
+        changes = []
+        for before_index, after_index in sorted(matches):
+            old = before[before_index]
+            new = after[after_index]
+            if (old.clause_key, old.title, old.body) != (new.clause_key, new.title, new.body):
+                changes.append(
+                    VersionClauseChange(
+                        change_type="modified",
+                        before=cls._clause_snapshot(old),
+                        after=cls._clause_snapshot(new),
+                    )
+                )
+        changes.extend(
+            VersionClauseChange(
+                change_type="deleted",
+                before=cls._clause_snapshot(before[index]),
+                after=None,
+            )
+            for index in sorted(unmatched_before)
+        )
+        changes.extend(
+            VersionClauseChange(
+                change_type="added",
+                before=None,
+                after=cls._clause_snapshot(after[index]),
+            )
+            for index in sorted(unmatched_after)
+        )
+        return changes
+
+    @staticmethod
+    def _clause_identity(clause: ContractVersionClauseRecord) -> tuple[str, str] | None:
+        if clause.source_listing_clause_id is not None:
+            return ("source", str(clause.source_listing_clause_id))
+        if clause.clause_key:
+            return ("key", clause.clause_key)
+        return None
+
+    @staticmethod
+    def _clause_snapshot(clause: ContractVersionClauseRecord) -> VersionClauseSnapshot:
+        return VersionClauseSnapshot(
+            id=clause.id,
+            clause_order=clause.clause_order,
+            clause_key=clause.clause_key,
+            title=clause.title,
+            body=clause.body,
+        )
+
+    @classmethod
+    def _price_change(
+        cls, before: ContractVersionRecord, after: ContractVersionRecord
+    ) -> VersionPriceChange:
+        before_terms = cls._terms_snapshot(before)
+        after_terms = cls._terms_snapshot(after)
+        before_amount = cls._optional_int(before_terms.get("amount_minor"))
+        after_amount = cls._optional_int(after_terms.get("amount_minor"))
+        before_currency = cls._optional_str(before_terms.get("currency"))
+        after_currency = cls._optional_str(after_terms.get("currency"))
+        delta = None
+        direction = "unknown"
+        if (
+            before_amount is not None
+            and after_amount is not None
+            and before_currency is not None
+            and before_currency == after_currency
+        ):
+            delta = after_amount - before_amount
+            direction = "increased" if delta > 0 else "decreased" if delta < 0 else "unchanged"
+        return VersionPriceChange(
+            direction=direction,
+            before=VersionPriceSnapshot(amount_minor=before_amount, currency=before_currency),
+            after=VersionPriceSnapshot(amount_minor=after_amount, currency=after_currency),
+            delta_amount_minor=delta,
+        )
+
+    @classmethod
+    def _period_change(
+        cls, before: ContractVersionRecord, after: ContractVersionRecord
+    ) -> VersionPeriodChange:
+        before_terms = cls._terms_snapshot(before)
+        after_terms = cls._terms_snapshot(after)
+        before_period = VersionPeriodSnapshot(
+            start_date=cls._optional_date(before_terms.get("service_start_date")),
+            end_date=cls._optional_date(before_terms.get("service_end_date")),
+        )
+        after_period = VersionPeriodSnapshot(
+            start_date=cls._optional_date(after_terms.get("service_start_date")),
+            end_date=cls._optional_date(after_terms.get("service_end_date")),
+        )
+        values = (
+            before_period.start_date,
+            before_period.end_date,
+            after_period.start_date,
+            after_period.end_date,
+        )
+        changed = None if any(value is None for value in values) else before_period != after_period
+        return VersionPeriodChange(changed=changed, before=before_period, after=after_period)
+
+    @staticmethod
+    def _risk_change(
+        before: ContractVersionRecord, after: ContractVersionRecord
+    ) -> VersionRiskChange:
+        direction = "unknown"
+        if before.risk_score is not None and after.risk_score is not None:
+            difference = after.risk_score - before.risk_score
+            direction = (
+                "increased" if difference > 0 else "decreased" if difference < 0 else "unchanged"
+            )
+        return VersionRiskChange(
+            direction=direction,
+            before_score=before.risk_score,
+            after_score=after.risk_score,
+            before_finding_count=before.risk_finding_count,
+            after_finding_count=after.risk_finding_count,
+        )
+
+    @staticmethod
+    def _terms_snapshot(version: ContractVersionRecord) -> dict[str, Any]:
+        value = version.structured_data.get("contract_terms")
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _optional_int(value: object) -> int | None:
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+    @staticmethod
+    def _optional_str(value: object) -> str | None:
+        return value if isinstance(value, str) and value else None
+
+    @staticmethod
+    def _optional_date(value: object) -> date | None:
+        if not isinstance(value, str):
+            return None
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
 
     @staticmethod
     def _terms_response(record: ContractRecord) -> ContractTermsResponse:

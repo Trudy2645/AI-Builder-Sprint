@@ -98,6 +98,32 @@ class ContractClauseRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class ContractVersionClauseRecord:
+    id: UUID
+    clause_order: int
+    clause_key: str | None
+    title: str
+    body: str
+    source_listing_clause_id: UUID | None
+
+
+@dataclass(frozen=True, slots=True)
+class ContractVersionRecord:
+    id: UUID
+    contract_id: UUID
+    version_no: int
+    title: str
+    structured_data: dict[str, Any]
+    created_by_role: str
+    creation_reason: str
+    created_from_revision_request_id: UUID | None
+    created_at: datetime
+    risk_score: int | None
+    risk_finding_count: int
+    clauses: list[ContractVersionClauseRecord]
+
+
+@dataclass(frozen=True, slots=True)
 class SellerListingRequestCountRecord:
     listing_id: UUID
     listing_title: str
@@ -149,6 +175,8 @@ class ContractRepository(Protocol):
     async def list_contract_clauses(
         self, contract_version_id: UUID
     ) -> list[ContractClauseRecord]: ...
+
+    async def list_contract_versions(self, contract_id: UUID) -> list[ContractVersionRecord]: ...
 
     async def is_seller_member(self, user_id: UUID, organization_id: UUID) -> bool: ...
 
@@ -438,7 +466,9 @@ class SqlAlchemyContractRepository:
                     source_listing_version_id, structured_data, created_by
                 )
                 select :contract_version_id, :contract_id, 1, title, body, content_sha256,
-                       id, structured_data, :buyer_user_id
+                       id, structured_data || jsonb_build_object(
+                           'contract_terms', cast(:terms_snapshot as jsonb)
+                       ), :buyer_user_id
                 from public.listing_versions
                 where id = :listing_version_id and listing_id = :listing_id
                 returning id
@@ -450,6 +480,15 @@ class SqlAlchemyContractRepository:
                 "buyer_user_id": buyer_user_id,
                 "listing_version_id": source.current_version_id,
                 "listing_id": source.listing_id,
+                "terms_snapshot": json.dumps(
+                    {
+                        "amount_minor": data.amount_minor,
+                        "currency": data.currency,
+                        "service_start_date": data.service_start_date.isoformat(),
+                        "service_end_date": data.service_end_date.isoformat(),
+                        **data.calculation_snapshot,
+                    }
+                ),
             },
         )
         if copied.scalar_one_or_none() is None:
@@ -649,6 +688,83 @@ class SqlAlchemyContractRepository:
         except SQLAlchemyError as exc:
             raise ContractRepositoryUnavailableError from exc
         return [ContractClauseRecord(**row) for row in result.mappings().all()]
+
+    async def list_contract_versions(self, contract_id: UUID) -> list[ContractVersionRecord]:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select cv.id, cv.contract_id, cv.version_no, cv.title,
+                           cv.structured_data, cv.created_from_revision_request_id,
+                           cv.created_at,
+                           case
+                               when cv.created_by = c.buyer_user_id then 'buyer'
+                               when exists (
+                                   select 1 from public.organization_members om
+                                   where om.organization_id = c.seller_organization_id
+                                     and om.user_id = cv.created_by
+                               ) then 'seller'
+                               else 'system'
+                           end as created_by_role,
+                           case
+                               when cv.version_no = 1 then 'contract_created'
+                               when cv.created_from_revision_request_id is not null
+                                   then 'revision_agreement'
+                               else 'manual_version'
+                           end as creation_reason,
+                           case when latest_run.id is null then null else coalesce(sum(
+                               case finding.severity::text
+                                   when 'high' then 3
+                                   when 'medium' then 2
+                                   when 'low' then 1
+                                   else 0
+                               end
+                           ), 0)::integer end as risk_score,
+                           count(finding.id)::integer as risk_finding_count
+                    from public.contract_versions cv
+                    join public.contracts c on c.id = cv.contract_id
+                    left join lateral (
+                        select run.id
+                        from public.ai_analysis_runs run
+                        where run.contract_version_id = cv.id
+                          and run.viewer_role = 'buyer'
+                          and run.status = 'succeeded'
+                        order by run.completed_at desc nulls last, run.created_at desc
+                        limit 1
+                    ) latest_run on true
+                    left join public.ai_findings finding
+                      on finding.analysis_run_id = latest_run.id
+                     and finding.status <> 'dismissed'
+                    where cv.contract_id = :contract_id
+                    group by cv.id, c.buyer_user_id, c.seller_organization_id, latest_run.id
+                    order by cv.version_no
+                    """
+                ),
+                {"contract_id": contract_id},
+            )
+            versions = []
+            for row in result.mappings().all():
+                clauses = await self._list_version_clauses(row["id"])
+                versions.append(ContractVersionRecord(**row, clauses=clauses))
+            return versions
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def _list_version_clauses(
+        self, contract_version_id: UUID
+    ) -> list[ContractVersionClauseRecord]:
+        result = await self._session.execute(
+            text(
+                """
+                select id, clause_order, clause_key, title, body, source_listing_clause_id
+                from public.contract_clauses
+                where contract_version_id = :contract_version_id
+                order by clause_order
+                """
+            ),
+            {"contract_version_id": contract_version_id},
+        )
+        return [ContractVersionClauseRecord(**row) for row in result.mappings().all()]
 
     async def is_seller_member(self, user_id: UUID, organization_id: UUID) -> bool:
         try:
