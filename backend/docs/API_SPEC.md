@@ -1,4 +1,6 @@
-> 버전: Figma·backend aligned MVP v1.4
+> 버전: Figma·backend aligned MVP v1.5
+>
+> 구현 기준: `origin/main` commit `bfe8ebb` (PR #12), migration `001`~`005`
 > 
 > 
 > 백엔드: FastAPI 단일 애플리케이션
@@ -11,6 +13,19 @@
 > 
 
 AI task, prompt, rule engine과 Upstage 연동은 `AI_UPSTAGE_ARCHITECTURE.md`, RAG 파일·검색·인용은 `RAG_KNOWLEDGE_BASE.md`를 따른다.
+
+### 문서 읽는 법
+
+이 문서는 현재 구현과 목표 설계를 함께 관리한다. 아래 **현재 구현 API**에 있는 endpoint만 `main`에서 호출할 수 있으며, 나머지는 `[계획]`으로 적은 목표 명세다. 문서의 예시만 보고 router에 없는 endpoint를 구현 완료로 판단하지 않는다.
+
+현재 구현 API:
+
+- health: `GET /health/live`, `GET /health/ready`
+- profile: `GET /api/v1/me`, `PATCH /api/v1/me`, `GET /api/v1/organizations/{id}`, `PATCH /api/v1/organizations/{id}`
+- public listing: `GET /api/v1/public/listings`, `GET /api/v1/public/listings/{id}`, `GET /api/v1/public/listings/{id}/contract-preview`, `POST /api/v1/public/listings/{id}/price-estimates`
+- contract: `POST /api/v1/listings/{id}/contract-requests`, `GET /api/v1/contracts/{id}`, `GET /api/v1/me/contracts`, `GET /api/v1/seller/contracts/received`, `GET /api/v1/seller/dashboard`, `POST /api/v1/contracts/{id}/cancel`
+
+`POST /api/v1/auth/signup`과 `POST /api/v1/auth/login`은 현재 router에 없다. 인증은 Supabase access token 검증을 사용하며, 해당 endpoint는 이후 구현 여부를 결정할 목표 명세다.
 
 ## 1. 제품 모델과 설계 결정
 
@@ -93,7 +108,7 @@ X-Organization-Id: <seller-organization-uuid>
 Content-Type: application/json
 ```
 
-`/public/**`, `/auth/**`, `/health/**`는 인증 없이 접근 가능하다. 그 외 API는 Supabase access token이 필요하다. `X-Organization-Id`는 셀러 조직 API에서만 사용하며, 바이어 API의 권한은 로그인한 `auth.uid()`를 기준으로 확인한다.
+업무 API는 `/api/v1` 아래에 둔다. 현재 인증 없이 호출할 수 있는 경로는 `/api/v1/public/**`와 `/health/**`다. `/health/**`는 `/api/v1` prefix 밖에 있다. 그 외 구현 API는 Supabase access token이 필요하다. `X-Organization-Id`는 셀러 조직 API에서만 사용하며, 바이어 API의 권한은 로그인한 `auth.uid()`를 기준으로 확인한다.
 
 FastAPI는 토큰을 검증한 뒤 바이어 계약은 `contracts.buyer_user_id`, 셀러 기능은 `organization_members`를 확인한다. service role이 RLS를 우회하므로 토큰 검증만으로 권한 검사를 끝내면 안 된다.
 
@@ -145,6 +160,7 @@ FastAPI는 토큰을 검증한 뒤 바이어 계약은 `contracts.buyer_user_id`
 | 403 | `ORG_ACCESS_DENIED`, `SELLER_NOT_VERIFIED` | 조직 권한 또는 셀러 검증 문제 |
 | 404 | `PROFILE_NOT_FOUND`, `ORGANIZATION_NOT_FOUND`, `LISTING_NOT_FOUND`, `CONTRACT_NOT_FOUND` | 리소스 없음 또는 비공개 |
 | 409 | `USERNAME_CONFLICT`, `VERSION_CONFLICT`, `INVALID_STATE_TRANSITION` | 고유값·동시 수정 또는 상태 전이 충돌 |
+| 410 | `LISTING_EXPIRED` | 공고 또는 공급 기간 만료 |
 | 422 | `LISTING_NOT_PUBLISHABLE`, `AI_INPUT_INSUFFICIENT` | 필수 공개/AI 입력 부족 |
 | 429 | `RATE_LIMITED` | API/AI 호출 제한 |
 | 502 | `AI_PROVIDER_ERROR`, `SIGN_PROVIDER_ERROR` | 외부 제공자 실패 |
@@ -214,33 +230,35 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 
 ## 4. 화면별 API 매핑
 
-| 화면 | 핵심 API |
-| --- | --- |
-| 비로그인 바이어 탐색 | `GET /public/listings` |
-| 로그인/가입 | `POST /auth/signup`, `POST /auth/login`, `GET /me` |
-| 바이어 공고 상세 | `GET /public/listings/{id}` |
-| 계약서 원문/AI 비서 | `GET /public/listings/{id}/contract-preview` |
-| 예상 가격 | `POST /public/listings/{id}/price-estimates` |
-| 바이어 수정 요청 | `POST /listings/{id}/contract-requests`, `POST /contracts/{id}/revision-requests` |
-| 바이어 서명 | `POST /listings/{id}/contract-requests`, `POST /contracts/{id}/signature-requests` |
-| 바이어 마이페이지 | `GET /me`, `GET /me/contracts` |
-| 셀러 기본 화면 | `GET /seller/dashboard` |
-| 내 공고문 | `GET /seller/listings` |
-| 공고문 상세/편집 진입 | `GET /seller/listings/{id}` |
-| 직접 작성 | `POST /seller/listings`, `PATCH /seller/listings/{id}/terms`, `POST /seller/listings/{id}/generate` |
-| PDF 등록/OCR | `POST /documents/upload-url`, `POST /documents/{id}/complete` |
-| 작성 완료/공개 정보 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation` |
-| 공고 게시 | `POST /seller/listings/{id}/publish` |
-| 수정 요청 알림 | `GET /notifications`, `GET /revision-requests/{id}` |
-| 셀러가 받은 요청 | `GET /seller/revision-requests` |
-| 항목별 판단 | `PATCH /revision-requests/{id}/items/{item_id}`, `POST /revision-requests/{id}/decide` |
-| 계약 버전/비교 | `GET /contracts/{id}/versions`, `GET /contracts/{id}/versions/compare` |
-| 서명 전 최종 승인 | `POST /contracts/{id}/versions/{version_id}/approve`, `GET /contracts/{id}/versions/{version_id}/approvals` |
-| 셀러 마이페이지 | `GET /me`, `PATCH /me`, `GET/PATCH /organizations/{id}` |
+아래 경로에는 공통으로 `/api/v1`이 붙는다. `구현`은 현재 `main`의 router와 schema로 확인한 상태이고, `계획`은 목표 명세다.
+
+| 화면 | 핵심 API | 상태 |
+| --- | --- | --- |
+| 비로그인 바이어 탐색 | `GET /public/listings` | 구현 |
+| 로그인/가입 | `POST /auth/signup`, `POST /auth/login` | 계획 |
+| 로그인 후 역할 확인 | `GET /me` | 구현 |
+| 바이어 공고 상세 | `GET /public/listings/{id}` | 구현 |
+| 계약서 원문/AI 비서 | `GET /public/listings/{id}/contract-preview` | 구현 |
+| 예상 가격 | `POST /public/listings/{id}/price-estimates` | 구현 |
+| 바이어 계약 요청 | `POST /listings/{id}/contract-requests` | 구현 |
+| 바이어 수정 요청 | `POST /contracts/{id}/revision-requests` | 계획 |
+| 바이어 서명 | `POST /contracts/{id}/signature-requests` | 계획 |
+| 바이어 마이페이지 | `GET /me`, `GET /me/contracts` | 구현 |
+| 셀러 기본 화면 | `GET /seller/dashboard` | 구현 |
+| 셀러가 받은 계약 요청 | `GET /seller/contracts/received` | 구현 |
+| 내 공고문·편집 | `GET /seller/listings`, `GET /seller/listings/{id}` | 계획 |
+| 직접 작성 | `POST /seller/listings`, `PATCH /seller/listings/{id}/terms`, `POST /seller/listings/{id}/generate` | 계획 |
+| PDF 등록/OCR | `POST /documents/upload-url`, `POST /documents/{id}/complete` | 계획 |
+| 작성 완료·게시 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation`, `POST /seller/listings/{id}/publish` | 계획 |
+| 수정 요청 알림·판단 | revision request와 notification API | 계획 |
+| 계약 상세·취소 | `GET /contracts/{id}`, `POST /contracts/{id}/cancel` | 구현 |
+| 계약 버전·비교 | `GET /contracts/{id}/versions`, `GET /contracts/{id}/versions/compare` | 계획 |
+| 서명 전 최종 승인 | `POST /contracts/{id}/versions/{version_id}/approve`, `GET /contracts/{id}/versions/{version_id}/approvals` | 계획 |
+| 셀러 마이페이지 | `GET /me`, `PATCH /me`, `GET/PATCH /organizations/{id}` | 구현 |
 
 ## 5. 인증·가입·프로필
 
-### `POST /auth/signup`
+### `[계획] POST /auth/signup`
 
 바이어 예시:
 
@@ -292,7 +310,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 - Figma에서 고른 사업자등록증 파일은 가입 성공 후 발급된 organization id로 인증된 upload URL을 받아 업로드한다. 가입 전 임시 공개 업로드나 base64 파일을 signup JSON에 넣지 않는다.
 - `username`은 표시/검색용 별칭이다. MVP 로그인 식별자는 이메일을 사용한다.
 
-### `POST /auth/login`
+### `[계획] POST /auth/login`
 
 ```json
 { "email": "buyer@globaltrip.jp", "password": "<password>" }
@@ -302,7 +320,7 @@ Supabase session을 반환한다. 가능하면 프론트가 Supabase Auth SDK를
 
 운영 로그인 request에는 `role`을 받지 않는다. 인증 후 프론트는 `GET /me`의 `role`을 확인해 buyer 또는 seller 화면으로 이동한다. Figma의 buyer/seller 데모 버튼은 고정 demo account를 쓰는 개발 환경 기능으로 분리한다.
 
-### `GET /me` / `PATCH /me`
+### `[구현] GET /me` / `PATCH /me`
 
 이름, username, 전화번호, 이메일, 나라/언어, 선호 통화, 선택적 소속명·업종·기본 단체명, 가입일과 역할을 반환/수정한다. 셀러에게만 소속 organization과 검증 상태를 함께 반환한다. 이메일과 비밀번호 변경은 Supabase Auth 전용 흐름을 사용한다.
 
@@ -324,7 +342,7 @@ Supabase session을 반환한다. 가능하면 프론트가 Supabase Auth SDK를
 
 `id`, `email`, `role`, 비밀번호 및 organization 관련 필드는 이 요청으로 변경할 수 없다. `username`은 대소문자를 구분하지 않고 unique이며 충돌 시 `USERNAME_CONFLICT`를 반환한다. profile 조회와 수정 대상은 항상 검증된 access token의 `sub = auth.users.id`다.
 
-### `GET /me/contracts?bucket=draft|seller_review|revision_requested|signing|signed|cancelled|finished`
+### `[구현] GET /me/contracts?bucket=draft|seller_review|revision_requested|signing|signed|cancelled|finished`
 
 바이어가 보낸 계약 요청과 진행 상태를 확인하는 목록이다. 각 항목은 화면에서 바로 사용할
 `bucket`, 쉬운 한국어 `status_label`, 셀러명, 계약 기간과 예상 금액을 반환한다.
@@ -334,11 +352,12 @@ Supabase session을 반환한다. 가능하면 프론트가 Supabase Auth SDK를
 
 ## 6. 공개 바이어 탐색
 
-### `GET /public/listings`
+### `[구현] GET /public/listings`
 
 Query:
 
 - `q=오션스테이` 제목·업체명 검색
+- `contract_available_only=true|false` 계약 요청 가능한 `published` 공고만 조회할지 여부
 - `sort=recommended|popular|latest|price_asc|price_desc`
 - `district=해운대구` 복수 가능
 - `people=30`
@@ -371,16 +390,10 @@ Query:
         "currency": "KRW",
         "unit": "room_night"
       },
-      "estimated_price": {
-        "people": 30,
-        "amount_minor": 4350000,
-        "currency": "KRW",
-        "basis": "기준 단가와 요청 인원을 적용한 예상값",
-        "is_estimate": true
-      },
       "availability": { "start_date": "2026-07-01", "end_date": "2026-08-31" },
       "status": "published",
-      "contract_available": true
+      "contract_available": true,
+      "attention_required_count": 2
     }
   ]
 }
@@ -388,7 +401,9 @@ Query:
 
 `recommended`는 MVP에서 검증 여부, 공급 가능 여부, 정보 완성도, 인기도를 가중 합산한 deterministic score로 구현한다. 근거 없는 LLM 추천 순위를 만들지 않는다.
 
-### `POST /public/listings/{listing_id}/price-estimates`
+목록 card에는 계산 입력이 없으므로 예상 합계를 포함하지 않는다. 예상 금액은 아래 `price-estimates` endpoint로 계산한다. `attention_required_count`는 최신 성공 buyer 분석의 미기각 finding이 연결된 서로 다른 조항 수다.
+
+### `[구현] POST /public/listings/{listing_id}/price-estimates`
 
 ```json
 {
@@ -404,13 +419,36 @@ Query:
 
 `people`은 단체 규모이고 실제 과금 수량은 `quantity`와 `quantity_unit`으로 명시한다. 예를 들어 30명이 2인실 15개를 2박 이용하면 `people=30`, `quantity=15`, `quantity_unit=room`, `nights=2`다. 서버가 임의로 객실당 2명을 가정하지 않는다.
 
-응답은 예상 금액, 계산식, 사용한 수량·단위·단가·기간, 환율 기준 시각, 신뢰도와 고지를 포함한다. 공개 화면의 반복 계산은 기본적으로 DB에 행을 만들지 않는 stateless preview다. 바이어가 계약 요청을 생성할 때 사용한 예상 가격과 계산 입력을 contract snapshot과 필요 시 `price_estimates`에 저장한다. AI는 계산이 아니라 설명만 담당한다.
+```json
+{
+  "data": {
+    "base_unit_price_amount_minor": 145000,
+    "billing_quantity": 15,
+    "quantity_unit": "room",
+    "nights": 2,
+    "start_date": "2026-07-11",
+    "end_date": "2026-07-13",
+    "formula": "145000 KRW × 15 room × 2 nights × 0.11 JPY/KRW",
+    "total_estimated_amount_minor": 478500,
+    "base_currency": "KRW",
+    "display_currency": "JPY",
+    "exchange_rate": "0.11",
+    "exchange_rate_as_of": "2026-07-31T00:00:00Z",
+    "disclaimer": "This is an estimated price based on the current listing terms and exchange rate. The final contract price may differ."
+  },
+  "meta": { "request_id": "01J..." }
+}
+```
 
-### `GET /public/listings/{listing_id}`
+응답은 예상 금액, 계산식, 사용한 수량·단위·단가·기간, 환율 기준 시각과 고지를 포함한다. 현재 schema에는 `confidence`나 AI 설명 필드가 없다. 공개 화면의 반복 계산은 DB에 행을 만들지 않는 stateless preview다. 바이어가 계약 요청을 생성할 때 서버가 같은 규칙으로 다시 계산해 입력·금액·환율·계산식을 contract snapshot에 저장한다. AI는 계산이 아니라 설명만 담당한다.
 
-계약명, 셀러, 지역, 평점, 공고 상태, 계산된 계약 가능 여부, 공급 수량, 기준 단가, 최소 인원, 공급 기간, 핵심 조항 접힌 목록을 반환한다. 별도 `contract_available` 컬럼을 저장하지 않고 `status == published`인지 계산한다.
+주요 오류는 과금 수량·단위 불일치 `400 INVALID_BILLING_QUANTITY|UNSUPPORTED_QUANTITY_UNIT`, 기간 범위 초과 `400 SERVICE_PERIOD_OUT_OF_RANGE`, 비공개 상태 `409 LISTING_NOT_PRICEABLE`, 만료 `410 LISTING_EXPIRED`, 가격 조건 부족 `422 PRICE_TERMS_INCOMPLETE|UNSUPPORTED_PRICE_UNIT`, 환율 제공자 장애 `503 EXCHANGE_RATE_UNAVAILABLE`다.
 
-### `GET /public/listings/{listing_id}/contract-preview`
+### `[구현] GET /public/listings/{listing_id}`
+
+계약명, 셀러, 지역, 평점, 공고 상태, 계산된 계약 가능 여부, 공급 수량, 기준 단가, 최소·최대 인원, 공급 기간과 조항을 반환한다. 정책 필드는 `cancellation_policy`, `refund_policy`, `settlement_policy`, `safety_policy`, `compensation_policy`, `liability_policy`, `price_display_basis`, `contract_availability_note`다. 현재 canonical source가 없는 `no_show_policy`와 `vat_included`는 항상 `null`이다. 별도 `contract_available` 컬럼을 저장하지 않고 `status == published`인지 계산한다.
+
+### `[구현] GET /public/listings/{listing_id}/contract-preview`
 
 공개용 계약 본문, 조항별 anchor, 바이어 관점 AI finding을 반환한다. 셀러 내부 검토용 finding과 원본 파일의 비공개 metadata는 제외한다.
 
@@ -444,12 +482,40 @@ Query:
 
 ## 7. 셀러 공고 작성·등록·공개
 
-### `GET /seller/dashboard?contract_status=&listing_status=`
+이 절에서 현재 구현된 endpoint는 `GET /seller/dashboard`뿐이다. 나머지 seller listing·document·AI endpoint는 목표 명세다.
+
+### `[구현] GET /seller/dashboard`
 
 셀러 첫 화면에 필요한 숫자와 최근 요청을 한 번에 반환한다. 공개 중인 공고 수, 받은 요청 수,
-상태별 계약 수, 최근 계약 요청 5건과 공고별 요청 수를 포함한다.
+상태별 계약 수, 최근 계약 요청 최대 5건과 공고별 요청 수를 포함한다. 현재 query parameter는 없으며 `X-Organization-Id`가 필요하다.
 
-### `GET /seller/listings`
+```json
+{
+  "data": {
+    "stats": {
+      "published_listings": 3,
+      "received_requests": 8,
+      "seller_review": 2,
+      "revision_requested": 1,
+      "signing": 1,
+      "signed": 3,
+      "cancelled": 1
+    },
+    "recent_requests": [],
+    "listing_request_counts": [
+      {
+        "listing_id": "uuid",
+        "listing_title": "2026 부산 여름 객실 공급",
+        "listing_status": "published",
+        "request_count": 4
+      }
+    ]
+  },
+  "meta": { "request_id": "01J..." }
+}
+```
+
+### `[계획] GET /seller/listings`
 
 셀러 조직이 소유한 draft/processing/ready/published/paused/expired/archived 공고를 반환한다.
 
@@ -631,9 +697,9 @@ AI summary는 seller description과 공개 계약 버전을 근거로 재생성�
 
 ## 8. 공고에서 실제 계약 생성
 
-### `POST /listings/{listing_id}/contract-requests`
+### `[구현] POST /listings/{listing_id}/contract-requests`
 
-인증된 바이어만 호출한다.
+인증된 바이어만 호출하며 `Idempotency-Key` header가 필수다. request body는 선언되지 않은 필드를 거절한다.
 
 ```json
 {
@@ -667,16 +733,39 @@ AI summary는 seller description과 공개 계약 버전을 근거로 재생성�
 
 바이어 이름·이메일·전화번호는 로그인 profile에서 읽어 화면에 표시하며 request로 임의의 계약 당사자를 덮어쓰지 않는다. `paused` 공고는 조회할 수 있지만 이 endpoint는 `INVALID_STATE_TRANSITION`으로 거절한다.
 
+추가 검증 규칙:
+
+- 모든 수량과 `nights`는 1 이상이어야 한다.
+- `currency`는 대문자 ISO 4217 세 글자 형식이어야 한다.
+- `end_date`는 `start_date`보다 늦어야 하고 두 날짜의 차이는 `nights`와 같아야 한다.
+- `signing_capacity=group_representative`이면 `group_name`이 필수다.
+- 만료된 공고는 `410 LISTING_EXPIRED`, 공개 중이 아닌 공고는 `409 INVALID_STATE_TRANSITION`이다.
+
+응답:
+
+```json
+{
+  "data": {
+    "contract_id": "uuid",
+    "version_no": 1,
+    "status": "revision_requested"
+  },
+  "meta": { "request_id": "01J..." }
+}
+```
+
 ### 계약 상세와 버전
 
-- `GET /contracts/{contract_id}`: 계약 내용과 지금 진행 상태를 확인한다.
-- `GET /me/contracts`: 로그인한 바이어가 보낸 계약 요청 목록을 확인한다.
-- `GET /seller/contracts/received`: 셀러가 받은 계약 요청을 확인한다. 바이어명, 인원,
+- `[구현] GET /contracts/{contract_id}`: 계약 요약, 당사자 snapshot, 계산 조건, 현재 version과 clauses를 반환한다. buyer는 자신의 `buyer_user_id`, seller는 `X-Organization-Id` membership으로 접근한다.
+- `[구현] GET /me/contracts`: 로그인한 바이어가 보낸 계약 요청 목록을 확인한다. 선택적인 `bucket` query를 지원하고 각 항목에 `seller_name`을 포함한다.
+- `[구현] GET /seller/contracts/received`: 셀러가 받은 계약 요청을 확인한다. 바이어명, 인원,
   계약 기간, 예상 금액, 요청 종류와 요청일을 반환하며 `X-Organization-Id` 조직의 계약만 보인다.
-- `POST /contracts/{contract_id}/cancel`: `draft|seller_review|revision_requested` 계약을
+- `[구현] POST /contracts/{contract_id}/cancel`: `draft|seller_review|revision_requested` 계약을
   `cancelled`로 전이하고 열린 수정 요청도 취소한다. `Idempotency-Key`가 필요하다.
-- `GET /contracts/{contract_id}/versions`: immutable 계약 버전 목록과 생성 사유를 반환한다.
-- `GET /contracts/{contract_id}/versions/compare?from=1&to=2`: 두 버전의 조항별 추가·삭제·변경을 반환한다. AI가 아니라 저장된 버전을 코드로 비교한다.
+- `[계획] GET /contracts/{contract_id}/versions`: immutable 계약 버전 목록과 생성 사유를 반환한다.
+- `[계획] GET /contracts/{contract_id}/versions/compare?from=1&to=2`: 두 버전의 조항별 추가·삭제·변경을 반환한다. AI가 아니라 저장된 버전을 코드로 비교한다.
+
+현재 `ContractDetail`은 계약 요약 필드에 `parties`, `terms`, `current_version`을 추가한 구조다. `terms`는 `people`, `quantity`, `quantity_unit`, `nights`, 기간, 금액, 통화, 계산식을 반환하며 `current_version`은 version id/no, 제목, 본문, 정렬된 clauses를 반환한다.
 
 ## 9. 조항별 수정 요청
 
@@ -919,14 +1008,25 @@ backend/app/
 ### 14.1 브랜치 운영 규칙
 
 - `main`에는 직접 기능 커밋을 만들지 않는다. 최초 기준 커밋 이후 모든 변경은 짧은 브랜치와 PR로 병합한다.
-- 브랜치는 `chore/`, `feat/`, `fix/`, `docs/` 접두사를 사용한다.
+- 브랜치는 저장소 공통 규칙에 따라 `feature/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/` 접두사를 사용한다.
 - 한 브랜치는 한 가지 도메인만 담당하며 가능하면 1~3일 안에 병합한다.
 - 커밋 메시지는 Conventional Commits 형식인 `type(scope): description`을 사용한다.
 - API와 테스트는 같은 브랜치에서 구현한다. 테스트가 없는 API 구현만 먼저 병합하지 않는다.
 - DB 변경은 해당 기능 브랜치에서 새 migration으로 추가하고 API·DB 문서를 함께 갱신한다.
-- Codex가 브랜치를 직접 생성하는 경우 저장소 도구 규칙에 따라 `codex/feat/...`처럼 `codex/` 접두사가 추가될 수 있다.
+- Codex도 저장소의 branch strategy를 우선하며 사용자 요청 없이 임의의 추가 접두사를 붙이지 않는다.
 
-### 14.2 최초 기준 작업
+### 14.2 현재 `main` 구현 현황
+
+| 병합 | 영역 | 확인된 구현 |
+| --- | --- | --- |
+| PR #8 | 공개 공고 정합성 | 공개 목록·상세·계약 preview의 화면 필요 필드와 공개 범위 |
+| PR #10 | 가격 예상 | deterministic 가격·환율 계산과 `POST /public/listings/{id}/price-estimates` |
+| PR #11 | 계약 요청 | 계약 생성 snapshot, 상세, 취소, migration `005`의 요청 메시지·요청 종류 |
+| PR #12 | 계약 목록 | 바이어 bucket 목록, 셀러 받은 요청 목록, 셀러 dashboard |
+
+현재 구현의 source of truth는 router, Pydantic schema, repository, migration과 테스트다. 위 표 이후의 계획표는 남은 기능의 의존 관계와 목표를 설명하기 위한 기록이며 구현 상태 판단에는 사용하지 않는다.
+
+### 14.3 과거 최초 기준 작업
 
 현재 저장소에 최초 커밋이 없다면 다음 순서로 기준을 만든다.
 
@@ -935,9 +1035,9 @@ backend/app/
 | `main` | `chore(repo): establish initial project baseline` | 없음 | `.gitignore`, `README.md`, `docs/`, `supabase/migrations/`를 최초 기준으로 커밋한다. `tmp/`, `.env`, 실제 계약 파일과 credential은 제외한다. |
 | `chore/agent-guidelines` | `docs: add repository agent development guidelines` | 없음 | 루트 `AGENTS.md`에 기술스택, 계층 구조, API 규칙, migration 규칙, 테스트·보안·Git 규칙을 작성한다. 이 브랜치를 기능 개발 전에 먼저 병합한다. |
 
-### 14.3 API 구현 브랜치
+### 14.4 전체 목표 로드맵
 
-아래 표는 권장 병합 순서다. 각 행의 커밋은 위에서 아래 순서로 만든다.
+아래 표는 최초 작성된 전체 목표와 의존 순서다. 이미 병합된 범위도 포함하므로 현재 구현 여부는 14.2와 문서 상단의 현재 구현 API 목록을 기준으로 확인한다. 새 작업은 표의 `feat/` 예시를 그대로 복사하지 말고 현재 규칙인 `feature/`를 사용한다.
 
 | 순서 | 브랜치 | 커밋 | 구현 API | 설명/완료 기준 |
 | --- | --- | --- | --- | --- |
@@ -988,7 +1088,7 @@ backend/app/
 | 10 | `feat/notifications-mypage` | `feat(audit): expose contract audit events` | `GET /contracts/{id}/audit-events` | 공고 snapshot부터 수정 요청, 항목 결정, 버전 생성, 전자서명까지 append-only 이력을 당사자에게 제공한다. |
 | 10 | `feat/notifications-mypage` | `test(mypage): cover notification and bucket visibility` | 위 알림/마이페이지 API | 다른 사용자 알림 접근, 기간 종료 계산, 계약 당사자가 아닌 사용자의 audit 접근을 테스트한다. |
 
-### 14.4 병렬 개발 기준
+### 14.5 병렬 개발 기준
 
 권장 의존 관계:
 
@@ -1012,7 +1112,7 @@ flowchart LR
 - `revisions`와 `modusign-signatures`는 contract snapshot/state machine이 병합된 뒤 병렬 개발할 수 있다.
 - AI 담당자는 repository를 직접 호출해 계약 상태를 변경하지 않는다. 분석 결과를 반환하고 domain service가 DB 반영을 담당한다.
 
-### 14.5 PR 완료 조건
+### 14.6 PR 완료 조건
 
 각 API 브랜치는 다음을 만족해야 병합한다.
 
