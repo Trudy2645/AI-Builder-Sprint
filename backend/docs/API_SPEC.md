@@ -241,7 +241,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 계약서 원문/AI 비서 | `GET /public/listings/{id}/contract-preview` | 구현 |
 | 예상 가격 | `POST /public/listings/{id}/price-estimates` | 구현 |
 | 바이어 계약 요청 | `POST /listings/{id}/contract-requests` | 구현 |
-| 바이어 수정 요청 | `POST /contracts/{id}/revision-requests` | 계획 |
+| 바이어 수정 요청 | `POST /contracts/{id}/revision-requests` | 구현 |
 | 바이어 서명 | `POST /contracts/{id}/signature-requests` | 계획 |
 | 바이어 마이페이지 | `GET /me`, `GET /me/contracts` | 구현 |
 | 셀러 기본 화면 | `GET /seller/dashboard` | 구현 |
@@ -250,7 +250,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 직접 작성 | `POST /seller/listings`, `PATCH /seller/listings/{id}/terms`, `POST /seller/listings/{id}/generate` | 계획 |
 | PDF 등록/OCR | `POST /documents/upload-url`, `POST /documents/{id}/complete` | 계획 |
 | 작성 완료·게시 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation`, `POST /seller/listings/{id}/publish` | 계획 |
-| 수정 요청 알림·판단 | revision request와 notification API | 계획 |
+| 수정 요청 알림·판단 | revision request API와 알림 생성 | 구현 |
 | 계약 상세·취소 | `GET /contracts/{id}`, `POST /contracts/{id}/cancel` | 구현 |
 | 계약 버전·비교 | `GET /contracts/{id}/versions`, `GET /contracts/{id}/versions/compare` | 계획 |
 | 서명 전 최종 승인 | `POST /contracts/{id}/versions/{version_id}/approve`, `GET /contracts/{id}/versions/{version_id}/approvals` | 계획 |
@@ -769,42 +769,59 @@ AI summary는 seller description과 공개 계약 버전을 근거로 재생성�
 
 ## 9. 조항별 수정 요청
 
-### `POST /contracts/{contract_id}/revision-requests`
+### `[구현] POST /contracts/{contract_id}/revision-requests`
 
-`save_as_draft=true`면 임시저장, false면 셀러에게 전송한다.
+인증된 contract buyer가 수정 요청을 항상 `draft`로 생성한다. `Idempotency-Key`가
+필수이며 `base_version_no`가 현재 contract version과 다르면 `VERSION_CONFLICT`를
+반환한다.
 
 ```json
 {
   "base_version_no": 1,
-  "save_as_draft": false,
   "message": "취소 및 인원 변경 기준을 명확히 하고 싶습니다.",
-  "attachment_document_ids": ["uuid"],
   "items": [
     {
+      "request_type": "modify",
       "clause_id": "uuid",
-      "request_type": "cancellation_policy",
       "reason": "무료 취소 기한이 없습니다.",
-      "requested_text": "체크인 7일 전까지 무료 취소로 변경"
+      "requested_text": "체크인 7일 전까지 무료 취소로 변경",
+      "document_ids": ["uuid"]
     },
     {
+      "request_type": "add",
       "clause_id": null,
-      "request_type": "add_headcount_change",
       "reason": "단체 인원 변동 가능성이 있습니다.",
-      "requested_text": "체크인 14일 전까지 10% 이내 인원 변경 허용"
+      "requested_text": "체크인 14일 전까지 10% 이내 인원 변경 허용",
+      "document_ids": []
     }
   ]
 }
 ```
 
-### `GET /revision-requests/{revision_request_id}`
+item 유형 규칙은 다음과 같다.
 
-셀러에게 요청자, 기준 계약 버전, 전체 메시지, 조항별 요청과 AI finding 근거를 반환한다.
+- `modify`: `clause_id`, `requested_text` 필수
+- `delete`: `clause_id` 필수, `requested_text`는 null
+- `add`: `clause_id`는 null, `requested_text` 필수
 
-### `GET /seller/revision-requests?status=sent|countered`
+### `[구현] GET /revision-requests/{revision_request_id}`
+
+contract 당사자에게 기준 버전, 전체 메시지, 항목별 요청·첨부 문서·판단과
+`decision_preview`를 반환한다. 미리보기에는 결과 조항, pending 개수, 바이어 응답 필요 여부,
+새 version 생성 가능 여부가 포함된다.
+
+### `[구현] GET /seller/revision-requests?status=sent&status=countered`
 
 Figma의 `받은 요청` 목록용 API다. `X-Organization-Id` 조직이 당사자인 요청만 반환하며 unread 여부, 바이어 표시명, 공고명, 요청 시각, item 요약을 포함한다.
 
-### `PATCH /revision-requests/{revision_request_id}/items/{item_id}`
+### `[구현] POST /revision-requests/{revision_request_id}/items`
+
+작성한 buyer가 draft 요청에 item을 추가한다. `Idempotency-Key`가 필요하다.
+
+### `[구현] PATCH /revision-requests/{revision_request_id}/items/{item_id}`
+
+draft에서는 작성 buyer가 item 내용과 첨부 문서를 수정한다. sent 상태에서는 seller가 다음
+형식으로 항목을 판단한다.
 
 ```json
 {
@@ -816,20 +833,44 @@ Figma의 `받은 요청` 목록용 API다. `X-Organization-Id` 조직이 당사�
 
 `decision`은 `accepted|rejected|countered`다.
 
-### `POST /revision-requests/{revision_request_id}/decide`
+### `[구현] DELETE /revision-requests/{revision_request_id}/items/{item_id}`
+
+작성한 buyer가 draft item을 삭제한다.
+
+### `[구현] POST /revision-requests/{revision_request_id}/send`
+
+하나 이상의 item이 있는 draft를 seller에게 전송하고 contract를 `revision_requested`로
+전이한다. `Idempotency-Key`가 필요하고 seller 조직 구성원에게 알림을 만든다.
+
+### `[구현] POST /revision-requests/{revision_request_id}/decide`
 
 모든 item이 pending이 아닐 때만 성공한다.
 
 - 모두 accepted: 새 contract version 생성, revision `accepted`, 계약 `signing`
-- 모두 rejected: revision `rejected`, 계약은 원문 서명 또는 취소를 선택할 수 있는 상태
-- 일부 accepted/rejected: revision `partially_accepted`, 반영된 새 버전 생성
+- 모두 rejected: 새 version 없이 revision `rejected`, 계약 `seller_review`
+- 일부 accepted/rejected: revision `partially_accepted`, 바이어 확인 대기
 - 하나 이상 countered: revision `countered`, 바이어 확인 대기
+
+seller 전체 메시지를 `seller_message`에 전달한다. 중복 결정을 방지하기 위해
+`Idempotency-Key`가 필요하다.
+
+### `[구현] POST /revision-requests/{revision_request_id}/reject-all`
+
+모든 item을 rejected로 판단하고 revision을 `rejected`, contract를 `seller_review`로
+확정한다. 새 version은 만들지 않으며 `Idempotency-Key`가 필요하다.
+
+### `[구현] POST /revision-requests/{revision_request_id}/respond`
+
+`partially_accepted|countered` 결과에 buyer가 `accepted|rejected`로 응답한다. 수락하면
+accepted 변경과 counter 문구를 반영한 immutable 새 contract version을 만들고 계약을
+`signing`으로 전이한다. 거절하면 새 version 없이 `revision_requested`를 유지한다.
+`Idempotency-Key`가 필요하다.
 
 ### 전체 행동
 
-- `POST /revision-requests/{id}/reject-all`: 모든 item을 rejected 처리
 - `POST /contracts/{id}/cancel`: `계약 안하기`, 계약과 열린 수정 요청을 cancelled 처리
-- `POST /contracts/{id}/revision-requests`: 셀러의 역수정 요청에도 같은 item 모델 사용
+- version 생성 transaction은 현재 version을 다시 잠그고 기준 version 일치를 확인한다.
+- 기존 contract version과 clause는 update하지 않는다.
 
 ## 10. 전자서명
 
@@ -1074,10 +1115,10 @@ backend/app/
 | 7 | `feat/contracts` | `feat(contracts): create contracts from listings` | `POST /listings/{id}/contract-requests` | listing current version/clauses, 개인 buyer, seller organization, 선택적 단체명, 인원·수량/단위·박수·기간·예상 가격을 contract version 1로 snapshot한다. |
 | 7 | `feat/contracts` | `feat(contracts): add contract detail, versions and cancellation` | `GET /contracts/{id}`<br>`GET /contracts/{id}/versions`<br>`GET /contracts/{id}/versions/compare`<br>`POST /contracts/{id}/cancel` | buyer/seller 당사자만 상세와 immutable 버전 비교를 볼 수 있다. 취소 시 열린 수정 요청도 cancelled 처리하고 감사 이벤트를 남긴다. |
 | 7 | `feat/contracts` | `test(contracts): protect listing snapshots and state transitions` | 위 contract API | 공고 수정 후 기존 contract 불변, 기간/인원 검증, 중복 요청 idempotency, 권한과 취소 상태 전이를 테스트한다. |
-| 8 | `feat/revisions` | `feat(revisions): create and list revision requests` | `POST /contracts/{id}/revision-requests`<br>`GET /revision-requests/{id}`<br>`GET /seller/revision-requests` | 조항 선택/직접 입력, 첨부 문서, 임시저장, 전송과 셀러 받은 요청 목록을 구현한다. 기준 contract version이 다르면 `VERSION_CONFLICT`를 반환한다. |
-| 8 | `feat/revisions` | `feat(revisions): decide revision items` | `PATCH /revision-requests/{id}/items/{item_id}` | 각 항목에 accepted/rejected/countered, 판단 사유와 대안 문구를 저장한다. 요청자 본인은 자기 항목을 결정할 수 없다. |
-| 8 | `feat/revisions` | `feat(revisions): finalize negotiation decisions` | `POST /revision-requests/{id}/decide`<br>`POST /revision-requests/{id}/reject-all` | pending 항목이 있으면 완료를 막는다. 수락/부분 수락/대안 제시에 따라 새 contract version과 다음 상태를 만든다. |
-| 8 | `feat/revisions` | `test(revisions): cover item decisions and version creation` | 위 revision API | 12-2 항목별 판단, 전체 거절, 일부 수락, counter proposal, seller 역수정 요청을 테스트한다. |
+| 8 | `feature/revisions` | `feat(revisions): create and list revision requests` | `POST /contracts/{id}/revision-requests`<br>`GET /revision-requests/{id}`<br>`GET /seller/revision-requests`<br>`POST/DELETE /revision-requests/{id}/items`<br>`POST /revision-requests/{id}/send` | `006_revision_alignment.sql`로 modify/delete/add 제약과 item-document 연결을 추가한다. draft 항목 편집과 별도 전송을 구현하며 기준 contract version이 다르면 `VERSION_CONFLICT`를 반환한다. |
+| 8 | `feature/revisions` | `feat(revisions): decide revision items` | `PATCH /revision-requests/{id}/items/{item_id}` | 셀러가 각 항목에 accepted/rejected/countered, 판단 사유와 대안 문구를 저장한다. 요청 buyer는 sent 이후 자기 항목을 결정할 수 없다. |
+| 8 | `feature/revisions` | `feat(revisions): finalize negotiation decisions` | `POST /revision-requests/{id}/decide`<br>`POST /revision-requests/{id}/reject-all`<br>`POST /revision-requests/{id}/respond` | pending 항목이 있으면 완료를 막는다. 전부 수락은 즉시, 일부 수락·대안은 buyer 수락 후 immutable 새 contract version을 만든다. |
+| 8 | `feature/revisions` | `test(revisions): cover item decisions and version creation` | 위 revision API | 유형별 validation, attachment 소유권, 권한, 전체 거절, 일부 수락, counter proposal, 멱등성과 version 충돌을 테스트한다. |
 | 8.5 | `feat/contract-approvals` | `feat(contracts): approve the final contract version` | `POST /contracts/{id}/versions/{version_id}/approve`<br>`GET /contracts/{id}/versions/{version_id}/approvals` | buyer/seller가 같은 current version을 승인해야 서명 요청이 가능하다. 버전 변경 시 승인을 다시 받는다. |
 | 9 | `feat/modusign-signatures` | `feat(signatures): add signature provider interface` | 없음 | `SignatureProvider`와 `MockSignatureProvider`를 먼저 만들어 외부 장애에도 데모를 완주할 수 있게 한다. |
 | 9 | `feat/modusign-signatures` | `feat(modusign): request signatures from a template` | `POST /contracts/{id}/signature-requests` | 개인 buyer와 seller 담당자를 모두싸인 `바이어`/`셀러` participant로 매핑한다. 단체 대표 서명은 권한 확인 동의와 시각을 감사 이벤트에 남긴다. |

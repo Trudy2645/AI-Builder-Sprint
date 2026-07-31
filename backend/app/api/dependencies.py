@@ -8,11 +8,13 @@ from app.domain.contracts.service import ContractService
 from app.domain.listings.service import PublicListingService
 from app.domain.pricing.service import PriceCalculator, PriceEstimateService
 from app.domain.profiles.service import ProfileService
+from app.domain.revisions.service import RevisionService
 from app.integrations.exchange_rates import ExchangeRateProvider, FakeExchangeRateProvider
 from app.repositories.contracts import ContractRepository, SqlAlchemyContractRepository
 from app.repositories.listings import PublicListingRepository, SqlAlchemyPublicListingRepository
 from app.repositories.pricing import PriceTermsRepository, SqlAlchemyPriceTermsRepository
 from app.repositories.profiles import ProfileRepository, SqlAlchemyProfileRepository
+from app.repositories.revisions import RevisionRepository, SqlAlchemyRevisionRepository
 
 
 def get_public_listing_repository(
@@ -55,6 +57,18 @@ def get_contract_service(
     exchange_rate_provider: Annotated[ExchangeRateProvider, Depends(get_exchange_rate_provider)],
 ) -> ContractService:
     return ContractService(repository, PriceCalculator(exchange_rate_provider))
+
+
+def get_revision_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> RevisionRepository:
+    return SqlAlchemyRevisionRepository(session)
+
+
+def get_revision_service(
+    repository: Annotated[RevisionRepository, Depends(get_revision_repository)],
+) -> RevisionService:
+    return RevisionService(repository)
 
 
 def get_profile_repository(
