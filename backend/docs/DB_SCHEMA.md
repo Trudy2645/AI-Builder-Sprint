@@ -77,6 +77,8 @@ erDiagram
 
     CONTRACTS ||--o{ REVISION_REQUESTS : negotiates
     REVISION_REQUESTS ||--o{ REVISION_REQUEST_ITEMS : contains
+    REVISION_REQUEST_ITEMS ||--o{ REVISION_REQUEST_ITEM_DOCUMENTS : attaches
+    DOCUMENTS ||--o{ REVISION_REQUEST_ITEM_DOCUMENTS : referenced_by
     CONTRACTS ||--o{ SIGNATURE_REQUESTS : signs
     SIGNATURE_REQUESTS ||--o{ SIGNATURE_PARTICIPANTS : includes
 
@@ -243,7 +245,10 @@ Figma의 서명 전 최종 승인 기록이다. 계약 상태를 추가하지 �
 | `contract_version_id` | 요청이 기준으로 삼은 버전 |
 | `requested_by_role` | buyer 또는 seller |
 | `message` | 전체 요청 설명 |
+| `decision_message` | 셀러의 전체 판단 메시지 |
+| `response_message` | counter/부분 수락에 대한 바이어 메시지 |
 | `sent_at`, `decided_at` | 전송/결정 시각 |
+| `responded_at` | 바이어가 셀러 판단에 응답한 시각 |
 
 ### `revision_request_items`
 
@@ -252,14 +257,33 @@ Figma의 서명 전 최종 승인 기록이다. 계약 상태를 추가하지 �
 | 컬럼 | 의미 |
 | --- | --- |
 | `clause_id` | 수정 대상 조항. 새 조항 추가라면 null 가능 |
-| `request_type` | 취소 조건, 정산, 인원 변경 등 |
+| `request_type` | `modify`, `delete`, `add` |
 | `reason` | 바이어/셀러 요청 사유 |
-| `requested_text` | 요청자가 원하는 문구 |
+| `requested_text` | 요청자가 원하는 문구. `delete`는 null |
 | `decision` | pending/accepted/rejected/countered |
 | `decision_reason` | 상대방 판단 사유 |
 | `counter_text` | 상대방 대안 문구 |
 
-모든 item이 결정되어야 revision 전체 결과를 확정한다. `reject-all`은 각 item을 rejected로 일괄 업데이트하는 편의 동작이다. `계약 안하기`는 contract를 cancelled로 바꾸고 열린 revision도 cancelled 처리한다.
+`modify`는 `clause_id`와 `requested_text`가 모두 필요하고, `delete`는 `clause_id`만
+필요하며, `add`는 `requested_text`만 필요하다. `clause_id`는 revision의 기준
+contract version에 속해야 한다.
+
+모든 item이 결정되어야 revision 전체 결과를 확정한다. `reject-all`은 각 item을
+rejected로 일괄 업데이트하는 편의 동작이다. 모두 수락된 결과는 즉시 새 immutable
+contract version으로 만들고, 부분 수락이나 counter는 바이어가 응답한 뒤 새 version으로
+만든다. `계약 안하기`는 contract를 cancelled로 바꾸고 열린 revision도 cancelled 처리한다.
+
+### `revision_request_item_documents`
+
+| 컬럼 | 의미 |
+| --- | --- |
+| `revision_request_item_id` | 첨부 대상 revision item |
+| `document_id` | 기존 contract 소유 document |
+| `created_at` | 연결 시각 |
+
+두 id의 조합은 primary key이므로 같은 문서를 같은 item에 중복 연결할 수 없다. DB trigger와
+애플리케이션 권한 검사로 document가 revision과 같은 contract에 속하는지 확인한다. 파일
+업로드 자체는 이 기능의 범위가 아니다.
 
 ## 6. 파일·AI
 
