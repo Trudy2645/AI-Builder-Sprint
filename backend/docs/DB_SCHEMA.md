@@ -237,7 +237,7 @@ version은 `revision_agreement`, 그 외 version은 `manual_version`으로 표�
 
 ### `contract_version_approvals`
 
-Figma의 서명 전 최종 승인 기록이다. 계약 상태를 추가하지 않고 특정 immutable version에 대한 당사자 동의만 저장한다.
+`007_contract_version_approvals.sql`에서 추가하는 서명 전 최종 승인 기록이다. 계약 상태를 추가하지 않고 특정 immutable version에 대한 당사자 동의만 저장한다.
 
 | 컬럼 | 의미 |
 | --- | --- |
@@ -245,8 +245,11 @@ Figma의 서명 전 최종 승인 기록이다. 계약 상태를 추가하지 �
 | `party_role` | `buyer` 또는 `seller` |
 | `approved_by_user_id` | 실제 승인 사용자 |
 | `approved_at` | 승인 시각 |
+| `created_at` | 승인 행 생성 시각 |
 
-`(contract_version_id, party_role)`은 unique다. 새 계약 version이 생기면 이전 승인을 복사하지 않으며 buyer와 seller가 모두 현재 version을 승인해야 signature request를 생성할 수 있다.
+`contract_version_id`는 `contract_versions.id`, `approved_by_user_id`는 `auth.users.id`를 참조하며 둘 다 삭제를 제한한다. `(contract_version_id, party_role)`은 unique다. trigger가 승인 행의 update/delete를 막아 기록을 immutable하게 유지한다. RLS 조회 정책은 해당 version이 속한 계약의 buyer 또는 seller organization member에게만 허용한다.
+
+새 계약 version이 생겨도 이전 승인 행을 복사하거나 재사용하지 않는다. 이전 version의 기록은 감사 목적으로 남지만, buyer와 seller가 모두 동일한 현재 version을 승인해야 계약을 `signing`으로 전이하고 이후 signature request를 생성할 수 있다.
 
 ### `revision_requests`
 
