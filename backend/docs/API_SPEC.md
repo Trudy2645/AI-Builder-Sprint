@@ -252,7 +252,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 작성 완료·게시 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation`, `POST /seller/listings/{id}/publish` | 계획 |
 | 수정 요청 알림·판단 | revision request API와 알림 생성 | 구현 |
 | 계약 상세·취소 | `GET /contracts/{id}`, `POST /contracts/{id}/cancel` | 구현 |
-| 계약 버전·비교 | `GET /contracts/{id}/versions`, `GET /contracts/{id}/versions/compare` | 계획 |
+| 계약 버전·비교 | `GET /contracts/{id}/versions`, `GET /contracts/{id}/versions/compare` | 구현 |
 | 서명 전 최종 승인 | `POST /contracts/{id}/versions/{version_id}/approve`, `GET /contracts/{id}/versions/{version_id}/approvals` | 계획 |
 | 셀러 마이페이지 | `GET /me`, `PATCH /me`, `GET/PATCH /organizations/{id}` | 구현 |
 
@@ -762,8 +762,26 @@ AI summary는 seller description과 공개 계약 버전을 근거로 재생성�
   계약 기간, 예상 금액, 요청 종류와 요청일을 반환하며 `X-Organization-Id` 조직의 계약만 보인다.
 - `[구현] POST /contracts/{contract_id}/cancel`: `draft|seller_review|revision_requested` 계약을
   `cancelled`로 전이하고 열린 수정 요청도 취소한다. `Idempotency-Key`가 필요하다.
-- `[계획] GET /contracts/{contract_id}/versions`: immutable 계약 버전 목록과 생성 사유를 반환한다.
-- `[계획] GET /contracts/{contract_id}/versions/compare?from=1&to=2`: 두 버전의 조항별 추가·삭제·변경을 반환한다. AI가 아니라 저장된 버전을 코드로 비교한다.
+- `[구현] GET /contracts/{contract_id}/versions`: immutable 계약 버전 목록과 작성자 역할,
+  생성 시각, 생성 사유, 조항 수와 저장된 buyer 관점 위험 분석 요약을 반환한다.
+- `[구현] GET /contracts/{contract_id}/versions/compare?from=1&to=2`: 두 버전의 조항별
+  추가·삭제·변경, 가격·기간과 위험도 변화를 반환한다. AI를 호출하지 않고 저장된 version,
+  clauses, terms snapshot과 finding을 Python 코드로 비교한다.
+
+버전 목록의 `version_label`은 `V1`, `V2` 형식이다. `created_by_role`은
+`buyer|seller|system`, `creation_reason`은
+`contract_created|revision_agreement|manual_version`이다.
+
+조항 비교는 `source_listing_clause_id`, `clause_key`, 동일 제목·본문, 동일 제목 순서로
+identity를 찾는다. 매칭된 조항의 제목이나 본문이 바뀌면 `modified`, 이전 버전에만 있으면
+`deleted`, 이후 버전에만 있으면 `added`다. 단순 정렬 변경은 조항 내용 변경으로 취급하지
+않는다.
+
+가격과 기간은 `contract_versions.structured_data.contract_terms` snapshot을 비교한다. 기존
+version에 snapshot이 없거나 통화가 다르면 가격 방향을 `unknown`으로 반환하며 값을
+추측하지 않는다. 위험 변화는 각 version의 가장 최근 성공한 buyer 관점 분석에서 dismissed가
+아닌 finding을 `high=3`, `medium=2`, `low=1`, `none=0`으로 계산한다. 저장된 분석이 없으면
+위험 방향도 `unknown`이다.
 
 현재 `ContractDetail`은 계약 요약 필드에 `parties`, `terms`, `current_version`을 추가한 구조다. `terms`는 `people`, `quantity`, `quantity_unit`, `nights`, 기간, 금액, 통화, 계산식을 반환하며 `current_version`은 version id/no, 제목, 본문, 정렬된 clauses를 반환한다.
 
@@ -1113,7 +1131,8 @@ backend/app/
 | 6.5 | `feat/rag-knowledge-base` | `feat(rag): persist retrieval evidence and viewer links` | `GET /ai-findings/{finding_id}/evidence/{evidence_id}` | query/filter/rank와 문서 version, page/section/bbox를 저장하고 근거 번호 클릭 시 내부 viewer로 이동시킨다. |
 | 6.5 | `feat/rag-knowledge-base` | `test(rag): verify retrieval citations and access control` | 위 RAG 흐름 | superseded 문서 제외, page 정확성, 다른 계약 finding 접근 차단, 공식/템플릿 badge 분리를 검증한다. |
 | 7 | `feat/contracts` | `feat(contracts): create contracts from listings` | `POST /listings/{id}/contract-requests` | listing current version/clauses, 개인 buyer, seller organization, 선택적 단체명, 인원·수량/단위·박수·기간·예상 가격을 contract version 1로 snapshot한다. |
-| 7 | `feat/contracts` | `feat(contracts): add contract detail, versions and cancellation` | `GET /contracts/{id}`<br>`GET /contracts/{id}/versions`<br>`GET /contracts/{id}/versions/compare`<br>`POST /contracts/{id}/cancel` | buyer/seller 당사자만 상세와 immutable 버전 비교를 볼 수 있다. 취소 시 열린 수정 요청도 cancelled 처리하고 감사 이벤트를 남긴다. |
+| 7 | `feat/contracts` | `feat(contracts): add contract detail and cancellation` | `GET /contracts/{id}`<br>`POST /contracts/{id}/cancel` | buyer/seller 당사자만 계약 snapshot 상세를 볼 수 있다. 취소 시 열린 수정 요청도 cancelled 처리하고 감사 이벤트를 남긴다. |
+| 7.5 | `feature/contract-versions` | `feat(contracts): add contract version comparison` | `GET /contracts/{id}/versions`<br>`GET /contracts/{id}/versions/compare` | buyer/seller 당사자만 immutable 버전 목록과 저장된 조항·가격·기간·위험도 비교를 볼 수 있다. 비교 과정에서 AI를 호출하지 않는다. |
 | 7 | `feat/contracts` | `test(contracts): protect listing snapshots and state transitions` | 위 contract API | 공고 수정 후 기존 contract 불변, 기간/인원 검증, 중복 요청 idempotency, 권한과 취소 상태 전이를 테스트한다. |
 | 8 | `feature/revisions` | `feat(revisions): create and list revision requests` | `POST /contracts/{id}/revision-requests`<br>`GET /revision-requests/{id}`<br>`GET /seller/revision-requests`<br>`POST/DELETE /revision-requests/{id}/items`<br>`POST /revision-requests/{id}/send` | `006_revision_alignment.sql`로 modify/delete/add 제약과 item-document 연결을 추가한다. draft 항목 편집과 별도 전송을 구현하며 기준 contract version이 다르면 `VERSION_CONFLICT`를 반환한다. |
 | 8 | `feature/revisions` | `feat(revisions): decide revision items` | `PATCH /revision-requests/{id}/items/{item_id}` | 셀러가 각 항목에 accepted/rejected/countered, 판단 사유와 대안 문구를 저장한다. 요청 buyer는 sent 이후 자기 항목을 결정할 수 없다. |
