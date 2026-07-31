@@ -174,6 +174,29 @@ class ContractVersionCompareResponse(BaseModel):
     risk_change: VersionRiskChange
 
 
+class ContractVersionPartyApproval(BaseModel):
+    party_role: Literal["buyer", "seller"]
+    approved: bool
+    approved_by_user_id: UUID | None = None
+    approved_at: datetime | None = None
+
+
+class ContractVersionApprovalsResponse(BaseModel):
+    contract_id: UUID
+    contract_version_id: UUID
+    version_no: int = Field(gt=0)
+    is_current_version: bool
+    buyer: ContractVersionPartyApproval
+    seller: ContractVersionPartyApproval
+    all_approved: bool
+
+
+class ContractVersionApproveResponse(ContractVersionApprovalsResponse):
+    approved_role: Literal["buyer", "seller"]
+    already_approved: bool
+    contract_status: str
+
+
 class ContractSummary(BaseModel):
     id: UUID
     listing_id: UUID | None

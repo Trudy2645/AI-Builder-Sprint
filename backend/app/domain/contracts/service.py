@@ -17,7 +17,12 @@ from app.repositories.contracts import (
     ContractRepositoryUnavailableError,
     ContractRequestSourceRecord,
     ContractStateConflictError,
+    ContractVersionApprovalAccessError,
+    ContractVersionApprovalContextRecord,
+    ContractVersionApprovalRecord,
     ContractVersionClauseRecord,
+    ContractVersionConflictError,
+    ContractVersionNotFoundError,
     ContractVersionRecord,
     IdempotencyConflictError,
     NewContractData,
@@ -34,8 +39,11 @@ from app.schemas.contracts import (
     ContractRequestCreated,
     ContractSummary,
     ContractTermsResponse,
+    ContractVersionApprovalsResponse,
+    ContractVersionApproveResponse,
     ContractVersionCompareResponse,
     ContractVersionListItem,
+    ContractVersionPartyApproval,
     ContractVersionResponse,
     ContractVersionRiskSummary,
     InitialRequestKind,
@@ -325,6 +333,83 @@ class ContractService:
             risk_change=self._risk_change(before, after),
         )
 
+    async def get_contract_version_approvals(
+        self,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+    ) -> ContractVersionApprovalsResponse:
+        context = await self._approval_context(contract_id, contract_version_id)
+        await self._authorize_approval_context(context, actor, header_organization_id)
+        try:
+            approvals = await self._repository.list_contract_version_approvals(contract_version_id)
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        return self._approval_response(context, approvals)
+
+    async def approve_contract_version(
+        self,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+    ) -> ContractVersionApproveResponse:
+        context = await self._approval_context(contract_id, contract_version_id)
+        party_role = await self._authorize_approval_context(context, actor, header_organization_id)
+        if context.current_version_id != contract_version_id:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "VERSION_CONFLICT",
+                "Only the current contract version can be approved.",
+            )
+        if context.contract_status not in {"seller_review", "signing"}:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "INVALID_STATE_TRANSITION",
+                "The contract cannot be approved in its current state.",
+            )
+        try:
+            mutation = await self._repository.approve_contract_version(
+                contract_id=contract_id,
+                contract_version_id=contract_version_id,
+                actor_user_id=actor.id,
+                party_role=party_role,
+            )
+        except ContractVersionConflictError as exc:
+            raise AppError(
+                status_code=status.HTTP_409_CONFLICT,
+                code="VERSION_CONFLICT",
+                message="The current contract version changed before approval.",
+            ) from exc
+        except ContractStateConflictError as exc:
+            raise AppError(
+                status_code=status.HTTP_409_CONFLICT,
+                code="INVALID_STATE_TRANSITION",
+                message="The contract cannot be approved in its current state.",
+            ) from exc
+        except ContractVersionApprovalAccessError as exc:
+            raise AppError(
+                status_code=status.HTTP_403_FORBIDDEN,
+                code="CONTRACT_ACCESS_DENIED",
+                message="You do not have access to approve this contract version.",
+            ) from exc
+        except ContractVersionNotFoundError as exc:
+            raise AppError(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="CONTRACT_VERSION_NOT_FOUND",
+                message="Contract version was not found.",
+            ) from exc
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        response = self._approval_response(mutation.context, mutation.approvals)
+        return ContractVersionApproveResponse(
+            **response.model_dump(),
+            approved_role=mutation.approved_role,
+            already_approved=mutation.already_approved,
+            contract_status=mutation.contract_status,
+        )
+
     async def list_received_contracts(
         self,
         actor: AuthenticatedUser,
@@ -548,6 +633,70 @@ class ContractService:
             return await self._repository.list_contract_versions(contract_id)
         except ContractRepositoryUnavailableError as exc:
             self._database_unavailable(exc)
+
+    async def _approval_context(
+        self, contract_id: UUID, contract_version_id: UUID
+    ) -> ContractVersionApprovalContextRecord:
+        try:
+            context = await self._repository.get_contract_version_approval_context(
+                contract_id, contract_version_id
+            )
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        if context is None:
+            self._raise(
+                status.HTTP_404_NOT_FOUND,
+                "CONTRACT_VERSION_NOT_FOUND",
+                "Contract version was not found.",
+            )
+        return context
+
+    async def _authorize_approval_context(
+        self,
+        context: ContractVersionApprovalContextRecord,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+    ) -> str:
+        if context.buyer_user_id == actor.id:
+            return "buyer"
+        organization_id = self._parse_organization_header(header_organization_id)
+        if organization_id != context.seller_organization_id:
+            self._access_denied()
+        try:
+            member = await self._repository.is_seller_member(actor.id, organization_id)
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        if not member:
+            self._access_denied()
+        return "seller"
+
+    @staticmethod
+    def _approval_response(
+        context: ContractVersionApprovalContextRecord,
+        approvals: list[ContractVersionApprovalRecord],
+    ) -> ContractVersionApprovalsResponse:
+        by_role = {approval.party_role: approval for approval in approvals}
+
+        def party(role: str) -> ContractVersionPartyApproval:
+            approval = by_role.get(role)
+            return ContractVersionPartyApproval(
+                party_role=role,
+                approved=approval is not None,
+                approved_by_user_id=(approval.approved_by_user_id if approval else None),
+                approved_at=(approval.approved_at if approval else None),
+            )
+
+        buyer = party("buyer")
+        seller = party("seller")
+        return ContractVersionApprovalsResponse(
+            contract_id=context.contract_id,
+            contract_version_id=context.contract_version_id,
+            version_no=context.version_no,
+            is_current_version=context.current_version_id == context.contract_version_id,
+            buyer=buyer,
+            seller=seller,
+            all_approved=buyer.approved and seller.approved,
+        )
 
     @staticmethod
     def _version_item(version: ContractVersionRecord) -> ContractVersionListItem:

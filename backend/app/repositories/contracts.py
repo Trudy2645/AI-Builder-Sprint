@@ -124,6 +124,35 @@ class ContractVersionRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class ContractVersionApprovalContextRecord:
+    contract_id: UUID
+    contract_version_id: UUID
+    version_no: int
+    buyer_user_id: UUID
+    seller_organization_id: UUID
+    contract_status: str
+    current_version_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class ContractVersionApprovalRecord:
+    id: UUID
+    contract_version_id: UUID
+    party_role: str
+    approved_by_user_id: UUID
+    approved_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ContractVersionApprovalMutationRecord:
+    context: ContractVersionApprovalContextRecord
+    approvals: list[ContractVersionApprovalRecord]
+    approved_role: str
+    already_approved: bool
+    contract_status: str
+
+
+@dataclass(frozen=True, slots=True)
 class SellerListingRequestCountRecord:
     listing_id: UUID
     listing_title: str
@@ -140,6 +169,18 @@ class IdempotencyConflictError(Exception):
 
 
 class ContractStateConflictError(Exception):
+    pass
+
+
+class ContractVersionNotFoundError(Exception):
+    pass
+
+
+class ContractVersionApprovalAccessError(Exception):
+    pass
+
+
+class ContractVersionConflictError(Exception):
     pass
 
 
@@ -177,6 +218,23 @@ class ContractRepository(Protocol):
     ) -> list[ContractClauseRecord]: ...
 
     async def list_contract_versions(self, contract_id: UUID) -> list[ContractVersionRecord]: ...
+
+    async def get_contract_version_approval_context(
+        self, contract_id: UUID, contract_version_id: UUID
+    ) -> ContractVersionApprovalContextRecord | None: ...
+
+    async def list_contract_version_approvals(
+        self, contract_version_id: UUID
+    ) -> list[ContractVersionApprovalRecord]: ...
+
+    async def approve_contract_version(
+        self,
+        *,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor_user_id: UUID,
+        party_role: str,
+    ) -> ContractVersionApprovalMutationRecord: ...
 
     async def is_seller_member(self, user_id: UUID, organization_id: UUID) -> bool: ...
 
@@ -765,6 +823,196 @@ class SqlAlchemyContractRepository:
             {"contract_version_id": contract_version_id},
         )
         return [ContractVersionClauseRecord(**row) for row in result.mappings().all()]
+
+    async def get_contract_version_approval_context(
+        self, contract_id: UUID, contract_version_id: UUID
+    ) -> ContractVersionApprovalContextRecord | None:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select c.id as contract_id, cv.id as contract_version_id, cv.version_no,
+                           c.buyer_user_id, c.seller_organization_id,
+                           c.status::text as contract_status, c.current_version_id
+                    from public.contracts c
+                    join public.contract_versions cv on cv.contract_id = c.id
+                    where c.id = :contract_id and cv.id = :contract_version_id
+                    """
+                ),
+                {"contract_id": contract_id, "contract_version_id": contract_version_id},
+            )
+            row = result.mappings().one_or_none()
+            return ContractVersionApprovalContextRecord(**row) if row else None
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def list_contract_version_approvals(
+        self, contract_version_id: UUID
+    ) -> list[ContractVersionApprovalRecord]:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select id, contract_version_id, party_role::text as party_role,
+                           approved_by_user_id, approved_at
+                    from public.contract_version_approvals
+                    where contract_version_id = :contract_version_id
+                    order by party_role
+                    """
+                ),
+                {"contract_version_id": contract_version_id},
+            )
+            return [ContractVersionApprovalRecord(**row) for row in result.mappings().all()]
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def approve_contract_version(
+        self,
+        *,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor_user_id: UUID,
+        party_role: str,
+    ) -> ContractVersionApprovalMutationRecord:
+        try:
+            if self._session.in_transaction():
+                await self._session.rollback()
+            async with self._session.begin():
+                context = await self._lock_approval_context(contract_id, contract_version_id)
+                if context is None:
+                    raise ContractVersionNotFoundError
+                if context.current_version_id != contract_version_id:
+                    raise ContractVersionConflictError
+                if context.contract_status not in {"seller_review", "signing"}:
+                    raise ContractStateConflictError
+                if party_role == "buyer":
+                    if context.buyer_user_id != actor_user_id:
+                        raise ContractVersionApprovalAccessError
+                elif not await self._is_member_in_transaction(
+                    actor_user_id, context.seller_organization_id
+                ):
+                    raise ContractVersionApprovalAccessError
+                inserted = await self._session.execute(
+                    text(
+                        """
+                        insert into public.contract_version_approvals (
+                            contract_version_id, party_role, approved_by_user_id
+                        ) values (
+                            :contract_version_id, cast(:party_role as public.party_role),
+                            :actor_user_id
+                        )
+                        on conflict (contract_version_id, party_role) do nothing
+                        returning id
+                        """
+                    ),
+                    {
+                        "contract_version_id": contract_version_id,
+                        "party_role": party_role,
+                        "actor_user_id": actor_user_id,
+                    },
+                )
+                already_approved = inserted.scalar_one_or_none() is None
+                approvals = await self._list_approvals_in_transaction(contract_version_id)
+                all_approved = {approval.party_role for approval in approvals} == {
+                    "buyer",
+                    "seller",
+                }
+                contract_status = context.contract_status
+                if all_approved and contract_status == "seller_review":
+                    await self._session.execute(
+                        text("update public.contracts set status = 'signing' where id = :id"),
+                        {"id": contract_id},
+                    )
+                    contract_status = "signing"
+                if not already_approved:
+                    await self._session.execute(
+                        text(
+                            """
+                            insert into public.audit_events (
+                                contract_id, actor_user_id, actor_role, event_type,
+                                target_type, target_id, event_data
+                            ) values (
+                                :contract_id, :actor_user_id, :party_role,
+                                'contract_version_approved', 'contract_version',
+                                :contract_version_id,
+                                jsonb_build_object('party_role', :party_role)
+                            )
+                            """
+                        ),
+                        {
+                            "contract_id": contract_id,
+                            "actor_user_id": actor_user_id,
+                            "party_role": party_role,
+                            "contract_version_id": contract_version_id,
+                        },
+                    )
+                return ContractVersionApprovalMutationRecord(
+                    context=context,
+                    approvals=approvals,
+                    approved_role=party_role,
+                    already_approved=already_approved,
+                    contract_status=contract_status,
+                )
+        except (
+            ContractStateConflictError,
+            ContractVersionApprovalAccessError,
+            ContractVersionConflictError,
+            ContractVersionNotFoundError,
+        ):
+            raise
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def _lock_approval_context(
+        self, contract_id: UUID, contract_version_id: UUID
+    ) -> ContractVersionApprovalContextRecord | None:
+        result = await self._session.execute(
+            text(
+                """
+                select c.id as contract_id, cv.id as contract_version_id, cv.version_no,
+                       c.buyer_user_id, c.seller_organization_id,
+                       c.status::text as contract_status, c.current_version_id
+                from public.contracts c
+                join public.contract_versions cv on cv.contract_id = c.id
+                where c.id = :contract_id and cv.id = :contract_version_id
+                for update of c
+                """
+            ),
+            {"contract_id": contract_id, "contract_version_id": contract_version_id},
+        )
+        row = result.mappings().one_or_none()
+        return ContractVersionApprovalContextRecord(**row) if row else None
+
+    async def _is_member_in_transaction(self, user_id: UUID, organization_id: UUID) -> bool:
+        result = await self._session.execute(
+            text(
+                """
+                select exists (
+                    select 1 from public.organization_members
+                    where user_id = :user_id and organization_id = :organization_id
+                )
+                """
+            ),
+            {"user_id": user_id, "organization_id": organization_id},
+        )
+        return bool(result.scalar_one())
+
+    async def _list_approvals_in_transaction(
+        self, contract_version_id: UUID
+    ) -> list[ContractVersionApprovalRecord]:
+        result = await self._session.execute(
+            text(
+                """
+                select id, contract_version_id, party_role::text as party_role,
+                       approved_by_user_id, approved_at
+                from public.contract_version_approvals
+                where contract_version_id = :contract_version_id
+                order by party_role
+                """
+            ),
+            {"contract_version_id": contract_version_id},
+        )
+        return [ContractVersionApprovalRecord(**row) for row in result.mappings().all()]
 
     async def is_seller_member(self, user_id: UUID, organization_id: UUID) -> bool:
         try:

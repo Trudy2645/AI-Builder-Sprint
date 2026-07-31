@@ -253,7 +253,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 수정 요청 알림·판단 | revision request API와 알림 생성 | 구현 |
 | 계약 상세·취소 | `GET /contracts/{id}`, `POST /contracts/{id}/cancel` | 구현 |
 | 계약 버전·비교 | `GET /contracts/{id}/versions`, `GET /contracts/{id}/versions/compare` | 구현 |
-| 서명 전 최종 승인 | `POST /contracts/{id}/versions/{version_id}/approve`, `GET /contracts/{id}/versions/{version_id}/approvals` | 계획 |
+| 서명 전 최종 승인 | `POST /contracts/{id}/versions/{version_id}/approve`, `GET /contracts/{id}/versions/{version_id}/approvals` | 구현 |
 | 셀러 마이페이지 | `GET /me`, `PATCH /me`, `GET/PATCH /organizations/{id}` | 구현 |
 
 ## 5. 인증·가입·프로필
@@ -898,8 +898,15 @@ Figma의 최종 합의 화면을 유지하므로 buyer와 seller가 동일한 �
 
 - `POST /contracts/{contract_id}/versions/{version_id}/approve`: 로그인 당사자 역할의 승인을 한 번 기록한다.
 - `GET /contracts/{contract_id}/versions/{version_id}/approvals`: buyer/seller 승인 여부와 시각을 반환한다.
+- buyer는 인증된 `auth.uid()`와 계약의 `buyer_user_id`가 일치해야 한다.
+- seller는 `X-Organization-Id`가 계약의 seller organization과 일치하고 해당 organization의 member여야 한다.
+- 승인은 현재 version에만 허용하며 현재 version이 바뀌면 `VERSION_CONFLICT`를 반환한다.
+- 승인 가능한 계약 상태는 `seller_review`, `signing`이다. 두 당사자가 모두 승인하면 `seller_review`에서 `signing`으로 전이한다.
+- 같은 당사자의 중복 승인은 기존 승인 결과를 반환하며 새 승인 행이나 감사 이벤트를 만들지 않는다.
 - 버전이 바뀌면 이전 버전 승인은 새 버전에 승계하지 않는다.
 - buyer와 seller가 모두 현재 버전을 승인하기 전에는 signature request를 거절한다.
+
+승인 상태 응답은 `version_no`, `is_current_version`, buyer/seller별 `approved`, `approved_by_user_id`, `approved_at`, `all_approved`를 포함한다. 승인 요청 응답에는 추가로 `approved_role`, `already_approved`, `contract_status`를 반환한다. 존재하지 않거나 다른 계약에 속한 version은 `CONTRACT_VERSION_NOT_FOUND`, 당사자가 아니면 `CONTRACT_ACCESS_DENIED`, 승인 불가능한 계약 상태는 `INVALID_STATE_TRANSITION`으로 처리한다.
 
 ### `POST /contracts/{contract_id}/signature-requests`
 
@@ -1138,7 +1145,7 @@ backend/app/
 | 8 | `feature/revisions` | `feat(revisions): decide revision items` | `PATCH /revision-requests/{id}/items/{item_id}` | 셀러가 각 항목에 accepted/rejected/countered, 판단 사유와 대안 문구를 저장한다. 요청 buyer는 sent 이후 자기 항목을 결정할 수 없다. |
 | 8 | `feature/revisions` | `feat(revisions): finalize negotiation decisions` | `POST /revision-requests/{id}/decide`<br>`POST /revision-requests/{id}/reject-all`<br>`POST /revision-requests/{id}/respond` | pending 항목이 있으면 완료를 막는다. 전부 수락은 즉시, 일부 수락·대안은 buyer 수락 후 immutable 새 contract version을 만든다. |
 | 8 | `feature/revisions` | `test(revisions): cover item decisions and version creation` | 위 revision API | 유형별 validation, attachment 소유권, 권한, 전체 거절, 일부 수락, counter proposal, 멱등성과 version 충돌을 테스트한다. |
-| 8.5 | `feat/contract-approvals` | `feat(contracts): approve the final contract version` | `POST /contracts/{id}/versions/{version_id}/approve`<br>`GET /contracts/{id}/versions/{version_id}/approvals` | buyer/seller가 같은 current version을 승인해야 서명 요청이 가능하다. 버전 변경 시 승인을 다시 받는다. |
+| 8.5 | `feature/contract-approvals` | `feat(contracts): approve the final contract version` | `POST /contracts/{id}/versions/{version_id}/approve`<br>`GET /contracts/{id}/versions/{version_id}/approvals` | buyer/seller가 같은 current version을 승인해야 서명 요청이 가능하다. 버전 변경 시 승인을 다시 받는다. |
 | 9 | `feat/modusign-signatures` | `feat(signatures): add signature provider interface` | 없음 | `SignatureProvider`와 `MockSignatureProvider`를 먼저 만들어 외부 장애에도 데모를 완주할 수 있게 한다. |
 | 9 | `feat/modusign-signatures` | `feat(modusign): request signatures from a template` | `POST /contracts/{id}/signature-requests` | 개인 buyer와 seller 담당자를 모두싸인 `바이어`/`셀러` participant로 매핑한다. 단체 대표 서명은 권한 확인 동의와 시각을 감사 이벤트에 남긴다. |
 | 9 | `feat/modusign-signatures` | `feat(modusign): process webhooks and completion artifacts` | `POST /webhooks/modusign`<br>`GET /signature-requests/{id}`<br>`POST /signature-requests/{id}/sync` | 웹훅을 우선 처리하고 polling을 fallback으로 사용한다. ON_PROCESSING/ON_GOING/COMPLETED를 매핑하고 완료 PDF와 audit trail 저장 성공 후 contract를 signed 처리한다. |
