@@ -64,17 +64,21 @@ def listing(
         service_end_date=service_end,
         supply_quantity=30,
         quantity_unit="room" if category == "accommodation" else "person",
+        people_per_unit=2 if category == "accommodation" else 1,
         base_price_amount_minor=price,
         currency="KRW",
         price_unit="room_night" if category == "accommodation" else "person",
         minimum_people=minimum_people,
         maximum_people=maximum_people,
         cancellation_policy="이용 7일 전까지 무료 취소",
+        no_show_policy="당일 미이용은 환불 불가",
         refund_policy="취소 승인 후 원 결제수단으로 환불",
         settlement_policy="이용 완료 후 15일 이내 정산",
         safety_policy="시설 안전점검과 긴급 연락체계 제공",
         compensation_policy="셀러 귀책 시 대체 서비스 또는 환불",
         liability_policy="당사자별 고의 또는 과실 범위에서 책임",
+        termination_policy="중대한 계약 위반 시 해지",
+        special_terms="단체 인원은 14일 전 확정",
         price_display_basis="1인 기준 가격",
         contract_availability_note="잔여 수량 확인 후 계약 확정",
         attention_required_count=1 if version_id == VERSION_ID else 0,
@@ -547,7 +551,10 @@ def test_listing_detail_returns_public_terms_and_locale_fallback(
     assert data["price_display_basis"] == "1인 기준 가격"
     assert data["contract_availability_note"] == "잔여 수량 확인 후 계약 확정"
     assert data["attention_required_count"] == 1
-    assert data["no_show_policy"] is None
+    assert data["people_per_unit"] == 2
+    assert data["no_show_policy"] == "당일 미이용은 환불 불가"
+    assert data["termination_policy"] == "중대한 계약 위반 시 해지"
+    assert data["special_terms"] == "단체 인원은 14일 전 확정"
     assert data["vat_included"] is None
     assert data["hero_image_url"] is None
     assert data["clauses"][0]["highlight"] == "warning"

@@ -9,12 +9,17 @@ from app.domain.listings.service import PublicListingService
 from app.domain.pricing.service import PriceCalculator, PriceEstimateService
 from app.domain.profiles.service import ProfileService
 from app.domain.revisions.service import RevisionService
+from app.domain.seller_listings.service import SellerListingService
 from app.integrations.exchange_rates import ExchangeRateProvider, FakeExchangeRateProvider
 from app.repositories.contracts import ContractRepository, SqlAlchemyContractRepository
 from app.repositories.listings import PublicListingRepository, SqlAlchemyPublicListingRepository
 from app.repositories.pricing import PriceTermsRepository, SqlAlchemyPriceTermsRepository
 from app.repositories.profiles import ProfileRepository, SqlAlchemyProfileRepository
 from app.repositories.revisions import RevisionRepository, SqlAlchemyRevisionRepository
+from app.repositories.seller_listings import (
+    SellerListingRepository,
+    SqlAlchemySellerListingRepository,
+)
 
 
 def get_public_listing_repository(
@@ -69,6 +74,18 @@ def get_revision_service(
     repository: Annotated[RevisionRepository, Depends(get_revision_repository)],
 ) -> RevisionService:
     return RevisionService(repository)
+
+
+def get_seller_listing_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> SellerListingRepository:
+    return SqlAlchemySellerListingRepository(session)
+
+
+def get_seller_listing_service(
+    repository: Annotated[SellerListingRepository, Depends(get_seller_listing_repository)],
+) -> SellerListingService:
+    return SellerListingService(repository)
 
 
 def get_profile_repository(

@@ -176,8 +176,8 @@ FastAPI는 토큰을 검증한 뒤 바이어 계약은 `contracts.buyer_user_id`
 stateDiagram-v2
     [*] --> draft
     draft --> processing
+    processing --> ready
     processing --> draft
-    draft --> ready
     ready --> published
     published --> paused
     paused --> published
@@ -246,10 +246,11 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 바이어 마이페이지 | `GET /me`, `GET /me/contracts` | 구현 |
 | 셀러 기본 화면 | `GET /seller/dashboard` | 구현 |
 | 셀러가 받은 계약 요청 | `GET /seller/contracts/received` | 구현 |
-| 내 공고문·편집 | `GET /seller/listings`, `GET /seller/listings/{id}` | 계획 |
-| 직접 작성 | `POST /seller/listings`, `PATCH /seller/listings/{id}/terms`, `POST /seller/listings/{id}/generate` | 계획 |
+| 내 공고문·편집 | `GET /seller/listings`, `GET /seller/listings/{id}` | 구현 |
+| 직접 작성 | `POST /seller/listings`, `PATCH /seller/listings/{id}/terms` | 구현 |
+| AI 계약 생성 | `POST /seller/listings/{id}/generate` | 계획 |
 | PDF 등록/OCR | `POST /documents/upload-url`, `POST /documents/{id}/complete` | 계획 |
-| 작성 완료·게시 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation`, `POST /seller/listings/{id}/publish` | 계획 |
+| 작성 완료·게시 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation`, `POST /seller/listings/{id}/publish`, `POST /seller/listings/{id}/pause`, `POST /seller/listings/{id}/archive` | 구현 |
 | 수정 요청 알림·판단 | revision request API와 알림 생성 | 구현 |
 | 계약 상세·취소 | `GET /contracts/{id}`, `POST /contracts/{id}/cancel` | 구현 |
 | 계약 버전·비교 | `GET /contracts/{id}/versions`, `GET /contracts/{id}/versions/compare` | 구현 |
@@ -446,7 +447,7 @@ Query:
 
 ### `[구현] GET /public/listings/{listing_id}`
 
-계약명, 셀러, 지역, 평점, 공고 상태, 계산된 계약 가능 여부, 공급 수량, 기준 단가, 최소·최대 인원, 공급 기간과 조항을 반환한다. 정책 필드는 `cancellation_policy`, `refund_policy`, `settlement_policy`, `safety_policy`, `compensation_policy`, `liability_policy`, `price_display_basis`, `contract_availability_note`다. 현재 canonical source가 없는 `no_show_policy`와 `vat_included`는 항상 `null`이다. 별도 `contract_available` 컬럼을 저장하지 않고 `status == published`인지 계산한다.
+계약명, 셀러, 지역, 평점, 공고 상태, 계산된 계약 가능 여부, 공급 수량, 단위당 인원, 기준 단가, 최소·최대 인원, 공급 기간과 조항을 반환한다. 정책 필드는 `cancellation_policy`, `no_show_policy`, `refund_policy`, `settlement_policy`, `safety_policy`, `compensation_policy`, `liability_policy`, `termination_policy`, `special_terms`, `price_display_basis`, `contract_availability_note`다. 현재 canonical source가 없는 `vat_included`만 항상 `null`이다. 별도 `contract_available` 컬럼을 저장하지 않고 `status == published`인지 계산한다.
 
 ### `[구현] GET /public/listings/{listing_id}/contract-preview`
 
@@ -515,15 +516,15 @@ Query:
 }
 ```
 
-### `[계획] GET /seller/listings`
+### `[구현] GET /seller/listings`
 
-셀러 조직이 소유한 draft/processing/ready/published/paused/expired/archived 공고를 반환한다.
+셀러 조직이 소유한 draft/processing/ready/published/paused/expired/archived 공고를 반환한다. `X-Organization-Id`와 organization membership을 확인하며 각 공고에는 현재 version 번호, 요청 수와 작성 완료에 부족한 `missing_fields`가 포함된다.
 
-### `GET /seller/listings/{listing_id}`
+### `[구현] GET /seller/listings/{listing_id}`
 
-Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, current version, 처리 중인 AI job과 작성 완료 누락 항목을 반환한다. URL의 공고가 `X-Organization-Id` 조직 소유인지 먼저 확인한다.
+Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, current immutable version과 clauses, 작성 완료 누락 항목을 반환한다. URL의 공고가 `X-Organization-Id` 조직 소유인지 먼저 확인한다. AI 처리는 후속 범위이므로 현재 `processing_job`은 `null`이다.
 
-### `POST /seller/listings`
+### `[구현] POST /seller/listings`
 
 ```json
 {
@@ -535,9 +536,9 @@ Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, c
 }
 ```
 
-`creation_method`는 `manual|upload`다. 항상 `draft`로 생성한다.
+`creation_method`는 `manual|upload`다. 항상 `draft`로 생성하고 빈 immutable listing version V1과 현재 terms 행을 함께 만든다. `Idempotency-Key`가 필수이며 같은 key와 같은 요청은 최초 생성 결과를 반환한다.
 
-### `PATCH /seller/listings/{listing_id}/terms`
+### `[구현] PATCH /seller/listings/{listing_id}/terms`
 
 임시저장용 부분 수정 endpoint다. 필수값이 덜 입력되어도 저장된다.
 
@@ -566,6 +567,8 @@ Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, c
   }
 }
 ```
+
+부분 입력을 현재 terms와 합쳐 저장하며 기간과 최소·최대 인원 범위를 검사한다. 저장할 때 기존 version을 수정하지 않고 구조화 terms snapshot, 계약 정책 clauses와 본문을 가진 V2, V3 등의 새 version을 만든다. 현재 version 번호가 `base_version_no`와 다르면 `VERSION_CONFLICT`다. 계약 요청이 하나라도 존재하면 가격·기간·정책을 포함한 terms 변경을 `LISTING_HAS_CONTRACTS`로 차단한다. 이미 공개 또는 중지된 공고는 필수값을 제거하는 수정도 허용하지 않는다.
 
 ### PDF 등록 흐름
 
@@ -665,7 +668,7 @@ finding을 `dismissed`로 표시하되 계약 원문은 변경하지 않는다. 
 
 Agent는 계약을 수정하거나 서명 요청을 만들 수 없다. 최종 출력은 JSON Schema를 통과한 finding 후보뿐이며, 새 version 생성은 사용자가 `apply`를 호출했을 때 domain service가 수행한다.
 
-### `POST /seller/listings/{listing_id}/complete`
+### `[구현] POST /seller/listings/{listing_id}/complete`
 
 작성 완료 검증 후 `ready`로 변경한다. 최소 필수값:
 
@@ -676,7 +679,9 @@ Agent는 계약을 수정하거나 서명 요청을 만들 수 없다. 최종 �
 
 노쇼·계약 해지·특약은 구조화해 저장하되 모든 상품에 공통 필수로 강제하지 않는다.
 
-### `PATCH /seller/listings/{listing_id}/presentation`
+필수값이 부족하면 `LISTING_NOT_PUBLISHABLE`과 `details.missing_fields`를 반환한다. 검증에 성공하면 하나의 transaction에서 `draft → processing → ready`로 전환하고 감사 이벤트를 남긴다. 이 단계는 Python 코드로 입력 terms를 조항화하며 AI/OCR provider를 호출하지 않는다.
+
+### `[구현] PATCH /seller/listings/{listing_id}/presentation`
 
 ```json
 {
@@ -689,11 +694,19 @@ Agent는 계약을 수정하거나 서명 요청을 만들 수 없다. 최종 �
 }
 ```
 
-AI summary는 seller description과 공개 계약 버전을 근거로 재생성한다.
+`hero_document_id`는 해당 공고 소유이며 `purpose=listing_hero`, `status=ready`인 기존 document만 연결할 수 있다. 문서 업로드 API와 AI summary 재생성은 후속 브랜치 범위다.
 
-### `POST /seller/listings/{listing_id}/publish`
+### `[구현] POST /seller/listings/{listing_id}/publish`
 
-셀러 검증 상태와 필수 정보, 공개용 AI 분석 완료 여부를 확인하고 `published`로 바꾼다. Figma의 `계약 가능` switch를 별도 저장하지 않고 ON은 이 API, OFF는 `POST /seller/listings/{id}/pause`에 연결한다. 중지된 공고의 재개도 별도 `/resume` 없이 이 publish API로 `paused → published` 전이한다. `POST /archive`도 같은 상태 전이 규칙을 사용한다.
+셀러 검증 상태와 필수 정보를 확인하고 `ready → published`로 바꾼다. AI 기능이 분리된 현재 manual 공고는 공개용 AI 분석을 필수로 강제하지 않는다. Figma의 `계약 가능` switch를 별도 저장하지 않고 ON은 이 API, OFF는 `POST /seller/listings/{id}/pause`에 연결한다. 중지된 공고의 재개도 별도 `/resume` 없이 이 publish API로 `paused → published` 전이한다.
+
+### `[구현] POST /seller/listings/{listing_id}/pause`
+
+`published → paused`로 전환한다. 이미 paused인 요청은 같은 상태를 반환하며 신규 계약 요청은 public contract API에서 차단된다.
+
+### `[구현] POST /seller/listings/{listing_id}/archive`
+
+`draft|ready|paused → archived`로 전환한다. published 공고는 먼저 pause해야 하며 archived 공고의 terms와 presentation은 더 이상 변경할 수 없다.
 
 ## 8. 공고에서 실제 계약 생성
 
@@ -1118,11 +1131,11 @@ backend/app/
 | 3 | `feat/public-listings` | `feat(listings): add public listing detail and preview` | `GET /public/listings/{id}`<br>`GET /public/listings/{id}/contract-preview` | 카드 상세, 핵심 조건, 공개 계약 조항과 buyer 관점 finding을 반환한다. seller 내부 finding과 사업자 민감정보는 제외한다. |
 | 3 | `feat/public-listings` | `feat(pricing): add listing price estimates` | `POST /public/listings/{id}/price-estimates` | 인원·명시 수량/단위·박수·단가 기반 deterministic 계산을 우선한다. 공개 preview는 stateless로 계산하고 계약 요청 시 사용한 입력과 금액을 snapshot한다. |
 | 3 | `feat/public-listings` | `test(listings): cover public filters and data exposure` | 위 공개 API | 비공개/기간 만료 공고 제외, paused 조회와 계약 차단, 가격 경계값, seller 내부 데이터 비노출을 테스트한다. |
-| 4 | `feat/seller-listings` | `feat(seller): add seller dashboard and listing queries` | `GET /seller/dashboard`<br>`GET /seller/listings`<br>`GET /seller/listings/{id}` | 셀러 계약 테이블, 전체 공고 상태 목록과 편집 상세를 반환한다. seller organization member만 접근한다. |
-| 4 | `feat/seller-listings` | `feat(listings): create and update listing drafts` | `POST /seller/listings`<br>`PATCH /seller/listings/{id}/terms` | manual/upload 생성 방식과 필수값이 부족해도 가능한 임시저장을 구현한다. `base_version_no`로 동시 수정 충돌을 검사한다. |
-| 4 | `feat/seller-listings` | `feat(listings): complete and present listings` | `POST /seller/listings/{id}/complete`<br>`PATCH /seller/listings/{id}/presentation` | 작성 완료 필수값 검증과 회사명·공개 제목·대표 이미지·설명·가격 표시 기준 편집을 구현한다. complete는 `ready`까지만 전환한다. |
-| 4 | `feat/seller-listings` | `feat(listings): publish and manage listing lifecycle` | `POST /seller/listings/{id}/publish`<br>`POST /seller/listings/{id}/pause`<br>`POST /seller/listings/{id}/archive` | verified seller만 publish할 수 있다. 유효하지 않은 상태 전이는 `INVALID_STATE_TRANSITION`을 반환한다. |
-| 4 | `feat/seller-listings` | `test(listings): cover seller ownership and lifecycle` | 위 seller listing API | 다른 셀러의 공고 접근, 미검증 publish, 필수값 누락, pause/publish 재개, archived 변경 차단을 테스트한다. |
+| 4 | `feature/seller-listings` | `feat(seller): 셀러 공고 조회 기능 추가` | `GET /seller/listings`<br>`GET /seller/listings/{id}` | 전체 공고 상태 목록과 편집 상세를 반환한다. seller organization member만 접근한다. |
+| 4 | `feature/seller-listings` | `feat(listings): 공고 임시저장과 버전 관리 추가` | `POST /seller/listings`<br>`PATCH /seller/listings/{id}/terms` | manual/upload 생성 방식과 필수값이 부족해도 가능한 임시저장을 구현한다. `base_version_no`로 동시 수정 충돌을 검사한다. |
+| 4 | `feature/seller-listings` | `feat(listings): 공고 작성 완료와 화면 정보 편집 추가` | `POST /seller/listings/{id}/complete`<br>`PATCH /seller/listings/{id}/presentation` | 작성 완료 필수값 검증과 회사명·공개 제목·대표 이미지·설명·가격 표시 기준 편집을 구현한다. complete는 `ready`까지만 전환한다. |
+| 4 | `feature/seller-listings` | `feat(listings): 공고 공개 상태 전이 추가` | `POST /seller/listings/{id}/publish`<br>`POST /seller/listings/{id}/pause`<br>`POST /seller/listings/{id}/archive` | verified seller만 publish할 수 있다. 유효하지 않은 상태 전이는 `INVALID_STATE_TRANSITION`을 반환한다. |
+| 4 | `feature/seller-listings` | `test(listings): 셀러 소유권과 상태 전이 검증` | 위 seller listing API | 다른 셀러의 공고 접근, 미검증 publish, 필수값 누락, pause/publish 재개, archived 변경 차단을 테스트한다. |
 | 5 | `feat/documents-storage` | `feat(storage): add signed upload and download URLs` | `POST /documents/upload-url`<br>`POST /documents/{id}/download-url` | listing/contract 소유권을 확인한 후 짧은 만료시간의 Supabase Storage signed URL을 발급한다. 파일은 FastAPI 메모리를 통과해 업로드하지 않는다. |
 | 5 | `feat/documents-storage` | `feat(documents): complete uploaded documents` | `POST /documents/{id}/complete`<br>`GET /documents/{id}` | 업로드 object의 크기·MIME·hash를 확인하고 document 처리 job을 만든다. PDF/DOCX/JPG/PNG와 최대 용량 제한을 적용한다. |
 | 5 | `feat/documents-storage` | `test(documents): validate ownership and file metadata` | 위 document API | 다른 조직 파일 접근, MIME 위조, 크기 초과, 존재하지 않는 Storage object를 테스트한다. |

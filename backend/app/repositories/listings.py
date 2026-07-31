@@ -51,17 +51,21 @@ class PublicListingRecord:
     service_end_date: date | None
     supply_quantity: int | None
     quantity_unit: str | None
+    people_per_unit: int | None
     base_price_amount_minor: int | None
     currency: str | None
     price_unit: str | None
     minimum_people: int | None
     maximum_people: int | None
     cancellation_policy: str | None
+    no_show_policy: str | None
     refund_policy: str | None
     settlement_policy: str | None
     safety_policy: str | None
     compensation_policy: str | None
     liability_policy: str | None
+    termination_policy: str | None
+    special_terms: str | None
     price_display_basis: str | None
     contract_availability_note: str | None
     attention_required_count: int
@@ -241,10 +245,12 @@ class SqlAlchemyPublicListingRepository:
                    o.verification_status::text as verification_status,
                    o.rating_average, o.rating_count,
                    lt.service_start_date, lt.service_end_date, lt.supply_quantity,
-                   lt.quantity_unit, lt.base_price_amount_minor, lt.currency, lt.price_unit,
+                   lt.quantity_unit, lt.people_per_unit, lt.base_price_amount_minor,
+                   lt.currency, lt.price_unit,
                    lt.minimum_people, lt.maximum_people,
-                   lt.cancellation_policy, lt.refund_policy, lt.settlement_policy,
-                   lt.safety_policy, lt.compensation_policy, lt.liability_policy,
+                   lt.cancellation_policy, lt.no_show_policy, lt.refund_policy,
+                   lt.settlement_policy, lt.safety_policy, lt.compensation_policy,
+                   lt.liability_policy, lt.termination_policy, lt.special_terms,
                    lt.price_display_basis, lt.contract_availability_note,
                    {self._ATTENTION_REQUIRED_COUNT} as attention_required_count,
                    l.current_version_id,
@@ -269,10 +275,12 @@ class SqlAlchemyPublicListingRepository:
                    o.verification_status::text as verification_status,
                    o.rating_average, o.rating_count,
                    lt.service_start_date, lt.service_end_date, lt.supply_quantity,
-                   lt.quantity_unit, lt.base_price_amount_minor, lt.currency, lt.price_unit,
+                   lt.quantity_unit, lt.people_per_unit, lt.base_price_amount_minor,
+                   lt.currency, lt.price_unit,
                    lt.minimum_people, lt.maximum_people,
-                   lt.cancellation_policy, lt.refund_policy, lt.settlement_policy,
-                   lt.safety_policy, lt.compensation_policy, lt.liability_policy,
+                   lt.cancellation_policy, lt.no_show_policy, lt.refund_policy,
+                   lt.settlement_policy, lt.safety_policy, lt.compensation_policy,
+                   lt.liability_policy, lt.termination_policy, lt.special_terms,
                    lt.price_display_basis, lt.contract_availability_note,
                    {self._ATTENTION_REQUIRED_COUNT} as attention_required_count,
                    l.current_version_id,
