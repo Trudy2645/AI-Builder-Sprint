@@ -659,7 +659,8 @@ class SqlAlchemyContractRepository:
                       and read_at is null
                       and notification_type in (
                           'seller_response', 'revision_requested', 'revision_decided',
-                          'signature_requested', 'signature_completed', 'contract_cancelled'
+                          'final_approval_requested', 'signature_requested',
+                          'signature_completed', 'contract_cancelled'
                       )
                     """
                 ),
@@ -925,6 +926,14 @@ class SqlAlchemyContractRepository:
                     )
                     contract_status = "signing"
                 if not already_approved:
+                    if not all_approved:
+                        await self._notify_contract_approval_counterparty(
+                            contract_id=contract_id,
+                            contract_version_id=contract_version_id,
+                            buyer_user_id=context.buyer_user_id,
+                            seller_organization_id=context.seller_organization_id,
+                            approved_role=party_role,
+                        )
                     await self._session.execute(
                         text(
                             """
@@ -962,6 +971,65 @@ class SqlAlchemyContractRepository:
             raise
         except SQLAlchemyError as exc:
             raise ContractRepositoryUnavailableError from exc
+
+    async def _notify_contract_approval_counterparty(
+        self,
+        *,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        buyer_user_id: UUID,
+        seller_organization_id: UUID,
+        approved_role: str,
+    ) -> None:
+        if approved_role == "buyer":
+            await self._session.execute(
+                text(
+                    """
+                    insert into public.notifications (
+                        user_id, notification_type, title, body,
+                        resource_type, resource_id, dedupe_key
+                    )
+                    select om.user_id, 'final_approval_requested', '최종안 승인 요청',
+                           '바이어가 최종 계약안을 승인했습니다. 같은 버전을 확인해 주세요.',
+                           'contract', :contract_id,
+                           'final-approval:' || :version_id || ':seller'
+                    from public.organization_members om
+                    where om.organization_id = :organization_id
+                    on conflict (user_id, dedupe_key)
+                        where dedupe_key is not null
+                    do nothing
+                    """
+                ),
+                {
+                    "contract_id": contract_id,
+                    "version_id": str(contract_version_id),
+                    "organization_id": seller_organization_id,
+                },
+            )
+            return
+        await self._session.execute(
+            text(
+                """
+                insert into public.notifications (
+                    user_id, notification_type, title, body,
+                    resource_type, resource_id, dedupe_key
+                ) values (
+                    :buyer_user_id, 'final_approval_requested', '최종안 승인 요청',
+                    '셀러가 최종 계약안을 승인했습니다. 같은 버전을 확인해 주세요.',
+                    'contract', :contract_id,
+                    'final-approval:' || :version_id || ':buyer'
+                )
+                on conflict (user_id, dedupe_key)
+                    where dedupe_key is not null
+                do nothing
+                """
+            ),
+            {
+                "buyer_user_id": buyer_user_id,
+                "contract_id": contract_id,
+                "version_id": str(contract_version_id),
+            },
+        )
 
     async def _lock_approval_context(
         self, contract_id: UUID, contract_version_id: UUID

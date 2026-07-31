@@ -54,6 +54,7 @@ class FakeContractApprovalRepository:
         self.memberships = {(SELLER_ID, ORGANIZATION_ID)}
         self.approvals: dict[tuple[UUID, str], ContractVersionApprovalRecord] = {}
         self.audit_events: list[tuple[str, str]] = []
+        self.notifications: list[tuple[str, UUID]] = []
         self.unavailable = False
 
     async def get_contract_version_approval_context(
@@ -117,6 +118,9 @@ class FakeContractApprovalRepository:
             self.audit_events.append(("contract_version_approved", party_role))
         approvals = await self.list_contract_version_approvals(contract_version_id)
         all_approved = {approval.party_role for approval in approvals} == {"buyer", "seller"}
+        if not already_approved and not all_approved:
+            notified_role = "seller" if party_role == "buyer" else "buyer"
+            self.notifications.append((notified_role, contract_version_id))
         contract_status = context.contract_status
         if all_approved and contract_status == "seller_review":
             contract_status = "signing"
@@ -186,6 +190,7 @@ def test_buyer_approval_is_naturally_idempotent(
     assert second.json()["data"]["already_approved"] is True
     assert len(approval_repository.approvals) == 1
     assert approval_repository.audit_events == [("contract_version_approved", "buyer")]
+    assert approval_repository.notifications == [("seller", CURRENT_VERSION_ID)]
 
 
 def test_buyer_and_seller_must_approve_same_version(
@@ -205,6 +210,7 @@ def test_buyer_and_seller_must_approve_same_version(
     assert data["all_approved"] is True
     assert data["contract_status"] == "signing"
     assert approval_repository.current_context.contract_status == "signing"
+    assert approval_repository.notifications == [("seller", CURRENT_VERSION_ID)]
 
 
 def test_seller_requires_matching_organization_membership(

@@ -409,6 +409,23 @@ MVP 공식 자료는 PDF를 그대로 Upstage Files/Vector Store에 적재한다
 - `(buyer_user_id, status, updated_at desc)`
 - 기간 종료 버킷용 `contract_terms(service_end_date)`
 
+알림:
+
+- `(user_id, created_at desc, id desc)`로 본인 최신 알림을 조회한다.
+- `dedupe_key`는 선택값이며 `(user_id, dedupe_key)` partial unique index로 같은 사용자에게
+  공고 만료 예정 또는 최종안 승인 요청이 반복 생성되는 것을 막는다.
+- 공고 만료 예정 dedupe key는 공고 id와 공급 종료일을 포함하므로 종료일이 바뀌면 새
+  일정에 대한 알림을 생성할 수 있다.
+- `read_at`은 최초 읽음 시각을 보존하며 읽지 않음으로 되돌리지 않는다.
+- revision과 approval domain transaction에서 생성되는 계약 알림은 해당 업무 변경과
+  함께 commit한다. 전자서명 알림 생성은 signature 구현 브랜치가 연결한다.
+
+계약 감사 이력:
+
+- `audit_events`는 append-only이며 기존 행을 수정하거나 삭제하지 않는다.
+- 계약 당사자 API에는 이벤트 종류, actor 역할, 대상과 비민감 event data만 반환하고
+  `actor_user_id`는 노출하지 않는다.
+
 검색 규모가 커지면 title/display_title에 `pg_trgm` GIN index를 사용한다.
 
 ## 9. Storage
