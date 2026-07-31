@@ -114,7 +114,7 @@ const ListingsContext = createContext<ListingsContextValue | null>(null);
 const seed: Listing[] = [
   {
     id: "lst-summer-room",
-    productName: "2026 부산 여름 패키지 객실 공급 계약",
+    productName: "2026 부산 여름 객실 공급 계약",
     category: "accommodation",
     district: "해운대구",
     start: "2026.07.01",
@@ -145,8 +145,8 @@ const seed: Listing[] = [
     riskCount: 1,
   },
   {
-    id: "lst-bbq-package",
-    productName: "2026 오션뷰 루프탑 바비큐 패키지",
+    id: "lst-bbq-tour",
+    productName: "2026 오션뷰 루프탑 바비큐 투어",
     category: "tour",
     district: "해운대구",
     start: "2026.06.01",

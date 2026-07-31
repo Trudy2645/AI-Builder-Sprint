@@ -15,7 +15,7 @@ const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
 
 // OCR로 추출했다고 가정하는 데모 데이터 (위험 조항이 포함되도록 구성).
 const OCR_PREFILL: Partial<ListingDraft> = {
-  productName: "2026 오션뷰 루프탑 바비큐 패키지",
+  productName: "2026 오션뷰 루프탑 바비큐 투어",
   category: "tour",
   district: "해운대구",
   start: "2026-06-01",
@@ -26,12 +26,12 @@ const OCR_PREFILL: Partial<ListingDraft> = {
   minQty: "20",
   maxQty: "60",
   cancellation: "이용 3일 전까지 무료 취소",
-  noShow: "패키지 요금 전액 청구",
+  noShow: "투어 요금 전액 청구",
   settlement: "매월 말 마감 후 익익월(60일) 15일 지급",
   liability: "",
   termination: "30일 전 서면 통지로 해지 가능",
   special: "최소 보장 물량 20명 미달 시 위약금 발생",
-  headline: "해운대 오션뷰 루프탑에서 즐기는 바비큐 패키지를 단체 물량으로 확보하세요.",
+  headline: "해운대 오션뷰 루프탑에서 즐기는 바비큐 투어를 단체 물량으로 확보하세요.",
 };
 
 export function UploadOcrPage() {

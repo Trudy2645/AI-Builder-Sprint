@@ -62,27 +62,27 @@ const DOCUMENT_COPY: Record<DocLang, Record<string, string>> = {
 
 const TRANSLATED_TITLES: Record<Exclude<DocLang, "ko">, Record<string, string>> = {
   en: {
-    "ocean-stay-2026-summer": "2026 Busan Summer Package Room Supply Agreement",
+    "ocean-stay-2026-summer": "2026 Busan Summer Room Supply Agreement",
     "gwangan-seabreeze": "2026 Gwangalli Ocean-view Room Supply Agreement",
     "marina-yacht-tour": "2026 Yacht Sunset Tour Seat Supply Agreement",
-    "songjeong-surf": "2026 Songjeong Surf Lesson Package Supply Agreement",
-    "busan-city-package": "2026 Busan City Highlights Package Supply Agreement",
+    "songjeong-surf": "2026 Songjeong Surf Lesson Supply Agreement",
+    "busan-city-tour": "2026 Busan City Highlights Tour Supply Agreement",
     "gijang-glamping": "2026 Gijang Ocean-view Glamping Supply Agreement",
   },
   ja: {
-    "ocean-stay-2026-summer": "2026年 釜山サマーパッケージ客室供給契約",
+    "ocean-stay-2026-summer": "2026年 釜山サマー客室供給契約",
     "gwangan-seabreeze": "2026年 広安里オーシャンビュー客室供給契約",
     "marina-yacht-tour": "2026年 ヨット・サンセットツアー座席供給契約",
-    "songjeong-surf": "2026年 松亭サーフィンレッスンパッケージ供給契約",
-    "busan-city-package": "2026年 釜山シティハイライトパッケージ供給契約",
+    "songjeong-surf": "2026年 松亭サーフィンレッスン供給契約",
+    "busan-city-tour": "2026年 釜山シティハイライトツアー供給契約",
     "gijang-glamping": "2026年 機張オーシャンビューグランピング供給契約",
   },
   zh: {
-    "ocean-stay-2026-summer": "2026釜山夏季套餐客房供应合同",
+    "ocean-stay-2026-summer": "2026釜山夏季客房供应合同",
     "gwangan-seabreeze": "2026广安里海景客房供应合同",
     "marina-yacht-tour": "2026游艇日落之旅座位供应合同",
-    "songjeong-surf": "2026松亭冲浪课程套餐供应合同",
-    "busan-city-package": "2026釜山城市精选套餐供应合同",
+    "songjeong-surf": "2026松亭冲浪课程供应合同",
+    "busan-city-tour": "2026釜山城市精选旅游供应合同",
     "gijang-glamping": "2026机张海景豪华露营供应合同",
   },
 };
@@ -110,11 +110,11 @@ const CLAUSE_TRANSLATIONS: Record<Exclude<DocLang, "ko">, Record<string, Record<
       "제3조": ["Adverse Weather", "If the tour is cancelled due to adverse weather, the full amount will be refunded or the schedule will be changed."],
     },
     "songjeong-surf": {
-      "제1조": ["Purpose", "This agreement sets the supply conditions for the surfing lesson package."],
+      "제1조": ["Purpose", "This agreement sets the supply conditions for the surfing lesson product."],
       "제2조": ["Cancellation Policy", "Cancellation is free until one day before use; same-day cancellations are charged the full lesson fee.", "The one-day deadline may create a high cancellation-fee burden when a group reservation changes.", "For group bookings of ten or more, extend the free-cancellation deadline to three days before use."],
     },
-    "busan-city-package": {
-      "제1조": ["Purpose", "This agreement sets the supply conditions for the Busan city package."],
+    "busan-city-tour": {
+      "제1조": ["Purpose", "This agreement sets the supply conditions for the Busan city tour."],
       "제2조": ["Price Structure", "Peak-season and off-season prices are applied separately, with a detailed price schedule attached."],
     },
     "gijang-glamping": {
@@ -144,11 +144,11 @@ const CLAUSE_TRANSLATIONS: Record<Exclude<DocLang, "ko">, Record<string, Record<
       "제3조": ["悪天候時の対応", "悪天候で運航が中止された場合、全額返金または日程変更を行います。"],
     },
     "songjeong-surf": {
-      "제1조": ["契約の目的", "サーフィンレッスンパッケージの供給条件を定めます。"],
+      "제1조": ["契約の目的", "サーフィンレッスン商品の供給条件を定めます。"],
       "제2조": ["取消方針", "利用1日前まで無料で取り消せますが、当日取消はレッスン料金全額を請求します。", "無料取消期限が短く、団体予約変更時の負担が大きくなる可能性があります。", "10名以上の団体予約は無料取消期限を利用3日前まで延長することを推奨します。"],
     },
-    "busan-city-package": {
-      "제1조": ["契約の目的", "釜山シティパッケージ商品の供給条件を定めます。"],
+    "busan-city-tour": {
+      "제1조": ["契約の目的", "釜山シティツアー商品の供給条件を定めます。"],
       "제2조": ["料金構成", "繁忙期・閑散期の料金を分けて適用し、詳細料金表を添付します。"],
     },
     "gijang-glamping": {
@@ -178,11 +178,11 @@ const CLAUSE_TRANSLATIONS: Record<Exclude<DocLang, "ko">, Record<string, Record<
       "제3조": ["恶劣天气处理", "因恶劣天气取消航程时，将全额退款或调整日期。"],
     },
     "songjeong-surf": {
-      "제1조": ["合同目的", "规定冲浪课程套餐的供应条件。"],
+      "제1조": ["合同目的", "规定冲浪课程商品的供应条件。"],
       "제2조": ["取消政策", "使用前1天可免费取消，当天取消时收取全部课程费用。", "免费取消期限较短，团体预订变更时买方可能承担较高费用。", "建议10人以上团体预订的免费取消期限放宽至使用前3天。"],
     },
-    "busan-city-package": {
-      "제1조": ["合同目的", "规定釜山城市套餐产品的供应条件。"],
+    "busan-city-tour": {
+      "제1조": ["合同目的", "规定釜山城市旅游产品的供应条件。"],
       "제2조": ["价格构成", "旺季和淡季价格分别适用，详细价格表作为附件。"],
     },
     "gijang-glamping": {

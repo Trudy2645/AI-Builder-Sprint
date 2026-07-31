@@ -476,7 +476,7 @@ const strings: Record<string, Dict> = {
 
   // ===== Fields for the wizard =====
   "lf.productName": { ko: "상품명", en: "Product name", ja: "商品名", zh: "商品名称" },
-  "lf.productNamePh": { ko: "예: 2026 부산 여름 패키지 객실 공급", en: "e.g. 2026 Busan Summer Room Supply", ja: "例: 2026釜山夏パッケージ客室供給", zh: "例：2026 釜山夏季套餐客房供应" },
+  "lf.productNamePh": { ko: "예: 2026 부산 여름 객실 공급", en: "e.g. 2026 Busan Summer Room Supply", ja: "例: 2026釜山夏客室供給", zh: "例：2026 釜山夏季客房供应" },
   "lf.category": { ko: "유형", en: "Type", ja: "タイプ", zh: "类型" },
   "lf.district": { ko: "지역 (구)", en: "District", ja: "地域 (区)", zh: "地区" },
   "lf.period": { ko: "공급 기간", en: "Supply period", ja: "供給期間", zh: "供应期间" },

@@ -151,7 +151,7 @@ export function Header({
                   <span style={{ fontSize: "13px", lineHeight: 1.5 }}>
                     {t("notif.revision")
                       .replace("{buyer}", "GlobalTrip Japan")
-                      .replace("{title}", "2026 부산 여름 패키지 객실 공급 계약")
+                      .replace("{title}", "2026 부산 여름 객실 공급 계약")
                       .replace("{count}", "3")}
                   </span>
                   <span className="whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 600 }}>
