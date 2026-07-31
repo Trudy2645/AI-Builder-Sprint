@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_database_session
 from app.domain.contracts.service import ContractService
 from app.domain.listings.service import PublicListingService
+from app.domain.notifications.service import NotificationService
 from app.domain.pricing.service import PriceCalculator, PriceEstimateService
 from app.domain.profiles.service import ProfileService
 from app.domain.revisions.service import RevisionService
@@ -13,6 +14,10 @@ from app.domain.seller_listings.service import SellerListingService
 from app.integrations.exchange_rates import ExchangeRateProvider, FakeExchangeRateProvider
 from app.repositories.contracts import ContractRepository, SqlAlchemyContractRepository
 from app.repositories.listings import PublicListingRepository, SqlAlchemyPublicListingRepository
+from app.repositories.notifications import (
+    NotificationRepository,
+    SqlAlchemyNotificationRepository,
+)
 from app.repositories.pricing import PriceTermsRepository, SqlAlchemyPriceTermsRepository
 from app.repositories.profiles import ProfileRepository, SqlAlchemyProfileRepository
 from app.repositories.revisions import RevisionRepository, SqlAlchemyRevisionRepository
@@ -32,6 +37,18 @@ def get_public_listing_service(
     repository: Annotated[PublicListingRepository, Depends(get_public_listing_repository)],
 ) -> PublicListingService:
     return PublicListingService(repository)
+
+
+def get_notification_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> NotificationRepository:
+    return SqlAlchemyNotificationRepository(session)
+
+
+def get_notification_service(
+    repository: Annotated[NotificationRepository, Depends(get_notification_repository)],
+) -> NotificationService:
+    return NotificationService(repository)
 
 
 def get_price_terms_repository(

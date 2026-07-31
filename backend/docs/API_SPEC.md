@@ -256,6 +256,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 계약 버전·비교 | `GET /contracts/{id}/versions`, `GET /contracts/{id}/versions/compare` | 구현 |
 | 서명 전 최종 승인 | `POST /contracts/{id}/versions/{version_id}/approve`, `GET /contracts/{id}/versions/{version_id}/approvals` | 구현 |
 | 셀러 마이페이지 | `GET /me`, `PATCH /me`, `GET/PATCH /organizations/{id}` | 구현 |
+| 알림·계약 이력 | `GET/PATCH /notifications`, `GET /contracts/{id}/audit-events` | 구현 |
 
 ## 5. 인증·가입·프로필
 
@@ -985,15 +986,50 @@ GET <https://api.modusign.co.kr/documents/{provider_document_id}>
 
 ## 11. 알림·마이페이지·운영
 
-### `GET /notifications?unread_only=true`
+### `[구현] GET /notifications?unread_only=true&limit=20`
 
-`revision_requested`, `revision_decided`, `signature_requested`, `signature_completed`, `listing_expiring` 알림을 반환한다.
+로그인한 사용자 본인의 알림을 최신순으로 반환한다. `unread_count`는 현재 목록의
+`limit`과 관계없는 전체 미확인 알림 수다. 지원하는 업무 알림에는
+`revision_requested`, `revision_decided`, `seller_response`,
+`final_approval_requested`, `signature_requested`, `signature_completed`,
+`listing_expiring`이 포함된다.
 
-### `PATCH /notifications/{id}`
+```json
+{
+  "data": {
+    "items": [
+      {
+        "id": "<notification-id>",
+        "notification_type": "revision_decided",
+        "title": "수정 요청 응답",
+        "body": "셀러가 수정 요청에 응답했습니다.",
+        "resource_type": "revision_request",
+        "resource_id": "<revision-request-id>",
+        "is_read": false,
+        "read_at": null,
+        "created_at": "2026-07-31T03:00:00Z"
+      }
+    ],
+    "unread_count": 1
+  },
+  "meta": { "request_id": "..." }
+}
+```
+
+셀러가 조회할 때 자신이 속한 조직의 `published|paused` 공고 중 공급 종료일이
+7일 이내인 공고를 `listing_expiring`으로 생성한다. `(사용자, 공고, 종료일)` 단위
+dedupe key로 같은 알림을 중복 생성하지 않는다. 별도 scheduler가 없으므로 조회 전
+미리 전송되는 push 알림은 이번 범위가 아니다.
+
+### `[구현] PATCH /notifications/{id}`
 
 ```json
 { "read": true }
 ```
+
+본인 알림만 읽음 처리할 수 있고 같은 요청을 반복해도 최초 `read_at`을 유지한다.
+`read=false`로 되돌리는 기능은 제공하지 않는다. 다른 사용자의 알림 id도
+`NOTIFICATION_NOT_FOUND`로 응답한다.
 
 ### `GET /organizations/{id}` / `PATCH /organizations/{id}`
 
@@ -1003,9 +1039,23 @@ GET <https://api.modusign.co.kr/documents/{provider_document_id}>
 
 사업자등록증은 private document로 업로드하고 organization 소유권을 기록한다. 파일을 교체해도 검증 상태는 서버의 별도 승인 흐름에서만 변경한다.
 
-### `GET /contracts/{id}/audit-events`
+### `[구현] GET /contracts/{id}/audit-events`
 
-공고 snapshot, 계약 생성, 수정 요청 송수신, 항목별 결정, 버전 생성, 서명 동기화를 append-only로 반환한다.
+공고 snapshot, 계약 생성, 수정 요청 송수신, 항목별 결정, 버전 생성, 서명 동기화를
+시간순 append-only 이력으로 반환한다. 개인 바이어는 `contracts.buyer_user_id`, 셀러는
+`X-Organization-Id`와 organization membership으로 권한을 확인한다. 개인정보 노출을
+줄이기 위해 `actor_user_id`는 응답하지 않는다.
+
+마이페이지의 계약 통계는 새 API를 중복 추가하지 않는다. 바이어는
+`GET /me/contracts`의 `bucket`을 집계하고 `has_unread_response`를 badge로 표시한다.
+셀러는 `GET /seller/dashboard`의 `contract_counts`를 사용한다. `signed`이면서
+`service_end_date < today`인 바이어 계약만 조회 시 `finished`로 계산하며 DB 계약
+상태를 변경하지 않는다.
+
+최종안의 한쪽 당사자가 먼저 승인하면 반대 당사자에게
+`final_approval_requested`를 생성한다. 전자서명 브랜치는 요청·완료 시 각각
+`signature_requested`, `signature_completed` 알림을 같은 notifications 테이블에
+연결해야 한다.
 
 ## 12. FastAPI 모듈 구조
 
