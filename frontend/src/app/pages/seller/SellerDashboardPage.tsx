@@ -45,14 +45,15 @@ const requestStatusTone: Record<ReceivedRequest["status"], { bg: string; color: 
 };
 
 export function SellerDashboardPage() {
-  const { t, companyName } = useApp();
+  const { t, companyName, isDemoSession } = useApp();
   const navigate = useNavigate();
   const { listings, publicCount } = useListings();
-  const company = companyName && companyName !== "GlobalTrip Japan" ? companyName : SELLER_FALLBACK;
-  const newRequestCount = receivedRequests.filter((request) => request.status === "new").length;
-  const negotiatingCount = receivedRequests.filter((request) => request.status === "negotiating").length;
-  const signingCount = receivedRequests.filter((request) => request.status === "signing").length;
-  const signedThisMonthCount = receivedRequests.filter((request) => request.status === "signed" && request.createdAt.startsWith("2026.07")).length;
+  const company = companyName || (isDemoSession ? SELLER_FALLBACK : "계정 정보 없음");
+  const sellerRequests = isDemoSession ? receivedRequests : [];
+  const newRequestCount = sellerRequests.filter((request) => request.status === "new").length;
+  const negotiatingCount = sellerRequests.filter((request) => request.status === "negotiating").length;
+  const signingCount = sellerRequests.filter((request) => request.status === "signing").length;
+  const signedThisMonthCount = sellerRequests.filter((request) => request.status === "signed" && request.createdAt.startsWith("2026.07")).length;
 
   const stats: Stat[] = [
     { key: "public", labelKey: "sdash.stat.public", value: publicCount, icon: Globe, color: "var(--success)", bg: "var(--success-soft)", path: "/seller/listings?status=public" },
@@ -63,7 +64,7 @@ export function SellerDashboardPage() {
   ];
 
   const recent = listings.slice(0, 5);
-  const recentRequests = receivedRequests.slice(0, 4);
+  const recentRequests = sellerRequests.slice(0, 4);
 
   return (
     <div>

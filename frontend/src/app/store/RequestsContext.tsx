@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useApp } from "../context/AppContext";
 
 export type RequestStatus =
   | "draft" // 작성 중
@@ -57,7 +58,7 @@ const seed: SentRequest[] = [
     id: "req-summer-main",
     contractId: "ocean-stay-2026-summer",
     seller: "해운대 오션스테이",
-    title: "2026 부산 여름 패키지 객실 공급 계약",
+    title: "2026 부산 여름 객실 공급 계약",
     type: "revision",
     status: "reviewing",
     createdAt: "2026.07.26",
@@ -120,7 +121,7 @@ const seed: SentRequest[] = [
     id: "req-seed-2",
     contractId: "songjeong-surf",
     seller: "송정 서핑클럽",
-    title: "2026 송정 서핑 강습 패키지 공급 계약",
+    title: "2026 송정 서핑 강습 상품 공급 계약",
     type: "asis",
     status: "completed",
     createdAt: "2026.07.18",
@@ -146,9 +147,9 @@ const seed: SentRequest[] = [
   },
   {
     id: "req-seed-4",
-    contractId: "busan-city-package",
+    contractId: "busan-city-tour",
     seller: "부산 시티투어 파트너스",
-    title: "2026 부산 시티 하이라이트 패키지 공급 계약",
+    title: "2026 부산 시티 하이라이트 투어 공급 계약",
     type: "revision",
     status: "completed",
     createdAt: "2026.05.30",
@@ -157,7 +158,12 @@ const seed: SentRequest[] = [
 ];
 
 export function RequestsProvider({ children }: { children: ReactNode }) {
-  const [requests, setRequests] = useState<SentRequest[]>(seed);
+  const { isDemoSession } = useApp();
+  const [requests, setRequests] = useState<SentRequest[]>([]);
+
+  useEffect(() => {
+    setRequests(isDemoSession ? seed : []);
+  }, [isDemoSession]);
 
   const addRequest: RequestsContextValue["addRequest"] = (r) => {
     const now = new Date();

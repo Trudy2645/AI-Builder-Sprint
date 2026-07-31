@@ -35,10 +35,7 @@ export function SignupCompletePage() {
           className="mt-2 w-full"
           style={{ background: "var(--navy)" }}
           onClick={() => {
-            login(
-              role,
-              companyName || (role === "buyer" ? "GlobalTrip Japan" : "해운대 오션스테이"),
-            );
+            login(role, companyName);
             navigate(`/${role}`);
           }}
         >

@@ -45,7 +45,7 @@ function NegotiatingView({ base }: { base: string }) {
               </Badge>
               <VersionBadge version={request?.currentVersion || "v3"} />
             </div>
-            <h2 style={{ color: "var(--navy)" }}>{request?.title || "2026 부산 여름 패키지 객실 공급 계약"}</h2>
+            <h2 style={{ color: "var(--navy)" }}>{request?.title || "2026 부산 여름 객실 공급 계약"}</h2>
             <p className="mt-1 text-sm text-muted-foreground">GlobalTrip Japan ↔ 해운대 오션스테이</p>
           </div>
           <div className="text-right">
@@ -104,7 +104,7 @@ function ContractsView({ base }: { base: string }) {
         <Card className="p-5"><div className="text-sm text-muted-foreground">전자서명 완료율</div><div className="mt-2 text-3xl font-bold" style={{ color: "var(--ocean)" }}>100%</div></Card>
       </div>
       <div className="mt-6 space-y-3 md:hidden">
-        {(rows.length ? rows : [{ id: "completed-demo", seller: "해운대 오션스테이", title: "2026 부산 여름 패키지 객실 공급 계약", createdAt: "2026.07.29", currentVersion: "v4" as const }]).map((request) => (
+        {(rows.length ? rows : [{ id: "completed-demo", seller: "해운대 오션스테이", title: "2026 부산 여름 객실 공급 계약", createdAt: "2026.07.29", currentVersion: "v4" as const }]).map((request) => (
           <Card key={request!.id} className="p-4">
             <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 text-base" style={{ color: "var(--navy)" }}>{request!.title}</h3><p className="mt-1 truncate text-sm text-muted-foreground">{request!.seller}</p></div><VersionBadge version={request!.currentVersion || "v4"} /></div>
             <div className="mt-3 border-y border-border py-3 text-sm"><span className="text-muted-foreground">체결일</span><span className="float-right">{bothSigned ? "2026.07.29" : request!.createdAt}</span></div>
@@ -116,7 +116,7 @@ function ContractsView({ base }: { base: string }) {
         <div className="grid min-w-[760px] grid-cols-[1.3fr_1.8fr_1fr_.8fr_1fr] gap-4 border-b bg-muted/40 px-5 py-3 text-xs font-semibold text-muted-foreground">
           <div>상대 업체</div><div>계약명</div><div>체결일</div><div>최종 버전</div><div>작업</div>
         </div>
-        {(rows.length ? rows : [{ id: "completed-demo", seller: "해운대 오션스테이", title: "2026 부산 여름 패키지 객실 공급 계약", createdAt: "2026.07.29", currentVersion: "v4" as const }]).map((request) => (
+        {(rows.length ? rows : [{ id: "completed-demo", seller: "해운대 오션스테이", title: "2026 부산 여름 객실 공급 계약", createdAt: "2026.07.29", currentVersion: "v4" as const }]).map((request) => (
           <div key={request!.id} className="grid min-w-[760px] grid-cols-[1.3fr_1.8fr_1fr_.8fr_1fr] items-center gap-4 border-b px-5 py-4 last:border-b-0">
             <div className="font-semibold">{request!.seller}</div>
             <div className="truncate">{request!.title}</div>
@@ -148,7 +148,7 @@ function SellerProfileView() {
             {[
               [UserRound, "대표자", "김민수"], [IdCard, "사업자등록번호", "617-81-20260"],
               [Mail, "담당자 이메일", "contract@oceanstay.co.kr"], [Phone, "전화번호", "051-740-2026"],
-              [MapPin, "사업장 주소", "부산광역시 해운대구 해운대해변로 264"], [FileCheck2, "공급 분야", "숙박 · 패키지"],
+              [MapPin, "사업장 주소", "부산광역시 해운대구 해운대해변로 264"], [FileCheck2, "공급 분야", "숙박"],
             ].map(([Icon, label, value]) => {
               const RowIcon = Icon as typeof Building2;
               return <div key={String(label)} className="min-w-0 rounded-lg border border-border p-4"><div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"><RowIcon className="size-3.5 shrink-0" />{String(label)}</div><div className={String(value).includes("@") ? "mt-1 break-all font-semibold" : "mt-1 break-words font-semibold"}>{String(value)}</div></div>;

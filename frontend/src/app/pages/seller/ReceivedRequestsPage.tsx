@@ -31,14 +31,15 @@ const statusTone: Record<ReceivedRequest["status"], { bg: string; color: string;
 };
 
 export function ReceivedRequestsPage() {
-  const { t } = useApp();
+  const { t, isDemoSession } = useApp();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const selected = params.get("status") as RequestTab | null;
   const tab: RequestTab = selected && TABS.includes(selected) ? selected : "all";
-  const rows = tab === "all" ? receivedRequests : receivedRequests.filter((r) => r.status === tab);
+  const sourceRows = isDemoSession ? receivedRequests : [];
+  const rows = tab === "all" ? sourceRows : sourceRows.filter((r) => r.status === tab);
   const counts = TABS.reduce<Record<string, number>>((acc, current) => {
-    acc[current] = current === "all" ? receivedRequests.length : receivedRequests.filter((r) => r.status === current).length;
+    acc[current] = current === "all" ? sourceRows.length : sourceRows.filter((r) => r.status === current).length;
     return acc;
   }, {});
 

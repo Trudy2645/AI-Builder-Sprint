@@ -32,6 +32,7 @@ export function Sidebar({ role, open, onNavigate }: { role: Role; open: boolean;
                 <li key={item.path}>
                   <NavLink
                     to={item.path}
+                    end={item.path === "/seller/listings"}
                     onClick={onNavigate}
                     tabIndex={open ? 0 : -1}
                     className={({ isActive }) =>
