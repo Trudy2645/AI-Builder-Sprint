@@ -280,7 +280,20 @@ def build_context(*, actor_id: UUID = SELLER_ID, public: bool = False):
                 chunk_id="chunk-1",
                 score=0.93,
                 excerpt="공식 취소 기준 발췌",
-                metadata={"source_type": "official", "page": 4},
+                metadata={
+                    "corpus": "official_evidence",
+                    "status": "active",
+                    "party_type": "B2C_individual",
+                    "category_common": True,
+                    "category_accommodation": True,
+                    "effective_from_epoch": 0,
+                    "effective_to_epoch": 253402300799,
+                    "document_version_id": str(uuid4()),
+                    "content_sha256": "a" * 64,
+                    "page_start": 4,
+                    "page_end": 4,
+                    "section_path": "별표 2 > 숙박업",
+                },
             )
         ],
         provider_request_id="search-request",
@@ -334,6 +347,14 @@ def test_listing_review_runs_bounded_agent_and_persists_private_seller_finding(
     ]
     assert repository.listing_target == repository.original_version
     assert len(provider.structured_requests) == 2
+    filters = provider.search_requests[0].filters
+    assert filters["type"] == "and"
+    assert {item.get("key") for item in filters["filters"] if "key" in item} >= {
+        "status",
+        "party_type",
+        "effective_from_epoch",
+        "effective_to_epoch",
+    }
 
 
 def test_buyer_contract_review_can_publish_only_buyer_finding(app: FastAPI) -> None:
@@ -538,6 +559,47 @@ async def test_low_confidence_official_hit_is_not_exposed_as_evidence() -> None:
     result = await tools.execute("search_official_evidence", {"query": "숙박 취소 기준"})
     assert result.content["hits"] == []
     assert tools.evidence == {}
+
+
+@pytest.mark.asyncio
+async def test_official_hit_without_provider_page_uses_pdf_locator() -> None:
+    class Locator:
+        async def locate(self, file_id: str, excerpt: str):
+            assert file_id == "official-file"
+            assert excerpt == "공식 취소 기준 발췌"
+            return {"page_start": 7, "page_end": 7}
+
+    provider = FakeAIProvider()
+    provider.search_result = FileSearchResult(
+        hits=[
+            FileSearchHit(
+                file_id="official-file",
+                score=0.45,
+                excerpt="공식 취소 기준 발췌",
+                metadata={
+                    "corpus": "official_evidence",
+                    "status": "active",
+                    "party_type": "B2C_individual",
+                    "category_common": True,
+                    "category_accommodation": True,
+                    "effective_from_epoch": 0,
+                    "effective_to_epoch": 253402300799,
+                },
+            )
+        ]
+    )
+    tools = ContractReviewTools(
+        clauses=clauses(),
+        category="accommodation",
+        provider=provider,
+        official_vector_store_id="official-store",
+        template_vector_store_id=None,
+        evidence_locator=Locator(),
+    )
+
+    result = await tools.execute("search_official_evidence", {"query": "숙박 취소 기준"})
+
+    assert result.content["hits"][0]["metadata"]["page_start"] == 7
 
 
 @pytest.mark.asyncio

@@ -313,15 +313,15 @@ RAG는 두 저장소를 논리적으로 분리한다.
 | `official_contract_knowledge` | 공식 법령·표준약관·공식 분쟁 기준·관광업 공식 지침 | 위험 설명의 외부 근거 후보 |
 | `busan_link_templates` | 팀이 승인한 개인 관광객용 자동차 렌탈·액티비티·투어·숙박 계약 템플릿과 clause library | 계약 생성과 대안 문구 |
 
-선택적 세 번째 저장소:
+선택적 네 번째 저장소:
 
 | 저장소 | 자료 | 조건 |
 | --- | --- | --- |
 | `approved_historical_contracts` | 비식별화되고 사용 승인을 받은 과거 계약 | 개인정보 제거와 사용 권한이 확인된 경우만 |
 
-MVP에서는 세 번째 저장소를 만들지 않는다. 셀러가 업로드한 사용자 계약서는 공용 Vector Store에 올리지 않고 Document Parse/Information Extract 결과를 조항별로 직접 분석한다. 실제 provider 기능명이 Universal Extraction이면 adapter 내부에서만 매핑한다. Vector Store는 검수된 공식 근거 PDF와 팀 승인 템플릿에만 사용한다.
+MVP에서는 과거 계약 저장소를 만들지 않는다. 셀러가 업로드한 사용자 계약서는 공용 Vector Store에 올리지 않고 Document Parse/Information Extract 결과를 조항별로 직접 분석한다. 실제 provider 기능명이 Universal Extraction이면 adapter 내부에서만 매핑한다. Vector Store는 검수된 공식 근거 PDF, 팀 승인 템플릿, 승인 판례만 사용한다.
 
-공식 자료는 PDF를 그대로 Files API에 업로드한다. Markdown 변환은 필수가 아니며, 텍스트가 없는 스캔 PDF나 검색 품질이 기준에 미달한 문서만 Document Parse/OCR 또는 정규화 대상으로 돌린다. 국내여행 표준약관은 `common`에 한 번 저장하지만 검색 metadata는 `contract_categories=["tour"]`로 제한한다.
+공식 자료는 PDF를 그대로 Files API에 업로드한다. 텍스트가 없는 스캔 PDF나 provider가 직접 index하지 못한 장문 PDF만 Document Parse/OCR, 정규화 PDF 또는 page-marked text 파생물로 재시도한다. 파생물을 쓰더라도 원본 PDF와 source hash는 immutable Storage에 유지한다. 국내여행 표준약관은 `common`에 한 번 저장하지만 검색 metadata는 `contract_categories=["tour"]`로 제한한다.
 
 문서 metadata:
 
@@ -623,6 +623,12 @@ flowchart LR
 검색 결과가 없거나 관련성이 낮으면 `grounding_status=insufficient_evidence`로 저장하고 근거가 있는 것처럼 표현하지 않는다.
 
 화면의 `[1]`, `[2]` 근거 번호는 저장된 evidence id를 가리킨다. 번호 클릭 시 내부 viewer가 immutable Storage snapshot의 `page_start`로 이동하고, 가능한 경우 bbox로 해당 문장을 하이라이트한다. 공식 원문 URL도 별도 버튼으로 제공한다.
+
+구현 검색은 `official_contract_knowledge`, `busan_link_templates`, `case_reference`를 서로 다른
+Vector Store로 유지한다. `status=active`, 시행일, `party_type=B2C_individual`, 현재 category와
+선택적 activity subtype을 provider attribute filter로 제한하고, 채택 직전 PostgreSQL registry에서
+동일 범위를 다시 검증한다. provider page가 없으면 immutable 원본 PDF에서 excerpt 위치를
+결정하고, page를 찾지 못한 결과는 clickable evidence나 grounded finding으로 저장하지 않는다.
 
 ## 8. 위험도와 중요도
 

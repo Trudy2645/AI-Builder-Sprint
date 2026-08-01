@@ -695,7 +695,7 @@ Document Parse 전체 결과는 private `ai-artifacts` bucket에 JSON으로 보�
 `documents.extracted_data`에 저장한다. 후보는 셀러가 명시적으로 확인하기 전까지 실제
 `listing_terms`, `listing_versions`, `listing_clauses`에 반영하지 않는다.
 
-공식 RAG 자료는 MVP에서 PDF를 Markdown으로 변환하지 않고 그대로 Upstage Files API에 업로드한다. 텍스트가 없는 스캔 PDF만 Document Parse/OCR을 거친 검색 가능한 PDF 또는 parse artifact를 사용한다. 국내여행 표준약관은 물리적으로 `common` corpus에 한 번만 저장하되 `contract_categories=["tour"]`로 제한한다.
+공식 RAG 자료는 기본적으로 PDF를 그대로 Upstage Files API에 업로드한다. 텍스트가 없는 스캔 PDF나 provider가 직접 index하지 못한 장문 PDF만 Document Parse/OCR, 정규화 PDF 또는 page-marked text 파생물을 사용한다. 파생물 hash와 mode는 DB에 기록하고 열람 URL은 항상 immutable 원본 PDF를 가리킨다. 국내여행 표준약관은 물리적으로 `common` corpus에 한 번만 저장하되 `contract_categories=["tour"]`로 제한한다.
 
 과제/API 명세에서는 이 단계를 `Information Extract`로 부른다. 실제 Upstage SDK 또는 콘솔에서 기능명이 `Universal Extraction`이면 provider adapter 내부에서만 해당 이름을 사용한다. 외부 job type과 domain interface는 `information_extract`로 유지한다.
 adapter는 공식 Universal Extraction 형식에 맞춰 `/v1/information-extraction`에 원문을 base64
@@ -719,9 +719,14 @@ Information Extract의 필수 top-level 결과는 다음 일곱 영역이다.
 
 각 값은 `value`, `confidence`, `source_page`, `source_quote`, 가능한 경우 `bbox`를 함께 가진다. 필수 영역이 문서에 없으면 값을 만들어내지 않고 `null`과 `missing=true`를 반환해 리스크 분석 입력으로 사용한다.
 
-### `GET /ai-findings/{finding_id}/evidence/{evidence_id}`
+### `[구현] GET /ai-findings/{finding_id}/evidence/{evidence_id}`
 
-AI 패널의 `[1]`, `[2]` 근거 번호를 클릭할 때 호출한다. finding 조회 권한과 evidence 소속을 확인한 후 내부 PDF viewer URL, page/section/bbox, 짧은 excerpt, 공식 원문 URL, 시행일과 조회일을 반환한다. Storage 원본은 private으로 유지하고 짧은 만료시간의 signed URL만 viewer에 제공한다.
+AI 패널의 `[1]`, `[2]` 근거 번호를 클릭할 때 호출한다. finding 조회 권한과 evidence 소속을
+확인한 후 내부 PDF viewer URL, 짧은 만료시간의 `signed_pdf_url`, 만료 시각,
+page/section/bbox, 짧은 excerpt, 공식 원문 URL, 시행일과 조회일을 반환한다. Storage 원본은
+private으로 유지하며 signed URL과 Upstage 임시 URL은 DB에 저장하지 않는다. 공개 계약
+미리보기의 buyer finding에는 실제 `rag_evidence.id`를 가리키는 `evidence_refs`를 `[1]` 형식으로
+포함한다.
 
 ### `[구현] POST /ai-findings/{finding_id}/apply`
 

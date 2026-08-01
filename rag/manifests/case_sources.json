@@ -1,0 +1,233 @@
+{
+  "schema_version": "1.0",
+  "retrieved_at": "2026-08-01T09:15:00Z",
+  "sources": [
+    {
+      "source_key": "case_2002다27620",
+      "case_number": "2002다27620",
+      "case_name": "구상금",
+      "court": "대법원",
+      "decision_date": "2002-09-24",
+      "contract_categories": [
+        "vehicle_rental"
+      ],
+      "issues": [
+        "무면허운전 면책약관",
+        "도난운전",
+        "피보험자 묵시적 승인"
+      ],
+      "source_type": "case_reference",
+      "artifact_type": "hwpml_text_snapshot",
+      "official_source_url": "https://www.law.go.kr/LSW/precInfoP.do?evtNo=2002%EB%8B%A427620",
+      "source_binary_sha256": "38174295285ea683fdd928b15063c773d672b1e6e70e77c49e2e44dc16ca1d63",
+      "local_path": "rag/data/case_reference/vehicle_rental/case_2002da27620__2002-09-24.pdf",
+      "relevance": "medium",
+      "status": "approved",
+      "approved_by": "kimminseo",
+      "approved_at": "2026-08-01T09:15:00Z",
+      "page_count": 2,
+      "file_size": 93358,
+      "content_sha256": "7a14df7d5b47237b3d61708093cddca45b730662d165a665add4ec059af5ba54",
+      "text_characters": 3651
+    },
+    {
+      "source_key": "case_2014나7159",
+      "case_number": "2014나7159",
+      "case_name": "보증금반환",
+      "court": "서울서부지방법원",
+      "decision_date": "2015-07-17",
+      "contract_categories": [
+        "tour"
+      ],
+      "issues": [
+        "여행계약 해제",
+        "질병·상해 취소",
+        "부당한 환불 제한 약관"
+      ],
+      "source_type": "case_reference",
+      "artifact_type": "hwpml_text_snapshot",
+      "official_source_url": "https://law.go.kr/LSW/precInfoP.do?mode=0&precSeq=179086",
+      "source_binary_sha256": "a5b6e18ef7d825f3efd72ef2f42caab6f49bf0f2cb0a3def2e4a568146012a85",
+      "local_path": "rag/data/case_reference/tour/case_2014na7159__2015-07-17.pdf",
+      "relevance": "high",
+      "status": "approved",
+      "approved_by": "kimminseo",
+      "approved_at": "2026-08-01T09:15:00Z",
+      "page_count": 3,
+      "file_size": 97453,
+      "content_sha256": "1cd1c52607ff3082d92b6995d697e8bf5ff73ebaa6ce0db282023e7d466dbcfe",
+      "text_characters": 3889
+    },
+    {
+      "source_key": "case_2016다6293",
+      "case_number": "2016다6293",
+      "case_name": "손해배상(기)",
+      "court": "대법원",
+      "decision_date": "2017-12-13",
+      "contract_categories": [
+        "tour",
+        "activity"
+      ],
+      "issues": [
+        "기획여행업자 안전배려의무",
+        "위험 고지",
+        "자유시간 사고"
+      ],
+      "source_type": "case_reference",
+      "artifact_type": "hwpml_text_snapshot",
+      "official_source_url": "https://www.law.go.kr/LSW/precInfoP.do?precSeq=186501",
+      "source_binary_sha256": "cc6114dec94235796975934949595c3eb41b0bba972262d06173ba3049e5f838",
+      "local_path": "rag/data/case_reference/tour/case_2016da6293__2017-12-13.pdf",
+      "relevance": "high",
+      "status": "approved",
+      "approved_by": "kimminseo",
+      "approved_at": "2026-08-01T09:15:00Z",
+      "page_count": 3,
+      "file_size": 124498,
+      "content_sha256": "611cda60360a67a23b47df789015203b0701f636ac38ce3a0ca9e351d4c7b314",
+      "text_characters": 6078
+    },
+    {
+      "source_key": "case_2019누38108",
+      "case_number": "2019누38108",
+      "case_name": "시정명령취소",
+      "court": "서울고등법원",
+      "decision_date": "2020-05-20",
+      "contract_categories": [
+        "accommodation"
+      ],
+      "issues": [
+        "온라인 숙박 플랫폼",
+        "환불불가 약관",
+        "약관법상 사업자"
+      ],
+      "source_type": "case_reference",
+      "artifact_type": "official_pdf",
+      "official_source_url": "https://www.law.go.kr/LSW/precInfoP.do?precSeq=237657",
+      "source_binary_sha256": "8424567b97f9023fb717c92a8862b3ae7c195bf08a844ab1bbd76f2f863c3e7a",
+      "local_path": "rag/data/case_reference/accommodation/case_2019nu38108__2020-05-20.pdf",
+      "relevance": "high",
+      "status": "approved",
+      "approved_by": "kimminseo",
+      "approved_at": "2026-08-01T09:15:00Z",
+      "page_count": 15,
+      "file_size": 154970,
+      "content_sha256": "8424567b97f9023fb717c92a8862b3ae7c195bf08a844ab1bbd76f2f863c3e7a",
+      "text_characters": 25959,
+      "procedural_note": "국가법령정보센터 표기상 상고"
+    },
+    {
+      "source_key": "case_2020다277306",
+      "case_number": "2020다277306",
+      "case_name": "손해배상(기)",
+      "court": "대법원",
+      "decision_date": "2021-10-14",
+      "contract_categories": [
+        "vehicle_rental"
+      ],
+      "issues": [
+        "재산적 손해액 산정",
+        "간접사실",
+        "추정치 사용"
+      ],
+      "source_type": "case_reference",
+      "artifact_type": "hwpml_text_snapshot",
+      "official_source_url": "https://law.go.kr/LSW/precInfoP.do?precSeq=223397",
+      "source_binary_sha256": "bf5b0d246a4c0f782bfe8a0811e33ae8cc86a69132b5355e00e6fa0ad9e01474",
+      "local_path": "rag/data/case_reference/vehicle_rental/case_2020da277306__2021-10-14.pdf",
+      "relevance": "low",
+      "status": "approved",
+      "approved_by": "kimminseo",
+      "approved_at": "2026-08-01T09:15:00Z",
+      "page_count": 3,
+      "file_size": 114764,
+      "content_sha256": "19afb34d1eb3edc2c403f43867a5075b626f6b224622105b61c99a0b45493d03",
+      "text_characters": 4687,
+      "scope_note": "B2B 렌터카 공급 협약 분쟁으로 소비자 계약 검토에서는 보조 근거로만 사용"
+    },
+    {
+      "source_key": "case_94다37844",
+      "case_number": "94다37844",
+      "case_name": "구상금",
+      "court": "대법원",
+      "decision_date": "1997-08-26",
+      "contract_categories": [
+        "vehicle_rental"
+      ],
+      "issues": [
+        "렌터카 공동운행자",
+        "동승자 책임",
+        "구상관계"
+      ],
+      "source_type": "case_reference",
+      "artifact_type": "hwpml_text_snapshot",
+      "official_source_url": "https://www.law.go.kr/LSW/precInfoP.do?evtNo=94%EB%8B%A437844",
+      "source_binary_sha256": "767029d7718528162189a83659c03fd0cd537fcc94ec658b5d9577a5d5ebdc3c",
+      "local_path": "rag/data/case_reference/vehicle_rental/case_94da37844__1997-08-26.pdf",
+      "relevance": "medium",
+      "status": "approved",
+      "approved_by": "kimminseo",
+      "approved_at": "2026-08-01T09:15:00Z",
+      "page_count": 3,
+      "file_size": 96368,
+      "content_sha256": "ece7164ca8a5b1d3257c2ff779845fcd12eb46f8b9d7b0d07e70caf48ebcc5e7",
+      "text_characters": 4980
+    },
+    {
+      "source_key": "case_95다53300",
+      "case_number": "95다53300",
+      "case_name": "구상금",
+      "court": "대법원",
+      "decision_date": "1996-06-11",
+      "contract_categories": [
+        "vehicle_rental"
+      ],
+      "issues": [
+        "전손 차량 손해액",
+        "교환가격",
+        "폐차대금"
+      ],
+      "source_type": "case_reference",
+      "artifact_type": "hwpml_text_snapshot",
+      "official_source_url": "https://www.law.go.kr/LSW/precInfoP.do?mode=0&precSeq=113766",
+      "source_binary_sha256": "e53d0d7b75632e664fecd12e8340b0142259a03c797038b8ebdbc89e7d093c72",
+      "local_path": "rag/data/case_reference/vehicle_rental/case_95da53300__1996-06-11.pdf",
+      "relevance": "medium",
+      "status": "approved",
+      "approved_by": "kimminseo",
+      "approved_at": "2026-08-01T09:15:00Z",
+      "page_count": 3,
+      "file_size": 104447,
+      "content_sha256": "8cae43accb8ae2db8756f5eb8cd1e52712359bfb3a3eda4f4834a6f5fc55b0d8",
+      "text_characters": 4174
+    },
+    {
+      "source_key": "case_96다27971",
+      "case_number": "96다27971",
+      "case_name": "손해배상(자)",
+      "court": "대법원",
+      "decision_date": "1996-12-23",
+      "contract_categories": [
+        "vehicle_rental"
+      ],
+      "issues": [
+        "보험 고지의무",
+        "중요한 사항",
+        "렌터카 유상운송"
+      ],
+      "source_type": "case_reference",
+      "artifact_type": "hwpml_text_snapshot",
+      "official_source_url": "https://www.law.go.kr/LSW/precInfoP.do?evtNo=96%EB%8B%A427971",
+      "source_binary_sha256": "620ad47405a72eed1aafa7d28707465a28933c7b4870d3c1b5e1884cfad25801",
+      "local_path": "rag/data/case_reference/vehicle_rental/case_96da27971__1996-12-23.pdf",
+      "relevance": "medium",
+      "status": "approved",
+      "approved_by": "kimminseo",
+      "approved_at": "2026-08-01T09:15:00Z",
+      "page_count": 4,
+      "file_size": 131463,
+      "content_sha256": "091a9c60cbbb05e4caf597a4c4ca37ee5a976dea7ca821c43eb271b71fef51de",
+      "text_characters": 7950
+    }
+  ]
+}

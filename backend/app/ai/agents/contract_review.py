@@ -165,7 +165,7 @@ class ContractReviewAgent:
             if any(item not in self._tools.evidence for item in candidate.evidence_ids):
                 raise ContractReviewAgentInvalidOutputError
             if candidate.grounding_status == "grounded" and any(
-                self._tools.evidence[item]["source_type"] != "official"
+                self._tools.evidence[item]["source_type"] not in {"official", "case_reference"}
                 for item in candidate.evidence_ids
             ):
                 raise ContractReviewAgentInvalidOutputError

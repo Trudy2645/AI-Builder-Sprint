@@ -20,9 +20,12 @@ from app.ai.schemas.providers import (
     FileSearchHit,
     FileSearchRequest,
     FileSearchResult,
+    KnowledgeFileRecord,
     LanguageModelRequest,
     ParsedBlock,
     ParsedPage,
+    VectorStoreFileRecord,
+    VectorStoreRecord,
 )
 
 __all__ = [
@@ -39,9 +42,12 @@ __all__ = [
     "FileSearchHit",
     "FileSearchRequest",
     "FileSearchResult",
+    "KnowledgeFileRecord",
     "GeneratedContractClause",
     "GeneratedContractDraft",
     "LanguageModelRequest",
+    "VectorStoreFileRecord",
+    "VectorStoreRecord",
     "LocalizedClause",
     "LocalizedFinding",
     "LocalizedPublicContent",

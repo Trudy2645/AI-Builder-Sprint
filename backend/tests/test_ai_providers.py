@@ -15,6 +15,7 @@ from app.ai.providers.upstage import UpstageAIProvider
 from app.ai.schemas import (
     DocumentInput,
     DocumentParseResult,
+    FileSearchRequest,
     LanguageModelRequest,
     ParsedBlock,
     ParsedPage,
@@ -161,6 +162,110 @@ async def test_upstage_rejects_invalid_structured_model_output() -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(AIProviderInvalidResponseError):
             await provider(client).generate_structured(request, SummaryOutput)
+
+
+@pytest.mark.asyncio
+async def test_upstage_manages_separate_vector_store_files_and_attributes() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "GET" and path == "/v2/vector_stores":
+            return httpx.Response(
+                200,
+                request=request,
+                json={"data": [{"id": "vs-existing", "name": "official_contract_knowledge"}]},
+            )
+        if request.method == "POST" and path == "/v2/vector_stores":
+            return httpx.Response(
+                200,
+                request=request,
+                json={"id": "vs-new", "name": "case_reference", "status": "completed"},
+            )
+        if request.method == "POST" and path == "/v2/files":
+            assert b"user_data" in request.read()
+            return httpx.Response(
+                200,
+                request=request,
+                json={"id": "file-1", "filename": "official.pdf"},
+            )
+        if request.method == "POST" and path == "/v2/vector_stores/vs-new/files":
+            body = json.loads(request.read())
+            assert body["attributes"]["party_type"] == "B2C_individual"
+            return httpx.Response(
+                200,
+                request=request,
+                json={"id": "file-1", "status": "in_progress", "last_error": None},
+            )
+        if request.method == "GET" and path == "/v2/vector_stores/vs-new/files/file-1":
+            return httpx.Response(
+                200,
+                request=request,
+                json={"id": "file-1", "status": "completed", "last_error": None},
+            )
+        raise AssertionError(f"unexpected request: {request.method} {path}")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        upstage = provider(client)
+        stores = await upstage.list_vector_stores()
+        created = await upstage.create_vector_store("case_reference")
+        uploaded = await upstage.upload_knowledge_file(
+            "official.pdf", b"%PDF source", "application/pdf"
+        )
+        attached = await upstage.attach_vector_store_file(
+            created.id,
+            uploaded.id,
+            {"party_type": "B2C_individual", "status": "active"},
+        )
+        completed = await upstage.get_vector_store_file(created.id, uploaded.id)
+
+    assert stores[0].name == "official_contract_knowledge"
+    assert attached.status == "in_progress"
+    assert completed.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_upstage_file_search_preserves_page_section_and_bbox() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v2/vector_stores/vs-1/search"
+        body = json.loads(request.read())
+        assert body["filters"]["type"] == "and"
+        return httpx.Response(
+            200,
+            request=request,
+            headers={"x-request-id": "search-1"},
+            json={
+                "data": [
+                    {
+                        "id": "chunk-1",
+                        "file_id": "file-1",
+                        "score": 0.91,
+                        "attributes": {"content_sha256": "a" * 64},
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "공식 근거 발췌",
+                                "page_number": 31,
+                                "section_path": "별표 2 > 숙박업",
+                                "bbox": {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.1},
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+
+    request = FileSearchRequest(
+        query="숙박 취소 기준",
+        vector_store_id="vs-1",
+        filters={"type": "and", "filters": []},
+        top_k=5,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await provider(client).search_files(request)
+
+    assert result.provider_request_id == "search-1"
+    assert result.hits[0].metadata["page_start"] == 31
+    assert result.hits[0].metadata["section_path"] == "별표 2 > 숙박업"
+    assert result.hits[0].metadata["bbox"]["x"] == 0.1
 
 
 @pytest.mark.asyncio

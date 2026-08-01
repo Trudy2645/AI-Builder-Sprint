@@ -168,12 +168,24 @@ class PublicListingDetail(PublicListingCard):
     localized_content: LocalizedPublicContent | None = None
 
 
+class PublicEvidenceReference(BaseModel):
+    id: UUID
+    label: str = Field(pattern=r"^\[[1-9][0-9]*\]$")
+    document_title: str
+    source_kind: Literal["official", "case_reference"]
+    page: int = Field(gt=0)
+    section: str | None = None
+    excerpt: str
+
+
 class PublicFinding(BaseModel):
+    id: UUID | None = None
     clause_id: UUID | None
     severity: Literal["high", "medium", "low", "none"]
     explanation: str
     suggested_text: str | None
     disclaimer: str
+    evidence_refs: list[PublicEvidenceReference] = Field(default_factory=list)
 
 
 class PublicContractPreview(BaseModel):

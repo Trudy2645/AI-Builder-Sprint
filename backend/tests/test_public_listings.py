@@ -209,6 +209,17 @@ class FakePublicListingRepository:
                     disclaimer="법률 자문이 아닌 계약 검토 보조 의견입니다.",
                     id=UUID("50000000-0000-0000-0000-000000000001"),
                     evidence_numbers=[1],
+                    evidence_refs=[
+                        {
+                            "id": "51000000-0000-0000-0000-000000000001",
+                            "label": "[1]",
+                            "document_title": "소비자분쟁해결기준",
+                            "source_kind": "official",
+                            "page": 31,
+                            "section": "별표 2 > 숙박업",
+                            "excerpt": "숙박업 취소 기준",
+                        }
+                    ],
                 )
             ]
         }
@@ -672,11 +683,23 @@ def test_contract_preview_returns_only_public_buyer_finding(
     assert data["body"] == "공개 계약 본문입니다."
     assert data["findings"] == [
         {
+            "id": "50000000-0000-0000-0000-000000000001",
             "clause_id": str(CLAUSE_ID),
             "severity": "medium",
             "explanation": "취소 수수료 확정 시점이 모호합니다.",
             "suggested_text": "무료 취소 기한을 명시해 보세요.",
             "disclaimer": "법률 자문이 아닌 계약 검토 보조 의견입니다.",
+            "evidence_refs": [
+                {
+                    "id": "51000000-0000-0000-0000-000000000001",
+                    "label": "[1]",
+                    "document_title": "소비자분쟁해결기준",
+                    "source_kind": "official",
+                    "page": 31,
+                    "section": "별표 2 > 숙박업",
+                    "excerpt": "숙박업 취소 기준",
+                }
+            ],
         }
     ]
 

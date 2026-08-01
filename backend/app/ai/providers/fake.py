@@ -13,9 +13,12 @@ from app.ai.schemas import (
     ExtractedSection,
     FileSearchRequest,
     FileSearchResult,
+    KnowledgeFileRecord,
     LanguageModelRequest,
     ParsedBlock,
     ParsedPage,
+    VectorStoreFileRecord,
+    VectorStoreRecord,
 )
 
 
@@ -30,6 +33,11 @@ class FakeAIProvider:
         self.parse_result: DocumentParseResult | None = None
         self.extraction_result: ContractExtraction | None = None
         self.search_result = FileSearchResult(hits=[])
+        self.search_requests: list[FileSearchRequest] = []
+        self.vector_stores: dict[str, VectorStoreRecord] = {}
+        self.knowledge_files: dict[str, bytes] = {}
+        self.vector_store_files: dict[tuple[str, str], VectorStoreFileRecord] = {}
+        self.vector_store_attributes: dict[tuple[str, str], dict[str, str | int | bool]] = {}
 
     def queue_failure(self, operation: str, error: AIProviderError) -> None:
         self._failures[operation].append(error)
@@ -94,8 +102,48 @@ class FakeAIProvider:
 
     async def search_files(self, request: FileSearchRequest) -> FileSearchResult:
         self.calls.append(("file_search", request.query))
+        self.search_requests.append(request)
         self._raise_queued("file_search")
         return self.search_result
+
+    async def list_vector_stores(self) -> list[VectorStoreRecord]:
+        self.calls.append(("vector_store_list", "all"))
+        self._raise_queued("vector_store_list")
+        return list(self.vector_stores.values())
+
+    async def create_vector_store(self, name: str) -> VectorStoreRecord:
+        self.calls.append(("vector_store_create", name))
+        self._raise_queued("vector_store_create")
+        record = VectorStoreRecord(id=f"vs-{len(self.vector_stores) + 1}", name=name)
+        self.vector_stores[record.id] = record
+        return record
+
+    async def upload_knowledge_file(
+        self, filename: str, content: bytes, mime_type: str
+    ) -> KnowledgeFileRecord:
+        del mime_type
+        self.calls.append(("knowledge_file_upload", filename))
+        self._raise_queued("knowledge_file_upload")
+        file_id = f"file-{len(self.knowledge_files) + 1}"
+        self.knowledge_files[file_id] = content
+        return KnowledgeFileRecord(id=file_id, filename=filename)
+
+    async def attach_vector_store_file(
+        self, vector_store_id: str, file_id: str, attributes: dict[str, str | int | bool]
+    ) -> VectorStoreFileRecord:
+        self.calls.append(("vector_store_attach", file_id))
+        self._raise_queued("vector_store_attach")
+        record = VectorStoreFileRecord(id=file_id, status="completed")
+        self.vector_store_files[(vector_store_id, file_id)] = record
+        self.vector_store_attributes[(vector_store_id, file_id)] = attributes
+        return record
+
+    async def get_vector_store_file(
+        self, vector_store_id: str, file_id: str
+    ) -> VectorStoreFileRecord:
+        self.calls.append(("vector_store_file_get", file_id))
+        self._raise_queued("vector_store_file_get")
+        return self.vector_store_files[(vector_store_id, file_id)]
 
     def _raise_queued(self, operation: str) -> None:
         queue = self._failures[operation]

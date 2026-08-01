@@ -102,6 +102,7 @@ class PublicFindingRecord:
     disclaimer: str
     id: UUID | None = None
     evidence_numbers: list[int] | None = None
+    evidence_refs: list[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,7 +402,13 @@ class SqlAlchemyPublicListingRepository:
         records = []
         for row in result.mappings().all():
             values = dict(row)
-            values["evidence_numbers"] = list(range(1, len(values.pop("evidence") or []) + 1))
+            evidence = values.pop("evidence") or []
+            values["evidence_numbers"] = list(range(1, len(evidence) + 1))
+            values["evidence_refs"] = [
+                item
+                for item in evidence
+                if isinstance(item, dict) and item.get("id") and item.get("label")
+            ]
             records.append(PublicFindingRecord(**values))
         return records
 

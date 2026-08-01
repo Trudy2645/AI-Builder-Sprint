@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
@@ -137,6 +138,10 @@ class FindingActionVersionConflictError(Exception):
 
 
 class FindingSuggestionConflictError(Exception):
+    pass
+
+
+class RagEvidenceValidationError(Exception):
     pass
 
 
@@ -430,7 +435,7 @@ class SqlAlchemyContractReviewRepository:
                         else None
                     )
                     selected_evidence = [evidence[item] for item in finding.evidence_ids]
-                    await self._session.execute(
+                    inserted = await self._session.execute(
                         text(
                             """
                             insert into public.ai_findings (
@@ -446,7 +451,7 @@ class SqlAlchemyContractReviewRepository:
                                 cast(:grounding_status as public.grounding_status), :confidence,
                                 cast(:source_location as jsonb), cast(:evidence as jsonb),
                                 :disclaimer, :is_public
-                            )
+                            ) returning id
                             """
                         ),
                         {
@@ -476,6 +481,26 @@ class SqlAlchemyContractReviewRepository:
                             "is_public": finding.is_public,
                         },
                     )
+                    finding_id = inserted.scalar_one()
+                    evidence_snapshot = await self._persist_grounded_evidence(
+                        analysis_run_id=analysis_run_id,
+                        finding_id=finding_id,
+                        target=target,
+                        selected_evidence=selected_evidence,
+                    )
+                    if evidence_snapshot:
+                        await self._session.execute(
+                            text(
+                                """
+                                update public.ai_findings set evidence = cast(:evidence as jsonb)
+                                where id = :finding_id
+                                """
+                            ),
+                            {
+                                "finding_id": finding_id,
+                                "evidence": json.dumps(evidence_snapshot, ensure_ascii=False),
+                            },
+                        )
                 await self._session.execute(
                     text(
                         """
@@ -516,6 +541,138 @@ class SqlAlchemyContractReviewRepository:
                 )
         except SQLAlchemyError as exc:
             raise ContractReviewRepositoryError from exc
+
+    async def _persist_grounded_evidence(
+        self,
+        *,
+        analysis_run_id: UUID,
+        finding_id: UUID,
+        target: ContractReviewTargetRecord,
+        selected_evidence: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        snapshots: list[dict[str, Any]] = []
+        effective_on = _effective_date(target.terms)
+        activity_subtype = target.terms.get("activity_subtype")
+        for rank, selected in enumerate(selected_evidence, start=1):
+            metadata = selected.get("metadata") or {}
+            try:
+                document_version_id = UUID(str(metadata["document_version_id"]))
+                page_start = int(metadata["page_start"])
+                page_end = int(metadata.get("page_end") or page_start)
+                content_sha256 = str(metadata["content_sha256"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise RagEvidenceValidationError(
+                    "evidence location metadata is incomplete"
+                ) from exc
+            if page_start < 1 or page_end < page_start:
+                raise RagEvidenceValidationError("evidence page range is invalid")
+            section_path = metadata.get("section_path")
+            bbox = metadata.get("bbox")
+            version = await self._session.execute(
+                text(
+                    """
+                    select kv.id, kv.content_sha256, kd.title, kd.source_url,
+                           kd.knowledge_base_id, kb.corpus_type::text
+                    from public.knowledge_document_versions kv
+                    join public.knowledge_documents kd on kd.id = kv.document_id
+                    join public.knowledge_bases kb on kb.id = kd.knowledge_base_id
+                    where kv.id = :version_id and kv.status = 'active'
+                      and kv.upstage_file_id = :file_id
+                      and kv.content_sha256 = :content_sha256
+                      and kd.party_type = 'B2C_individual'
+                      and :category = any(kd.contract_categories::text[])
+                      and (kv.effective_from is null or kv.effective_from <= :effective_on)
+                      and (kv.effective_to is null or kv.effective_to >= :effective_on)
+                      and (
+                          :activity_subtype is null or cardinality(kd.activity_subtypes) = 0
+                          or :activity_subtype = any(kd.activity_subtypes)
+                      )
+                    """
+                ),
+                {
+                    "version_id": document_version_id,
+                    "file_id": selected.get("file_id"),
+                    "content_sha256": content_sha256,
+                    "category": target.category,
+                    "effective_on": effective_on,
+                    "activity_subtype": activity_subtype,
+                },
+            )
+            version_row = version.mappings().one_or_none()
+            if version_row is None:
+                raise RagEvidenceValidationError("evidence is outside the active knowledge scope")
+            if version_row["corpus_type"] not in {"official", "case_reference"}:
+                raise RagEvidenceValidationError("template content cannot be legal evidence")
+            run_id = uuid4()
+            await self._session.execute(
+                text(
+                    """
+                    insert into public.rag_retrieval_runs (
+                        id, analysis_run_id, knowledge_base_id, query, filters,
+                        knowledge_base_version, top_k, provider_request_id, result_count
+                    ) values (
+                        :id, :analysis_run_id, :base_id, :query, cast(:filters as jsonb),
+                        :version, :top_k, :provider_request_id, 1
+                    )
+                    """
+                ),
+                {
+                    "id": run_id,
+                    "analysis_run_id": analysis_run_id,
+                    "base_id": version_row["knowledge_base_id"],
+                    "query": selected.get("query") or "grounded contract review",
+                    "filters": json.dumps(selected.get("filters") or {}),
+                    "version": content_sha256,
+                    "top_k": int(selected.get("top_k") or 5),
+                    "provider_request_id": selected.get("provider_request_id"),
+                },
+            )
+            evidence_id = uuid4()
+            excerpt = str(selected.get("excerpt") or "").strip()[:1000]
+            if not excerpt:
+                raise RagEvidenceValidationError("evidence excerpt is empty")
+            await self._session.execute(
+                text(
+                    """
+                    insert into public.rag_evidence (
+                        id, retrieval_run_id, finding_id, document_version_id,
+                        rank, score, page_start, page_end, section_path,
+                        excerpt, bbox, chunk_id, content_sha256
+                    ) values (
+                        :id, :run_id, :finding_id, :version_id, :rank, :score,
+                        :page_start, :page_end, :section_path, :excerpt,
+                        cast(:bbox as jsonb), :chunk_id, :content_sha256
+                    )
+                    """
+                ),
+                {
+                    "id": evidence_id,
+                    "run_id": run_id,
+                    "finding_id": finding_id,
+                    "version_id": document_version_id,
+                    "rank": rank,
+                    "score": selected.get("score"),
+                    "page_start": page_start,
+                    "page_end": page_end,
+                    "section_path": section_path,
+                    "excerpt": excerpt,
+                    "bbox": json.dumps(bbox) if bbox else None,
+                    "chunk_id": selected.get("chunk_id"),
+                    "content_sha256": content_sha256,
+                },
+            )
+            snapshots.append(
+                {
+                    "id": str(evidence_id),
+                    "label": f"[{rank}]",
+                    "document_title": version_row["title"],
+                    "source_kind": version_row["corpus_type"],
+                    "page": page_start,
+                    "section": section_path,
+                    "excerpt": excerpt,
+                }
+            )
+        return snapshots
 
     async def fail_review(
         self, *, job_id: UUID, analysis_run_id: UUID | None, failure_code: str
@@ -1189,3 +1346,15 @@ class SqlAlchemyContractReviewRepository:
             return [dict(row) for row in result.mappings().all()]
         except SQLAlchemyError as exc:
             raise ContractReviewRepositoryError from exc
+
+
+def _effective_date(terms: dict[str, Any]) -> date:
+    value = terms.get("service_start_date") or terms.get("start_date")
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            pass
+    return date.today()

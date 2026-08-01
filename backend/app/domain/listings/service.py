@@ -149,11 +149,13 @@ class PublicListingService:
             clauses=self._clauses(clauses, findings),
             findings=[
                 PublicFinding(
+                    id=finding.id,
                     clause_id=finding.clause_id,
                     severity=finding.severity,  # type: ignore[arg-type]
                     explanation=finding.explanation,
                     suggested_text=finding.suggested_text,
                     disclaimer=finding.disclaimer,
+                    evidence_refs=finding.evidence_refs or [],
                 )
                 for finding in findings
             ],
