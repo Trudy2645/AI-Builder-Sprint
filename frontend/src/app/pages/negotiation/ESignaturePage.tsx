@@ -1,211 +1,35 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, CheckCircle2, Clock, PenLine, ShieldCheck, Building2, CalendarRange, FileCheck2, Wallet, FastForward } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, CheckCircle2, Clock, PenLine, ShieldCheck } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
-import { Separator } from "../../components/ui/separator";
+import { Input } from "../../components/ui/input";
 import { ContractStepper } from "../../components/contract/ContractStepper";
-import { VersionBadge } from "../../components/contract/VersionBadge";
-import { useApp } from "../../context/AppContext";
 import { useRoleBase } from "../../hooks/useRoleBase";
-import { useNegotiation } from "../../store/NegotiationContext";
-import { finalContractInfo } from "../../data/negotiation";
-import { formatKRW } from "../../data/contracts";
-import { friendlyApiError, syncSignatureRequest, type SignatureRequest } from "../../lib/api";
-
-function InfoRow({ icon: Icon, label, children }: { icon: typeof Building2; label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-start gap-3 py-3">
-      <Icon className="mt-0.5 size-4 shrink-0" style={{ color: "var(--ocean)" }} />
-      <div className="min-w-0 flex-1">
-        <div className="text-muted-foreground" style={{ fontSize: "12px", fontWeight: 600 }}>{label}</div>
-        <div className="mt-0.5 break-words" style={{ fontWeight: 600 }}>{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function SignRow({ label, name, signed, signedText, waitingText }: { label: string; name: string; signed: boolean; signedText: string; waitingText: string }) {
-  const color = signed ? "var(--success)" : "var(--warning)";
-  const bg = signed ? "var(--success-soft)" : "var(--warning-soft)";
-  const Icon = signed ? CheckCircle2 : Clock;
-  return (
-    <div className="flex flex-col items-start gap-3 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <div className="whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px", fontWeight: 600 }}>{label}</div>
-        <div className="truncate" style={{ fontWeight: 600 }}>{name}</div>
-      </div>
-      <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1" style={{ background: bg, color, fontSize: "13px", fontWeight: 600 }}>
-        <Icon className="size-4" />
-        {signed ? signedText : waitingText}
-      </span>
-    </div>
-  );
-}
+import { createSignatureRequest, friendlyApiError, getContractDetail, getSignatureRequest, syncSignatureRequest, type ContractDetail, type SignatureRequest } from "../../lib/api";
 
 export function ESignaturePage() {
-  const { t } = useApp();
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const { role, base } = useRoleBase();
-  const { flow, directContractId, directContract, bothApproved, buyerSigned, sellerSigned, bothSigned, sign } = useNegotiation();
-  const isDirect = flow === "direct";
-  const contractInfo = isDirect && directContract
-    ? {
-        ...finalContractInfo,
-        title: directContract.title,
-        seller: directContract.seller,
-        period: directContract.period,
-        estimatedTotal: directContract.total,
-        currency: directContract.currency,
-      }
-    : finalContractInfo;
-  const estimatedNote = isDirect && directContract
-    ? `${directContract.rooms}실 × ${directContract.nights}박 · ${directContract.currency}`
-    : t("es.estimatedNote");
-
-  const mySigned = role === "buyer" ? buyerSigned : sellerSigned;
-  const signatureRequestId = params.get("signatureRequestId");
-  const [signatureRequest, setSignatureRequest] = useState<SignatureRequest | null>(null);
-  const [syncing, setSyncing] = useState(false);
-
-  const refreshSignatureStatus = async () => {
-    if (!signatureRequestId) return;
-    setSyncing(true);
-    try {
-      const result = await syncSignatureRequest(signatureRequestId);
-      setSignatureRequest(result);
-      if (result.status === "completed") {
-        if (!buyerSigned) sign("buyer");
-        if (!sellerSigned) sign("seller");
-      }
-    } catch (error) {
-      toast.error(friendlyApiError(error));
-    } finally {
-      setSyncing(false);
-    }
+  const navigate = useNavigate(); const [params] = useSearchParams(); const { base } = useRoleBase();
+  const contractId = params.get("contractId"); const versionId = params.get("versionId");
+  const [detail, setDetail] = useState<ContractDetail | null>(null); const [request, setRequest] = useState<SignatureRequest | null>(null);
+  const [buyerEmail, setBuyerEmail] = useState(""); const [sellerEmail, setSellerEmail] = useState(""); const [busy, setBusy] = useState(false);
+  const loadContract = async () => { if (!contractId) return; try { setDetail(await getContractDetail(contractId)); } catch (error) { toast.error(friendlyApiError(error)); } };
+  useEffect(() => { void loadContract(); }, [contractId]);
+  useEffect(() => { const id = params.get("signatureRequestId"); if (id) void getSignatureRequest(id).then(setRequest).catch((error) => toast.error(friendlyApiError(error))); }, [params]);
+  const query = request ? `?contractId=${contractId}&versionId=${versionId}&signatureRequestId=${request.id}` : `?contractId=${contractId}&versionId=${versionId}`;
+  const create = async () => {
+    if (!contractId || !versionId || !detail) return;
+    if (!buyerEmail || !sellerEmail) { toast.error("바이어와 셀러의 서명 수신 이메일을 입력해 주세요."); return; }
+    setBusy(true); try {
+      const buyer = detail.parties.find((party) => party.role === "buyer"); const seller = detail.parties.find((party) => party.role === "seller");
+      const created = await createSignatureRequest(contractId, versionId, { title: detail.current_version.title, buyer: { name: buyer?.name ?? "Buyer", email: buyerEmail }, seller: { name: seller?.name ?? "Seller", email: sellerEmail } });
+      setRequest(created); toast.success("모두싸인 서명 요청을 생성했습니다."); navigate(`${base}/signing/sign?contractId=${contractId}&versionId=${versionId}&signatureRequestId=${created.id}`, { replace: true });
+    } catch (error) { toast.error(friendlyApiError(error)); } finally { setBusy(false); }
   };
-
-  useEffect(() => {
-    void refreshSignatureStatus();
-  }, [signatureRequestId]);
-
-  // 협상 경로의 모두싸인 데모: 상대방은 먼저 서명을 완료하고 현재 사용자가 마지막 서명을 진행한다.
-  // 조건 그대로 경로는 셀러의 공개 조건을 사전 동의로 간주해 바이어 서명만 받는다.
-  useEffect(() => {
-    if (isDirect) return;
-    if (role === "buyer" && !sellerSigned) sign("seller");
-    if (role === "seller" && !buyerSigned) sign("buyer");
-  }, [isDirect, role, buyerSigned, sellerSigned]);
-
-  // 양측 서명이 완료되면 자동으로 체결 완료 화면으로 이동.
-  useEffect(() => {
-    if (bothSigned) {
-      const id = setTimeout(() => navigate(`${base}/signing/complete`), 800);
-      return () => clearTimeout(id);
-    }
-  }, [bothSigned, base, navigate]);
-
-  return (
-    <div className="mx-auto max-w-[820px]">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="mb-4 gap-1.5 whitespace-nowrap"
-        onClick={() => navigate(isDirect && directContractId ? `/buyer/explore/${directContractId}/request` : `${base}/signing`)}
-      >
-        <ArrowLeft className="size-4" />
-        {t(isDirect ? "asis.title" : "fa.title")}
-      </Button>
-
-      <PageHeader title={t("es.title")} description={t("es.subtitle")} />
-
-      <div className="mb-5 rounded-xl border border-border bg-card p-4 sm:mb-6 sm:p-5">
-        <ContractStepper current={5} skipped={isDirect ? [3, 4] : []} />
-      </div>
-
-      {isDirect && (
-        <div className="mb-6 flex items-start gap-3 rounded-xl border p-4" style={{ borderColor: "var(--teal)", background: "var(--success-soft)" }}>
-          <FastForward className="mt-0.5 size-5 shrink-0" style={{ color: "var(--teal)" }} />
-          <p className="text-sm" style={{ color: "var(--navy)" }}>{t("es.directNotice")}</p>
-        </div>
-      )}
-
-      {!isDirect && !bothApproved && (
-        <div className="mb-6 flex items-start gap-2 break-words rounded-xl border p-4" style={{ borderColor: "var(--warning)", background: "var(--warning-soft)", color: "var(--warning)", fontSize: "13px", fontWeight: 600 }}>
-          <Clock className="mt-0.5 size-4 shrink-0" />
-          {t("fa.waiting")}
-        </div>
-      )}
-
-      {/* Final contract info */}
-      <div className="mb-6 rounded-xl border border-border bg-card p-4 sm:p-6">
-        <h2 className="mb-2 break-words" style={{ color: "var(--navy)", fontSize: "16px", fontWeight: 700 }}>
-          {t("es.contractInfo")}
-        </h2>
-        <div className="divide-y divide-border">
-          {isDirect && directContract && (
-            <InfoRow icon={FileCheck2} label={t("asis.contract")}>{directContract.title}</InfoRow>
-          )}
-          <InfoRow icon={Building2} label={t("es.parties")}>
-            {contractInfo.buyer} <span className="text-muted-foreground">·</span> {contractInfo.seller}
-          </InfoRow>
-          <InfoRow icon={CalendarRange} label={t("es.period")}>{contractInfo.period}</InfoRow>
-          <InfoRow icon={FileCheck2} label={t("es.finalVersion")}>
-            <span className="inline-flex"><VersionBadge version={isDirect ? "v1" : finalContractInfo.finalVersion} /></span>
-          </InfoRow>
-          <InfoRow icon={Wallet} label={t("es.estimatedTotal")}>
-            <span style={{ color: "var(--navy)" }}>{formatKRW(contractInfo.estimatedTotal)}</span>
-            <div className="text-muted-foreground" style={{ fontSize: "12px", fontWeight: 400 }}>{estimatedNote}</div>
-          </InfoRow>
-        </div>
-      </div>
-
-      {/* Signature status */}
-      <div className="mb-6 rounded-xl border border-border bg-card p-4 sm:p-6">
-        <h2 className="mb-4 break-words" style={{ color: "var(--navy)", fontSize: "16px", fontWeight: 700 }}>
-          {t("es.signStatus")}
-        </h2>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <SignRow label={t("fa.buyer")} name={contractInfo.buyer} signed={buyerSigned} signedText={t("es.signed")} waitingText={t("es.notSigned")} />
-          <SignRow label={t("fa.seller")} name={contractInfo.seller} signed={sellerSigned} signedText={isDirect ? t("es.preApproved") : t("es.signed")} waitingText={t("es.notSigned")} />
-        </div>
-
-        <Separator className="my-5" />
-
-        <div className="flex flex-col items-center gap-3">
-          {signatureRequestId && (
-            <Button type="button" variant="outline" disabled={syncing} onClick={() => void refreshSignatureStatus()}>
-              {syncing ? "서명 상태 확인 중…" : "모두싸인 서명 상태 새로고침"}
-            </Button>
-          )}
-          {signatureRequest?.provider_status && (
-            <p className="text-center text-xs text-muted-foreground">모두싸인 상태: {signatureRequest.provider_status}</p>
-          )}
-          <Button
-            size="lg"
-            className="w-full gap-2 whitespace-nowrap sm:w-auto"
-            style={{ background: "var(--navy)" }}
-            disabled={(!isDirect && !bothApproved) || mySigned}
-            onClick={() => {
-              if (mySigned) {
-                toast.info(t("es.alreadySigned"));
-                return;
-              }
-              sign(role);
-              toast.success(t("es.signedToast"));
-            }}
-          >
-            <PenLine className="size-5" />
-            {t("es.signButton")}
-          </Button>
-          <div className="flex items-start gap-1.5 text-center text-muted-foreground" style={{ fontSize: "12px" }}>
-            <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
-            {t("es.poweredBy")}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  const sync = async () => { if (!request) return; setBusy(true); try { const next = await syncSignatureRequest(request.id); setRequest(next); const contract = await getContractDetail(next.contract_id); setDetail(contract); if (next.status === "completed" && contract.status === "signed") navigate(`${base}/signing/complete?contractId=${contract.id}&versionId=${next.contract_version_id}&signatureRequestId=${next.id}`); else toast.info("서명 상태를 갱신했습니다."); } catch (error) { toast.error(friendlyApiError(error)); } finally { setBusy(false); } };
+  if (!contractId || !versionId) return <PageHeader title="계약을 선택해 주세요" description="최종 승인 화면에서 전자서명을 시작해 주세요." />;
+  if (!detail) return <PageHeader title="계약을 불러오는 중" description="전자서명에 필요한 계약 정보를 확인하고 있습니다." />;
+  const buyer = detail.parties.find((party) => party.role === "buyer"); const seller = detail.parties.find((party) => party.role === "seller");
+  return <div className="mx-auto max-w-[820px]"><Button variant="ghost" onClick={() => navigate(`${base}/signing?contractId=${contractId}&versionId=${versionId}`)}><ArrowLeft className="mr-1 size-4" />최종 검토</Button><PageHeader title="전자서명" description="양측 승인 후 모두싸인 서명 요청과 진행 상태를 관리합니다." /><div className="mb-5 rounded-xl border border-border bg-card p-4"><ContractStepper current={5} /></div><div className="mb-6 rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">{detail.current_version.title}</h2><p className="mt-1 text-sm text-muted-foreground">계약 UUID: {contractId} · 버전 v{detail.current_version.version_no}</p><div className="mt-4 grid gap-3 md:grid-cols-2"><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">바이어</p><p>{buyer?.name}</p></div><div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">셀러</p><p>{seller?.name}</p></div></div></div>{!request ? <div className="rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">서명 수신자</h2><p className="mt-1 text-sm text-muted-foreground">서명 요청 API는 계약별 수신자 정보를 명시적으로 요구합니다.</p><div className="mt-4 grid gap-3 md:grid-cols-2"><Input type="email" value={buyerEmail} onChange={(event) => setBuyerEmail(event.target.value)} placeholder="바이어 이메일" /><Input type="email" value={sellerEmail} onChange={(event) => setSellerEmail(event.target.value)} placeholder="셀러 이메일" /></div><Button className="mt-4" disabled={busy} style={{ background: "var(--navy)" }} onClick={() => void create()}><PenLine className="mr-1 size-4" />모두싸인 요청 생성</Button></div> : <div className="rounded-xl border border-border bg-card p-5"><div className="flex items-center justify-between"><div><h2 className="font-semibold">서명 요청 상태</h2><p className="mt-1 text-sm text-muted-foreground">{request.provider_status ?? request.status}</p></div>{request.status === "completed" ? <CheckCircle2 className="size-7" style={{ color: "var(--success)" }} /> : <Clock className="size-7" style={{ color: "var(--warning)" }} />}</div><Button className="mt-4" disabled={busy} variant="outline" onClick={() => void sync()}>상태 동기화</Button><p className="mt-4 flex gap-1 text-xs text-muted-foreground"><ShieldCheck className="size-3.5" />완료 화면은 서버 계약 상태가 signed일 때만 표시됩니다.</p></div>}</div>;
 }

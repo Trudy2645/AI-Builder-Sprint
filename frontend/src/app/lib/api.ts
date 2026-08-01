@@ -158,6 +158,36 @@ export function syncSignatureRequest(id: string): Promise<SignatureRequest> {
   return apiFetch<SignatureRequest>(`/signature-requests/${id}/sync`, { method: "POST" });
 }
 
+export type SignatureParticipant = { name: string; email: string };
+
+export function createSignatureRequest(
+  contractId: string,
+  versionId: string,
+  payload: { title: string; buyer: SignatureParticipant; seller: SignatureParticipant },
+): Promise<SignatureRequest> {
+  return apiFetch<SignatureRequest>(`/contracts/${contractId}/versions/${versionId}/signature-requests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function downloadModusignFile(documentId: string, kind: "signed" | "audit-trail"): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/modusign/documents/${documentId}/${kind === "signed" ? "download" : "audit-trail"}`, {
+    headers: getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {},
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(payload?.error ?? { code: "DOWNLOAD_FAILED", message: "파일을 내려받지 못했습니다." });
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${documentId}-${kind}.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export type PublicListing = {
   id: string;
   seller: { name: string };
