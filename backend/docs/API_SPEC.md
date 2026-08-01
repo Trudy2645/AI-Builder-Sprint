@@ -469,6 +469,8 @@ Query:
 
 `people`은 단체 규모이고 실제 과금 수량은 `quantity`와 `quantity_unit`으로 명시한다. 예를 들어 30명이 2인실 15개를 2박 이용하면 `people=30`, `quantity=15`, `quantity_unit=room`, `nights=2`다. 서버가 임의로 객실당 2명을 가정하지 않는다.
 
+과금 단위 규칙은 공고 저장·완료·공개와 예상 가격·계약 요청 계산에 공통 적용한다. 지원하는 `price_unit → quantity_unit` 조합은 `person → person`, `room → room`, `room_night → room`, `seat → seat`, `vehicle → vehicle`이며, `room_night`만 박수를 곱한다.
+
 ```json
 {
   "data": {
@@ -620,7 +622,7 @@ Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, c
 }
 ```
 
-부분 입력을 현재 terms와 합쳐 저장하며 기간, 최소·최대 공급 수량, 최소·최대 인원 범위를 검사한다. `supply_quantity_description`은 프론트의 “주말 객실 최대 30실” 같은 자유형 문구를 손실 없이 보존하고, `minimum_quantity`/`maximum_quantity`는 실제 과금 수량 범위다. 저장할 때 기존 version을 수정하지 않고 구조화 terms snapshot, 계약 정책 clauses와 본문을 가진 V2, V3 등의 새 version을 만든다. 현재 version 번호가 `base_version_no`와 다르면 `VERSION_CONFLICT`다. 계약 요청이 하나라도 존재하면 가격·기간·정책을 포함한 terms 변경을 `LISTING_HAS_CONTRACTS`로 차단한다. 이미 공개 또는 중지된 공고는 필수값을 제거하는 수정도 허용하지 않는다.
+부분 입력을 현재 terms와 합쳐 저장하며 기간, 최소·최대 공급 수량, 최소·최대 인원 범위와 공통 과금 단위 규칙을 검사한다. 지원하지 않는 값은 `UNSUPPORTED_QUANTITY_UNIT` 또는 `UNSUPPORTED_PRICE_UNIT`으로 거절하고, `quantity_unit`과 `price_unit`의 조합도 일치해야 한다. 공고 완료·공개에는 `quantity_unit`이 필수다. `supply_quantity_description`은 프론트의 “주말 객실 최대 30실” 같은 자유형 문구를 손실 없이 보존하고, `minimum_quantity`/`maximum_quantity`는 실제 과금 수량 범위다. 저장할 때 기존 version을 수정하지 않고 구조화 terms snapshot, 계약 정책 clauses와 본문을 가진 V2, V3 등의 새 version을 만든다. 현재 version 번호가 `base_version_no`와 다르면 `VERSION_CONFLICT`다. 계약 요청이 하나라도 존재하면 가격·기간·정책을 포함한 terms 변경을 `LISTING_HAS_CONTRACTS`로 차단한다. 이미 공개 또는 중지된 공고는 필수값을 제거하는 수정도 허용하지 않는다.
 
 ### PDF 등록 흐름
 

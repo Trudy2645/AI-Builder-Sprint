@@ -587,6 +587,62 @@ def test_terms_validate_supply_quantity_range(listing_client: TestClient) -> Non
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
+@pytest.mark.parametrize(
+    ("terms", "error_code"),
+    [
+        ({"quantity_unit": "guest"}, "UNSUPPORTED_QUANTITY_UNIT"),
+        ({"price_unit": "package"}, "UNSUPPORTED_PRICE_UNIT"),
+        (
+            {"quantity_unit": "seat", "price_unit": "vehicle"},
+            "UNSUPPORTED_QUANTITY_UNIT",
+        ),
+    ],
+)
+def test_terms_reject_unsupported_or_mismatched_units(
+    listing_client: TestClient,
+    terms: dict[str, str],
+    error_code: str,
+) -> None:
+    listing_id = create_listing(listing_client)
+
+    response = listing_client.patch(
+        f"/api/v1/seller/listings/{listing_id}/terms",
+        headers=headers(),
+        json={"base_version_no": 1, "terms": terms},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == error_code
+
+
+def test_seat_terms_can_complete_and_publish(listing_client: TestClient) -> None:
+    listing_id = create_listing(listing_client)
+    terms = complete_terms()
+    terms.update(
+        {
+            "supply_quantity_description": "투어 좌석 30석",
+            "quantity_unit": "seat",
+            "price_unit": "seat",
+        }
+    )
+
+    saved = listing_client.patch(
+        f"/api/v1/seller/listings/{listing_id}/terms",
+        headers=headers(),
+        json={"base_version_no": 1, "terms": terms},
+    )
+    completed = listing_client.post(
+        f"/api/v1/seller/listings/{listing_id}/complete", headers=headers()
+    )
+    published = listing_client.post(
+        f"/api/v1/seller/listings/{listing_id}/publish", headers=headers()
+    )
+
+    assert saved.status_code == 200
+    assert completed.json()["data"]["status"] == "ready"
+    assert published.json()["data"]["status"] == "published"
+
+
 def test_frontend_listing_fields_are_enough_to_complete_and_publish(
     listing_client: TestClient,
 ) -> None:
@@ -600,11 +656,12 @@ def test_frontend_listing_fields_are_enough_to_complete_and_publish(
                 "service_start_date": "2026-08-01",
                 "service_end_date": "2026-08-31",
                 "supply_quantity_description": "주말 객실 최대 30실",
+                "quantity_unit": "room",
                 "minimum_quantity": 10,
                 "maximum_quantity": 30,
                 "base_price_amount_minor": 145000,
                 "currency": "KRW",
-                "price_unit": "객실당",
+                "price_unit": "room_night",
                 "cancellation_policy": "체크인 7일 전까지 무료 취소",
                 "no_show_policy": "객실 1박 요금 청구",
                 "settlement_policy": "매월 말 마감 후 익월 15일 지급",
