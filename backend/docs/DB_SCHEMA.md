@@ -188,6 +188,12 @@ erDiagram
 
 ### `listing_versions`, `listing_clauses`
 
+AI 계약 생성은 현재 `listing_versions`를 수정하지 않는다. 입력 version을 대상으로
+`contract_generate` AI job과 organization idempotency record를 먼저 만들고 listing을
+`processing`으로 전이한다. 검증된 결과만 새 `listing_versions`와 순서가 지정된
+`listing_clauses`로 추가하며 같은 transaction에서 `current_version_id`와 상태를 `ready`로
+변경한다. 실패한 job은 `failed`로 남기고 미완료 idempotency record를 제거해 재시도를 허용한다.
+
 - OCR 추출 또는 AI 생성 결과를 immutable version으로 보존한다.
 - `(listing_id, version_no)`는 unique다.
 - publish된 버전을 수정하지 않고 새 version을 만든다.

@@ -429,10 +429,19 @@ listing_terms 입력
 → 규칙 엔진으로 필수값 확인
 → 템플릿 File Search
 → Solar contract_generate 고정 함수
+→ JSON Schema와 숫자·날짜·단위 보존 검사
 → 새 listing version 생성
 → seller ContractReviewAgent
 → 셀러 수정
 ```
+
+`contract_generate`는 `base_version_no`와 Idempotency-Key를 기준으로 실행을 선점하고 listing을
+`processing`으로 전이한다. 승인 metadata가 명시된 template hit만 참고 문맥으로 사용하며 공식
+법적 근거로 표시하지 않는다. Solar 출력은 조항 순서·key·title·body만 반환하고, version 번호,
+hash, 상태 전이와 DB 저장은 애플리케이션 코드가 담당한다. 입력에 없는 숫자나 날짜가 추가되거나
+단가·기간·수량·단위가 누락되면 저장하지 않고 `draft`로 복구한다. 성공 시 기존 version을
+수정하지 않고 새 version과 clauses를 하나의 transaction으로 저장한 뒤 `ready`로 전이하며 자동
+게시하지 않는다.
 
 `임시저장`은 필수값이 없어도 가능하다. `작성 완료`에서만 필수값과 AI 처리 상태를 검사한다.
 

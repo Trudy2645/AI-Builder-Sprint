@@ -1,3 +1,4 @@
+from app.ai.schemas.contract_generation import GeneratedContractClause, GeneratedContractDraft
 from app.ai.schemas.providers import (
     BoundingBox,
     ContractExtraction,
@@ -23,6 +24,8 @@ __all__ = [
     "FileSearchHit",
     "FileSearchRequest",
     "FileSearchResult",
+    "GeneratedContractClause",
+    "GeneratedContractDraft",
     "LanguageModelRequest",
     "ParsedBlock",
     "ParsedPage",
