@@ -26,6 +26,7 @@ class FakeAIProvider:
         self.calls: list[tuple[str, str]] = []
         self._failures: dict[str, deque[AIProviderError]] = defaultdict(deque)
         self._structured_outputs: dict[str, deque[dict[str, Any] | BaseModel]] = defaultdict(deque)
+        self.structured_requests: list[LanguageModelRequest] = []
         self.parse_result: DocumentParseResult | None = None
         self.extraction_result: ContractExtraction | None = None
         self.search_result = FileSearchResult(hits=[])
@@ -80,6 +81,7 @@ class FakeAIProvider:
         response_model: type[StructuredOutputT],
     ) -> StructuredOutputT:
         self.calls.append(("language_model", request.task_type))
+        self.structured_requests.append(request)
         self._raise_queued(request.task_type)
         queue = self._structured_outputs[request.task_type]
         if not queue:

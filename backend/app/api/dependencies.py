@@ -11,6 +11,7 @@ from app.core.database import get_database_session
 from app.core.errors import AppError
 from app.domain.ai_jobs.service import AIJobService
 from app.domain.auth_accounts.service import AuthAccountService, DemoLoginConfig
+from app.domain.contract_generation.service import ContractGenerationService
 from app.domain.contracts.service import ContractService
 from app.domain.document_processing.service import DocumentProcessingService
 from app.domain.documents.service import DocumentService
@@ -28,6 +29,10 @@ from app.repositories.ai_jobs import AIJobRepository, SqlAlchemyAIJobRepository
 from app.repositories.auth_accounts import (
     RegistrationRepository,
     SqlAlchemyRegistrationRepository,
+)
+from app.repositories.contract_generation import (
+    ContractGenerationRepository,
+    SqlAlchemyContractGenerationRepository,
 )
 from app.repositories.contracts import ContractRepository, SqlAlchemyContractRepository
 from app.repositories.document_processing import (
@@ -93,6 +98,12 @@ def get_document_processing_repository(
     session: Annotated[AsyncSession, Depends(get_database_session)],
 ) -> DocumentProcessingRepository:
     return SqlAlchemyDocumentProcessingRepository(session)
+
+
+def get_contract_generation_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> ContractGenerationRepository:
+    return SqlAlchemyContractGenerationRepository(session)
 
 
 def get_auth_account_service(
@@ -224,6 +235,24 @@ def get_document_processing_service(
         provider_name=settings.ai_provider,
         prompt_version=settings.ai_prompt_version,
         max_document_size_bytes=settings.document_max_size_bytes,
+    )
+
+
+def get_contract_generation_service(
+    repository: Annotated[
+        ContractGenerationRepository, Depends(get_contract_generation_repository)
+    ],
+    provider: Annotated[FakeAIProvider | UpstageAIProvider, Depends(get_ai_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ContractGenerationService:
+    return ContractGenerationService(
+        repository,
+        provider,
+        provider,
+        provider_name=settings.ai_provider,
+        model_name=settings.upstage_chat_model,
+        prompt_version=settings.ai_prompt_version,
+        template_vector_store_id=settings.upstage_template_vector_store_id,
     )
 
 

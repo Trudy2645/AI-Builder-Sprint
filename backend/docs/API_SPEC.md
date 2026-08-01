@@ -256,7 +256,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 셀러가 받은 계약 요청 | `GET /seller/contracts/received` | 구현 |
 | 내 공고문·편집 | `GET /seller/listings`, `GET /seller/listings/{id}` | 구현 |
 | 직접 작성 | `POST /seller/listings`, `PATCH /seller/listings/{id}/terms` | 구현 |
-| AI 계약 생성 | `POST /seller/listings/{id}/generate` | 계획 |
+| AI 계약 생성 | `POST /seller/listings/{id}/generate` | 구현 |
 | 문서 업로드·검증 | `POST /documents/upload-url`, `POST /documents/{id}/complete`, `GET /documents/{id}`, `POST /documents/{id}/download-url` | 구현 |
 | 작성 완료·게시 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation`, `POST /seller/listings/{id}/publish`, `POST /seller/listings/{id}/pause`, `POST /seller/listings/{id}/archive` | 구현 |
 | 수정 요청 알림·판단 | revision request API와 알림 생성 | 구현 |
@@ -752,9 +752,56 @@ AI가 제안한 표준 안전장치 또는 대안 문구를 사람이 명시적�
 
 finding을 `dismissed`로 표시하되 계약 원문은 변경하지 않는다. 적용과 기각 모두 자동으로 서명 요청을 만들지 않는다.
 
-### `POST /seller/listings/{listing_id}/generate`
+### `[구현] POST /seller/listings/{listing_id}/generate`
 
-직접 입력한 조건으로 고정된 `contract_generate` prompt와 JSON Schema를 사용해 Solar Pro 3가 계약 초안을 생성하고 새 listing version을 만든다. 이 함수는 Agent가 아니며 도구를 자율 호출하지 않는다. 생성 후 셀러 관점 계약검토 Agent를 별도 실행한다.
+`X-Organization-Id`와 `Idempotency-Key`가 필수다.
+
+```json
+{
+  "base_version_no": 2
+}
+```
+
+직접 입력한 조건으로 고정된 `contract_generate` prompt와 JSON Schema를 사용해 Solar Pro 3가
+계약 초안을 생성하고 새 listing version을 만든다. 이 함수는 Agent가 아니며 도구를 자율
+호출하지 않는다. 생성 전 필수 terms를 검사하고 `draft → processing`으로 전이하며, 생성 결과의
+숫자·ISO 날짜·단가·수량·단위가 입력과 일치하는지 Python 코드로 검증한 뒤에만 새 immutable
+version과 clauses를 저장하고 `ready`로 전이한다. 결과를 자동 게시하지 않으며 생성 후 셀러 관점
+계약검토 Agent는 별도 API에서 실행한다.
+
+```json
+{
+  "data": {
+    "listing_id": "uuid",
+    "job_id": "uuid",
+    "listing_version_id": "uuid",
+    "version_no": 3,
+    "status": "ready",
+    "clauses": [
+      {
+        "id": "uuid",
+        "clause_order": 1,
+        "clause_key": "service",
+        "title": "공급 기간 및 수량",
+        "body": "공급 기간은 2026-08-01부터 2026-08-31까지로 한다."
+      }
+    ]
+  },
+  "meta": {"request_id": "..."}
+}
+```
+
+승인된 template Vector Store가 설정된 경우 `source_type=approved_template`, category,
+`party_type=B2C_individual` 조건으로 최대 5개 문단을 미리 검색해 생성 참고 문맥으로 전달한다.
+이 문맥은 공식 법적 근거로 표시하거나 `ai_evidence`로 저장하지 않는다. Vector Store가 설정되지
+않아도 구조화 terms만으로 생성할 수 있다.
+
+동일 listing, `base_version_no`, model, prompt version과 `Idempotency-Key` 조합은 저장된 동일
+응답을 반환하고 Solar를 다시 호출하지 않는다. 같은 key에 다른 입력을 보내면
+`IDEMPOTENCY_CONFLICT`, 처리 중인 동일 요청은 `IDEMPOTENCY_IN_PROGRESS`, 현재 version이
+달라졌으면 `VERSION_CONFLICT`다. 필수 조건 누락은 `AI_INPUT_INSUFFICIENT`, 생성 결과의 schema
+또는 숫자·날짜·단가·수량 불변식 위반은 `AI_GENERATION_INVALID`로 반환한다. provider 실패 시 job을 failed로
+기록하고 listing을 `draft`로 되돌려 동일 요청을 재시도할 수 있게 한다.
 
 ### `POST /seller/listings/{listing_id}/analyses`
 
@@ -1311,7 +1358,7 @@ backend/app/
 | 6 | `feat/ai-contract-review` | `feat(ai): add provider interfaces and job APIs` | `GET /ai-jobs/{id}` | `DocumentProcessor`, `ContractGenerator`, `ContractReviewAgent` interface와 fake provider를 만든다. job 상태는 queued/processing/succeeded/failed다. |
 | 6 | `feat/ai-contract-review` | `feat(db): track bounded contract review agent runs` | 없음 | 구현 시점의 다음 새 migration으로 execution mode, Agent 이름, 최대/실제 iteration, 종료 사유와 비민감 실행 metadata를 `ai_analysis_runs`에 추가한다. 기존 migration은 수정하지 않는다. |
 | 6 | `feature/ai-document-processing` | `feat(ai): parse and extract uploaded contracts` | `POST /documents/{id}/process`<br>`GET /documents/{id}/processing-result` | Upstage Document Parse → Information Extract로 요금·기간·취소·환불·안전·보상·책임과 셀러 확인용 listing 후보를 만든다. 실제 provider 기능명이 Universal Extraction이면 adapter 내부에서만 매핑한다. |
-| 6 | `feat/ai-contract-review` | `feat(ai): generate contracts with fixed tasks` | `POST /seller/listings/{id}/generate` | 고정 prompt/JSON Schema 함수로 직접 입력 조건의 초안을 생성한다. 생성 함수에는 자율 tool 호출 권한을 주지 않는다. |
+| 6 | `feature/ai-contract-generation` | `feat(ai): generate contracts with fixed tasks` | `POST /seller/listings/{id}/generate` | 고정 prompt/JSON Schema 함수로 직접 입력 조건의 초안을 생성한다. 생성 함수에는 자율 tool 호출 권한을 주지 않는다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): review contracts with a bounded single agent` | `POST /seller/listings/{id}/analyses` | `ContractReviewAgent`가 조항 조회·공식 근거 검색·승인 템플릿 검색 도구만 최대 2회 반복 호출한다. seller/buyer 관점 분석을 분리 저장하고 공개 API는 buyer 분석만 사용한다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): apply reviewed safeguard clauses` | `POST /ai-findings/{id}/apply`<br>`POST /ai-findings/{id}/dismiss` | AI 제안은 자동 반영하지 않는다. 적용 시 immutable 새 version을 만들고 재분석하며, 적용/기각 모두 audit event를 남긴다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): localize contract guidance in four languages` | 공개 상세·finding 응답의 `locale` | ko-KR 원본을 기준으로 en-US/ja-JP/zh-CN 결과를 생성·cache하고 금액·날짜·비율·근거 번호 보존을 검증한다. |
