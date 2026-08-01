@@ -16,6 +16,7 @@ from app.domain.contract_review.service import ContractReviewService
 from app.domain.contracts.service import ContractService
 from app.domain.document_processing.service import DocumentProcessingService
 from app.domain.documents.service import DocumentService
+from app.domain.evidence.service import EvidenceService
 from app.domain.listings.service import PublicListingService
 from app.domain.localizations.service import LocalizationService
 from app.domain.notifications.service import NotificationService
@@ -27,6 +28,7 @@ from app.integrations.auth import AuthAccountProvider
 from app.integrations.exchange_rates import ExchangeRateProvider, FakeExchangeRateProvider
 from app.integrations.modusign import ModusignClient
 from app.integrations.storage import StorageProvider, SupabaseStorageProvider
+from app.rag.locator import EvidenceLocator, StoredPdfEvidenceLocator
 from app.repositories.ai_jobs import AIJobRepository, SqlAlchemyAIJobRepository
 from app.repositories.auth_accounts import (
     RegistrationRepository,
@@ -46,6 +48,8 @@ from app.repositories.document_processing import (
     SqlAlchemyDocumentProcessingRepository,
 )
 from app.repositories.documents import DocumentRepository, SqlAlchemyDocumentRepository
+from app.repositories.evidence import EvidenceRepository, SqlAlchemyEvidenceRepository
+from app.repositories.evidence_locator import SqlAlchemyEvidenceLocatorRepository
 from app.repositories.listings import PublicListingRepository, SqlAlchemyPublicListingRepository
 from app.repositories.localizations import (
     LocalizationRepository,
@@ -171,6 +175,12 @@ def get_public_listing_service(
     return PublicListingService(repository)
 
 
+def get_evidence_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> EvidenceRepository:
+    return SqlAlchemyEvidenceRepository(session)
+
+
 def get_localization_repository(
     session: Annotated[AsyncSession, Depends(get_database_session)],
 ) -> LocalizationRepository:
@@ -255,6 +265,34 @@ def get_storage_provider(
     )
 
 
+def get_evidence_locator(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> EvidenceLocator | None:
+    if settings.ai_provider == "fake":
+        return None
+    storage = get_storage_provider(settings)
+    return StoredPdfEvidenceLocator(
+        SqlAlchemyEvidenceLocatorRepository(session),
+        storage,
+        storage_bucket=settings.rag_storage_bucket,
+    )
+
+
+def get_evidence_service(
+    repository: Annotated[EvidenceRepository, Depends(get_evidence_repository)],
+    storage: Annotated[StorageProvider, Depends(get_storage_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> EvidenceService:
+    return EvidenceService(
+        repository,
+        storage,
+        storage_bucket=settings.rag_storage_bucket,
+        viewer_url_prefix=settings.rag_viewer_url_prefix,
+        signed_url_expires_seconds=settings.rag_signed_url_expires_seconds,
+    )
+
+
 def get_document_processing_service(
     repository: Annotated[
         DocumentProcessingRepository, Depends(get_document_processing_repository)
@@ -295,6 +333,7 @@ def get_contract_generation_service(
 def get_contract_review_service(
     repository: Annotated[ContractReviewRepository, Depends(get_contract_review_repository)],
     provider: Annotated[FakeAIProvider | UpstageAIProvider, Depends(get_ai_provider)],
+    locator: Annotated[EvidenceLocator | None, Depends(get_evidence_locator)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> ContractReviewService:
     return ContractReviewService(
@@ -306,6 +345,9 @@ def get_contract_review_service(
         prompt_version=settings.ai_prompt_version,
         official_vector_store_id=settings.upstage_official_vector_store_id,
         template_vector_store_id=settings.upstage_template_vector_store_id,
+        case_vector_store_id=settings.upstage_case_vector_store_id,
+        evidence_locator=locator,
+        minimum_evidence_score=settings.rag_min_evidence_score,
         max_iterations=settings.ai_agent_max_iterations,
     )
 

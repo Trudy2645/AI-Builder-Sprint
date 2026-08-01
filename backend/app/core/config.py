@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     upstage_chat_model: str = "solar-pro3"
     upstage_official_vector_store_id: str | None = Field(default=None, repr=False)
     upstage_template_vector_store_id: str | None = Field(default=None, repr=False)
+    upstage_case_vector_store_id: str | None = Field(default=None, repr=False)
+    rag_storage_bucket: str = "rag-knowledge"
+    rag_viewer_url_prefix: str = "/knowledge/versions"
+    rag_signed_url_expires_seconds: int = Field(default=300, ge=60, le=900)
+    rag_min_evidence_score: float = Field(default=0.3, ge=0, le=1)
     ai_prompt_version: str = "busan-link-v1"
     ai_agent_max_iterations: int = Field(default=2, ge=1, le=2)
     ai_max_retries: int = Field(default=3, ge=0, le=5)

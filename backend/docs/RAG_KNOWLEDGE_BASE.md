@@ -25,6 +25,8 @@
 - 로컬 디렉터리는 수집·검수·업로드용 staging이지 운영 source of truth가 아니다.
 - 운영 원본과 버전 snapshot은 Supabase Storage가 source of truth다.
 - 검색용 file/vector index는 Upstage가 담당한다.
+- File Search가 page metadata를 반환하지 않으면 private 원본 PDF에서 excerpt를 매칭해 page를
+  결정하며, 매칭하지 못한 결과는 clickable evidence로 저장하지 않는다.
 - 문서 metadata, 버전, hash, 검색 실행과 인용 결과는 Supabase PostgreSQL이 담당한다.
 - 셀러가 업로드한 사용자 계약서는 공용 RAG Vector Store에 넣지 않는다.
 - 공식 근거 문서와 팀 작성 템플릿은 서로 다른 Vector Store로 분리한다.
@@ -47,6 +49,7 @@
 |---|---|---|---|
 | `UPSTAGE_OFFICIAL_VECTOR_STORE_ID` | `official_contract_knowledge` | 법령, 행정규칙, 공정위 표준약관, 공식 지침 | `[근거]`로 인용 가능 |
 | `UPSTAGE_TEMPLATE_VECTOR_STORE_ID` | `busan_link_templates` | 팀이 검토·승인한 계약 템플릿과 clause library | `[작성 참고]`로만 표시 |
+| `UPSTAGE_CASE_VECTOR_STORE_ID` | `case_reference` | 팀이 승인한 공식 판례 snapshot | `[판례 참고]`로 인용 가능 |
 
 `approved_historical_contracts`는 MVP에서 만들지 않는다. 실제 과거 계약에는 개인정보·영업정보가 포함될 수 있고, 비식별화와 사용 동의가 별도로 필요하다.
 
@@ -251,9 +254,19 @@ active → superseded | revoked
 | `rag_retrieval_runs` | `id`, `analysis_run_id`, `query`, `filters`, `knowledge_base_version`, `top_k`, `provider_request_id`, `created_at` | 어떤 검색으로 근거를 찾았는지 감사 가능하게 기록 |
 | `rag_evidence` | `id`, `retrieval_run_id`, `finding_id`, `document_version_id`, `rank`, `score`, `page_start/end`, `section_path`, `excerpt`, `bbox`, `chunk_id` | 화면에 노출하는 고정 인용 |
 
-위 테이블은 `004_rag_challenge_alignment.sql`에 반영한다. `ai_findings.evidence` JSON은 호환용 요약으로만 사용하고 clickable 근거의 source of truth는 `rag_evidence`로 둔다.
+기본 테이블은 `004_rag_challenge_alignment.sql`에, 판례 corpus와 provider attachment runtime
+필드는 `015_rag_knowledge_base_runtime.sql`에 반영한다. `ai_findings.evidence` JSON은 화면용
+번호 snapshot으로만 사용하고 clickable 근거의 source of truth는 `rag_evidence`로 둔다.
+
+기본 업로드 형식은 검수 PDF다. provider가 유효한 장문 PDF를 parsing하지 못한 경우 원본은
+Storage에 그대로 두고 페이지 마커가 포함된 텍스트 파생물만 검색 index에 재시도할 수 있다.
+`metadata.provider_retry_mode`와 `provider_content_sha256`가 파생물 생성 방식과 hash를 보존한다.
 
 ## 9. Chunk와 page metadata
+
+Upstage File Search 응답에는 page/section/bbox가 포함되지 않을 수 있다. 이때 서버는
+`upstage_file_id`로 immutable 원본을 찾고 검색 excerpt와 PDF 페이지 텍스트의 token overlap을
+비교해 `page_start/page_end`를 결정한다. page를 찾지 못하면 grounded evidence로 채택하지 않는다.
 
 검색에 올리는 각 chunk는 다음 metadata를 유지한다.
 
@@ -354,6 +367,8 @@ GET /api/v1/ai-findings/{finding_id}/evidence/{evidence_id}
     "section": "별표 2 > 숙박업",
     "excerpt": "검색 결과에서 확정한 짧은 근거 문장",
     "viewer_url": "/knowledge/versions/uuid-version/view?page=31&evidence=uuid-evidence-1",
+    "signed_pdf_url": "https://private-storage.example/signed-short-lived-url",
+    "signed_url_expires_at": "2026-08-02T00:05:00Z",
     "official_source_url": "https://www.law.go.kr/행정규칙/소비자분쟁해결기준",
     "effective_from": "2025-12-18",
     "retrieved_at": "2026-07-28T00:00:00+09:00",
@@ -404,6 +419,7 @@ Supabase Storage contract-documents
 - excerpt는 DB에 저장하기 전에 원문 chunk의 substring인지 검증한다.
 - 화면 excerpt는 필요한 최소 길이만 노출한다.
 - Upstage API key와 Vector Store ID는 서버 환경변수에만 둔다.
+- provider 검색 filter와 별도로 DB에서 active hash·시행일·party type·category를 다시 검증한다.
 - raw provider 응답과 원문 전체를 application log에 남기지 않는다.
 - 공개 공고에서는 buyer 관점의 승인된 evidence만 반환하고 seller 내부 finding은 숨긴다.
 

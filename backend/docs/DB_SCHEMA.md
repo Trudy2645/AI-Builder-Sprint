@@ -386,7 +386,7 @@ snapshot을 재사용한다.
 
 | 테이블 | 의미 |
 | --- | --- |
-| `knowledge_bases` | 공식/템플릿 corpus와 Upstage Vector Store 연결 |
+| `knowledge_bases` | 공식/템플릿/승인 판례 corpus와 분리된 Upstage Vector Store 연결 |
 | `knowledge_documents` | 논리 문서, 출처, 권위 수준, 공식 URL, 적용 상품 카테고리 |
 | `knowledge_document_versions` | 시행일, hash, immutable Storage 경로, Upstage file id, active/superseded 상태 |
 | `rag_retrieval_runs` | analysis별 한국어 query, metadata filter, top-k와 provider 요청 기록 |
@@ -400,6 +400,10 @@ locale 행은 유지된다. `content`에는 번역·쉬운 설명과 함께 보�
 조항·근거 번호 및 고유명사 목록을 저장한다.
 
 AI 패널의 근거 번호는 `rag_evidence.id`를 가리킨다. 문서가 개정되어도 체결·분석 당시 사용한 `knowledge_document_versions` snapshot을 유지해 같은 페이지와 인용을 재현한다.
+
+`015_rag_knowledge_base_runtime.sql`은 `knowledge_corpus_type`에 `case_reference`를 추가하고
+`knowledge_document_versions.upstage_vector_store_file_id`를 저장한다. provider의 임시 다운로드
+URL은 어떤 registry 컬럼에도 저장하지 않는다.
 
 MVP 공식 자료는 PDF를 그대로 Upstage Files/Vector Store에 적재한다. `knowledge_document_versions.metadata`에는 `file_format=pdf`, `is_searchable`, `parse_required`, `original_page_count`를 기록한다. Markdown 정규화 경로는 nullable이며 필수 ingestion 단계가 아니다. 국내여행 표준약관은 `common`에 한 번만 저장하고 `contract_categories={tour}`로 제한한다.
 

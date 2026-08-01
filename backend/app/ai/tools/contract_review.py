@@ -7,6 +7,8 @@ from typing import Any
 from app.ai.providers.base import FileSearchProvider
 from app.ai.schemas import FileSearchRequest
 from app.ai.tasks.contract_review_rules import ReviewClauseInput
+from app.rag.filters import build_retrieval_filter, metadata_matches_scope
+from app.rag.locator import EvidenceLocator
 
 
 class ContractReviewToolError(Exception):
@@ -36,6 +38,10 @@ class ContractReviewTools:
         provider: FileSearchProvider,
         official_vector_store_id: str | None,
         template_vector_store_id: str | None,
+        case_vector_store_id: str | None = None,
+        activity_subtype: str | None = None,
+        evidence_locator: EvidenceLocator | None = None,
+        minimum_evidence_score: float = 0.3,
         max_searches: int = 2,
         as_of: date | None = None,
     ) -> None:
@@ -45,6 +51,10 @@ class ContractReviewTools:
         self._provider = provider
         self._official_store = official_vector_store_id
         self._template_store = template_vector_store_id
+        self._case_store = case_vector_store_id
+        self._activity_subtype = activity_subtype
+        self._evidence_locator = evidence_locator
+        self._minimum_evidence_score = minimum_evidence_score
         self._max_searches = max_searches
         self._as_of = as_of or date.today()
         self.searches_used = 0
@@ -99,44 +109,84 @@ class ContractReviewTools:
         query = str(arguments.get("query", "")).strip()
         if not query:
             raise ContractReviewToolRejectedError("search query is required")
-        store_id = self._official_store if official else self._template_store
-        if not store_id:
-            return {"hits": [], "unavailable": True}
-        source_type = "official" if official else "approved_template"
-        filters: dict[str, Any] = {
-            "source_type": source_type,
-            "contract_category": ["common", self._category],
-            "party_type": "B2C_individual",
-        }
-        if official:
-            filters["effective_on"] = self._as_of.isoformat()
-        result = await self._provider.search_files(
-            FileSearchRequest(
-                query=query,
-                vector_store_id=store_id,
-                filters=filters,
-                top_k=min(5, int(arguments.get("top_k", 5))),
-            )
+        stores = (
+            [
+                (self._official_store, "official_evidence", "official"),
+                (self._case_store, "case_reference", "case_reference"),
+            ]
+            if official
+            else [(self._template_store, "approved_templates", "approved_template")]
         )
+        stores = [(store, corpus, source) for store, corpus, source in stores if store]
+        if not stores:
+            return {"hits": [], "unavailable": True}
+        requested_top_k = min(5, int(arguments.get("top_k", 5)))
+        candidates: list[dict[str, Any]] = []
+        request_ids: list[str] = []
+        for store_id, corpus, source_type in stores:
+            filters = build_retrieval_filter(
+                corpus=corpus,
+                category=self._category,
+                effective_on=self._as_of,
+                activity_subtype=self._activity_subtype,
+            )
+            result = await self._provider.search_files(
+                FileSearchRequest(
+                    query=query,
+                    vector_store_id=store_id,
+                    filters=filters,
+                    top_k=requested_top_k,
+                )
+            )
+            if result.provider_request_id:
+                request_ids.append(result.provider_request_id)
+            for hit in result.hits:
+                if not metadata_matches_scope(
+                    hit.metadata,
+                    corpus=corpus,
+                    category=self._category,
+                    effective_on=self._as_of,
+                    activity_subtype=self._activity_subtype,
+                ):
+                    continue
+                if official and (hit.score is None or hit.score < self._minimum_evidence_score):
+                    continue
+                if official and not _clickable_location(hit.metadata) and self._evidence_locator:
+                    location = await self._evidence_locator.locate(hit.file_id, hit.excerpt)
+                    if location:
+                        hit.metadata.update(location)
+                if official and not _clickable_location(hit.metadata):
+                    continue
+                candidates.append(
+                    {
+                        "source_type": source_type,
+                        "corpus": corpus,
+                        "file_id": hit.file_id,
+                        "chunk_id": hit.chunk_id,
+                        "score": hit.score,
+                        "excerpt": hit.excerpt[:1000],
+                        "metadata": hit.metadata,
+                        "query": query,
+                        "filters": filters,
+                        "top_k": requested_top_k,
+                        "provider_request_id": result.provider_request_id,
+                    }
+                )
+        candidates.sort(key=lambda item: item["score"] or 0, reverse=True)
         hits: list[dict[str, Any]] = []
-        for index, hit in enumerate(result.hits, start=1):
-            if hit.metadata.get("source_type") != source_type:
+        seen: set[tuple[str, str | None]] = set()
+        for candidate in candidates:
+            dedupe_key = (candidate["file_id"], candidate["chunk_id"])
+            if dedupe_key in seen:
                 continue
-            if official and (hit.score is None or hit.score < 0.65):
-                continue
-            evidence_id = f"{source_type}:{self.searches_used}:{index}"
-            evidence = {
-                "evidence_id": evidence_id,
-                "source_type": source_type,
-                "file_id": hit.file_id,
-                "chunk_id": hit.chunk_id,
-                "score": hit.score,
-                "excerpt": hit.excerpt[:1000],
-                "metadata": hit.metadata,
-            }
+            seen.add(dedupe_key)
+            evidence_id = f"{candidate['source_type']}:{self.searches_used}:{len(hits) + 1}"
+            evidence = {"evidence_id": evidence_id, **candidate}
             self.evidence[evidence_id] = evidence
             hits.append(evidence)
-        return {"hits": hits, "provider_request_id": result.provider_request_id}
+            if len(hits) == requested_top_k:
+                break
+        return {"hits": hits, "provider_request_ids": request_ids}
 
     @staticmethod
     def _serialize_clause(clause: ReviewClauseInput) -> dict[str, Any]:
@@ -148,3 +198,10 @@ class ContractReviewTools:
             "body": clause.body,
             "source_location": clause.source_location,
         }
+
+
+def _clickable_location(metadata: dict[str, Any]) -> bool:
+    try:
+        return int(metadata.get("page_start", 0)) > 0
+    except (TypeError, ValueError):
+        return False

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import date
 from typing import Literal, NoReturn
 from uuid import UUID
 
@@ -24,6 +25,7 @@ from app.ai.tasks.contract_review_rules import review_contract_rules
 from app.ai.tools.contract_review import ContractReviewToolRejectedError, ContractReviewTools
 from app.core.errors import AppError
 from app.integrations.auth import AuthenticatedUser
+from app.rag.locator import EvidenceLocator
 from app.repositories.contract_review import (
     ContractReviewIdempotencyConflictError,
     ContractReviewRepository,
@@ -81,6 +83,9 @@ class ContractReviewService:
         prompt_version: str,
         official_vector_store_id: str | None,
         template_vector_store_id: str | None,
+        case_vector_store_id: str | None = None,
+        evidence_locator: EvidenceLocator | None = None,
+        minimum_evidence_score: float = 0.3,
         max_iterations: int = 2,
     ) -> None:
         self._repository = repository
@@ -91,6 +96,9 @@ class ContractReviewService:
         self._prompt_version = f"{prompt_version}:{CONTRACT_REVIEW_PROMPT_VERSION}"
         self._official_vector_store_id = official_vector_store_id
         self._template_vector_store_id = template_vector_store_id
+        self._case_vector_store_id = case_vector_store_id
+        self._evidence_locator = evidence_locator
+        self._minimum_evidence_score = minimum_evidence_score
         self._max_iterations = max_iterations
 
     async def start_listing_review(
@@ -181,6 +189,11 @@ class ContractReviewService:
                 provider=self._file_search,
                 official_vector_store_id=self._official_vector_store_id,
                 template_vector_store_id=self._template_vector_store_id,
+                case_vector_store_id=self._case_vector_store_id,
+                activity_subtype=target.terms.get("activity_subtype"),
+                evidence_locator=self._evidence_locator,
+                minimum_evidence_score=self._minimum_evidence_score,
+                as_of=self._effective_date(target.terms),
                 max_searches=self._max_iterations,
             )
             agent = ContractReviewAgent(
@@ -238,6 +251,18 @@ class ContractReviewService:
             self._raise(status.HTTP_404_NOT_FOUND, "ANALYSIS_NOT_FOUND", "Analysis was not found.")
         await self._authorize_run(run, actor, organization_header)
         return self._run_response(run)
+
+    @staticmethod
+    def _effective_date(terms: dict) -> date:
+        value = terms.get("service_start_date") or terms.get("start_date")
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            try:
+                return date.fromisoformat(value)
+            except ValueError:
+                pass
+        return date.today()
 
     async def apply_finding(
         self,
