@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     modusign_auth_email: str | None = None
     modusign_template_id: str | None = None
     modusign_timeout_seconds: float = Field(default=15.0, gt=0, le=60)
+    modusign_max_retries: int = Field(default=3, ge=0, le=5)
+    modusign_retry_base_seconds: float = Field(default=0.5, gt=0, le=10)
+    modusign_webhook_secret: str | None = Field(default=None, repr=False)
 
 
 @lru_cache

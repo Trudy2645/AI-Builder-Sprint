@@ -373,4 +373,6 @@ def get_modusign_client(
         api_key=settings.modusign_api_key,
         auth_email=settings.modusign_auth_email,
         timeout_seconds=settings.modusign_timeout_seconds,
+        max_retries=settings.modusign_max_retries,
+        retry_base_seconds=settings.modusign_retry_base_seconds,
     )
