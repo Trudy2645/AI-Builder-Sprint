@@ -82,3 +82,20 @@ async def test_supabase_signed_download_url_has_requested_expiry(
     assert url.endswith("?token=signed&download=")
     assert 299 <= (expires_at - before).total_seconds() <= 301
     assert StubAsyncClient.calls[0][1]["json"] == {"expiresIn": 300}
+
+
+@pytest.mark.asyncio
+async def test_supabase_put_object_uses_private_storage_object_endpoint(
+    storage_provider: SupabaseStorageProvider,
+) -> None:
+    StubAsyncClient.responses.append(StubResponse({}))
+
+    await storage_provider.put_object(
+        "ai-artifacts", "documents/id/parsed/result.json", b'{"pages":[]}', "application/json"
+    )
+
+    url, kwargs = StubAsyncClient.calls[0]
+    assert url.endswith("/storage/v1/object/ai-artifacts/documents/id/parsed/result.json")
+    assert kwargs["content"] == b'{"pages":[]}'
+    assert kwargs["headers"]["Content-Type"] == "application/json"  # type: ignore[index]
+    assert kwargs["headers"]["x-upsert"] == "false"  # type: ignore[index]

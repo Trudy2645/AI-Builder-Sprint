@@ -12,6 +12,7 @@ from app.core.errors import AppError
 from app.domain.ai_jobs.service import AIJobService
 from app.domain.auth_accounts.service import AuthAccountService, DemoLoginConfig
 from app.domain.contracts.service import ContractService
+from app.domain.document_processing.service import DocumentProcessingService
 from app.domain.documents.service import DocumentService
 from app.domain.listings.service import PublicListingService
 from app.domain.notifications.service import NotificationService
@@ -28,6 +29,10 @@ from app.repositories.auth_accounts import (
     SqlAlchemyRegistrationRepository,
 )
 from app.repositories.contracts import ContractRepository, SqlAlchemyContractRepository
+from app.repositories.document_processing import (
+    DocumentProcessingRepository,
+    SqlAlchemyDocumentProcessingRepository,
+)
 from app.repositories.documents import DocumentRepository, SqlAlchemyDocumentRepository
 from app.repositories.listings import PublicListingRepository, SqlAlchemyPublicListingRepository
 from app.repositories.notifications import (
@@ -81,6 +86,12 @@ def get_ai_provider(
         timeout_seconds=settings.ai_request_timeout_seconds,
         max_retries=settings.ai_max_retries,
     )
+
+
+def get_document_processing_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> DocumentProcessingRepository:
+    return SqlAlchemyDocumentProcessingRepository(session)
 
 
 def get_auth_account_service(
@@ -193,6 +204,25 @@ def get_storage_provider(
         supabase_url=settings.supabase_url,
         service_role_key=settings.supabase_service_role_key,
         timeout_seconds=settings.storage_request_timeout_seconds,
+    )
+
+
+def get_document_processing_service(
+    repository: Annotated[
+        DocumentProcessingRepository, Depends(get_document_processing_repository)
+    ],
+    storage: Annotated[StorageProvider, Depends(get_storage_provider)],
+    provider: Annotated[FakeAIProvider | UpstageAIProvider, Depends(get_ai_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> DocumentProcessingService:
+    return DocumentProcessingService(
+        repository,
+        storage,
+        provider,
+        provider,
+        provider_name=settings.ai_provider,
+        prompt_version=settings.ai_prompt_version,
+        max_document_size_bytes=settings.document_max_size_bytes,
     )
 
 

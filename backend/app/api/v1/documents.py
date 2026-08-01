@@ -1,13 +1,15 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, status
 
-from app.api.dependencies import get_document_service
+from app.api.dependencies import get_document_processing_service, get_document_service
 from app.core.auth import get_current_user
+from app.domain.document_processing.service import DocumentProcessingService
 from app.domain.documents.service import DocumentService
 from app.integrations.auth import AuthenticatedUser
 from app.schemas.common import SuccessEnvelope, typed_envelope
+from app.schemas.document_processing import DocumentProcessAccepted, DocumentProcessingResult
 from app.schemas.documents import (
     DocumentDownloadUrl,
     DocumentUploadUrl,
@@ -48,6 +50,46 @@ async def complete_document_upload(
     organization_id: OrganizationHeader = None,
 ) -> SuccessEnvelope[DocumentView]:
     result = await service.complete(document_id, actor, organization_id)
+    return typed_envelope(request, result)
+
+
+@router.post(
+    "/{document_id}/process",
+    response_model=SuccessEnvelope[DocumentProcessAccepted],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def process_document(
+    request: Request,
+    document_id: UUID,
+    background_tasks: BackgroundTasks,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[DocumentProcessingService, Depends(get_document_processing_service)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: OrganizationHeader = None,
+) -> SuccessEnvelope[DocumentProcessAccepted]:
+    started = await service.start(document_id, actor, organization_id, idempotency_key)
+    if started.should_schedule:
+        background_tasks.add_task(
+            service.run,
+            document_id,
+            started.response.job_id,
+            started.response.task_type,
+        )
+    return typed_envelope(request, started.response)
+
+
+@router.get(
+    "/{document_id}/processing-result",
+    response_model=SuccessEnvelope[DocumentProcessingResult],
+)
+async def get_document_processing_result(
+    request: Request,
+    document_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[DocumentProcessingService, Depends(get_document_processing_service)],
+    organization_id: OrganizationHeader = None,
+) -> SuccessEnvelope[DocumentProcessingResult]:
+    result = await service.get_result(document_id, actor, organization_id)
     return typed_envelope(request, result)
 
 

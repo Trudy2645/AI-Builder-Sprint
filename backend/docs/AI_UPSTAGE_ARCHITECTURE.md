@@ -268,6 +268,10 @@ Document Parse 결과를 다음 JSON schema로 변환한다.
 ```
 
 confidence가 낮거나 서로 충돌하는 값은 자동 확정하지 않고 seller confirmation 항목으로 보낸다.
+Upstage Universal Extraction의 confidence 원문은 `high`/`low` 등급이므로 adapter에서 내부
+검증용 값 `1.0`/`0.0`으로 정규화한다. 이는 확률 추정치가 아니라 provider 등급의 손실 없는
+이진 매핑이다. API에는 `location=true`, `location_granularity=element`를 전달하고 반환된 page와
+정규화 좌표를 `source_page`, `bbox`로 보존한다.
 
 `price`, `service_period`, `cancellation`, `refund`, `safety`, `compensation`, `liability`는 과제 요구사항의 필수 top-level key다. 문서에 항목이 없더라도 key를 생략하지 않고 `null`, `missing=true`로 반환해 누락 위험을 탐지한다. 정산, 노쇼, 최소 인원, 기상 취소 등은 카테고리별 확장 field로 함께 추출한다.
 
@@ -394,6 +398,8 @@ MVP에서는 세 번째 저장소를 만들지 않는다. 셀러가 업로드한
 
 ```
 Storage upload 완료
+→ POST /documents/{id}/complete로 파일 검증
+→ POST /documents/{id}/process로 비용 작업 명시적 시작
 → Document Parse
 → Information Extract
 → seller 확인이 필요한 낮은 confidence 값 표시
@@ -412,7 +418,9 @@ DB/API 연결:
 - `listing_versions`, `listing_clauses`
 - `ai_analysis_runs`, `ai_findings`
 - `POST /documents/{id}/complete`
+- `POST /documents/{id}/process`
 - `GET /ai-jobs/{id}`
+- `GET /documents/{id}/processing-result`
 
 ### 6.2 셀러가 직접 작성
 
@@ -674,8 +682,8 @@ sha256(
 | 결과 | 저장 |
 | --- | --- |
 | 원본 계약 파일 | Supabase Storage `contract-documents` |
-| 큰 parse 결과 | Storage `parsed/{document_id}.json` |
-| 추출 핵심값 | `documents.extracted_data`, listing terms/version |
+| 큰 parse 결과 | private Storage `ai-artifacts/documents/{document_id}/parsed/*.json` |
+| 추출 핵심값 | `documents.extracted_data`의 셀러 확인 후보 |
 | job 상태 | `ai_jobs` |
 | 분석 실행 정보 | `ai_analysis_runs` |
 | Agent 반복·종료 정보 | `ai_analysis_runs.execution_mode/agent_name/iterations_used/stop_reason` |
@@ -699,7 +707,8 @@ sha256(
 
 | API/이벤트 | AI job | 동기/비동기 | 사용자 결과 |
 | --- | --- | --- | --- |
-| `POST /documents/{id}/complete` | document_parse → information_extract → rule_check → contract_review Agent | 비동기 | 요금·기간·취소·환불·안전·보상·책임 추출 및 근거 기반 검토 진행률 |
+| `POST /documents/{id}/complete` | 없음 | 동기 | Storage object의 MIME·크기·SHA-256 검증과 `uploaded` 전이 |
+| `POST /documents/{id}/process` | document_parse → information_extract | 비동기 | 7개 필수 영역과 셀러 확인용 공고 후보 |
 | `POST /ai-findings/{id}/apply` | safeguard apply → new version → re-analysis | 비동기 | 적용된 새 version과 재분석 job |
 | `POST /seller/listings/{id}/generate` | contract_generate 고정 함수 → contract_review Agent | 비동기 | 계약 초안과 셀러 finding |
 | `POST /seller/listings/{id}/analyses` | contract_review Agent | 비동기 | 특정 version 재분석 |
