@@ -95,7 +95,7 @@ sequenceDiagram
 
 | 과제 요구기능 | 구현 기준 | 핵심 API/저장 |
 | --- | --- | --- |
-| 계약 파싱·구조화 | Document Parse 후 Information Extract로 요금·기간·취소·환불·안전·보상·책임 추출 | `POST /documents/{id}/complete`, `documents.extracted_data` |
+| 계약 파싱·구조화 | Document Parse 후 Information Extract로 요금·기간·취소·환불·안전·보상·책임 추출 | `POST /documents/{id}/process`, `documents.extracted_data` |
 | 리스크 점검·경고 | 규칙 엔진과 단일 `ContractReviewAgent`가 필요할 때 공식 PDF 근거를 검색하고 누락/불리 조항과 원문 위치를 반환 | `POST /seller/listings/{id}/analyses`, `ai_analysis_runs`, `rag_retrieval_runs`, `ai_findings` |
 | 표준 안전장치 | 공식/승인 템플릿 RAG로 대안 문구를 만들고 사용자가 적용해야 새 version 생성 | `POST /ai-findings/{id}/apply` |
 | 4개 언어 | 한국어·영어·일본어·중국어 요약/설명 cache, 숫자·날짜 보존 검증 | `locale`, `localized_contents` |
@@ -627,10 +627,28 @@ Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, c
 1. `POST /documents/upload-url`에 `listing_id`, 파일 metadata, `purpose=source_contract` 전달
 2. 브라우저가 Supabase Storage signed URL로 직접 업로드
 3. `POST /documents/{document_id}/complete`
-4. Upstage Document Parse → Information Extract
-5. listing terms/version/clauses 후보 생성
-6. 규칙 엔진 실행 후 단일 `ContractReviewAgent`가 필요한 근거만 공식/템플릿 Vector Store에서 File Search
+4. `POST /documents/{document_id}/process`
+5. Upstage Document Parse → Information Extract
+6. listing terms/version/clauses 후보 생성과 셀러 확인 대기
 7. `GET /ai-jobs/{job_id}` polling
+8. `GET /documents/{document_id}/processing-result`로 확인 후보 조회
+
+`process`는 비용이 발생하는 작업이므로 `Idempotency-Key`와 `X-Organization-Id`가 필요하다.
+최초 요청은 `document_parse` job을 반환하고, parse가 성공하면 동일 pipeline에서
+`information_extract` job을 생성한다. 성공한 단계는 재사용하며 부분 실패를 다시 요청하면 실패한
+단계만 새 job으로 재시도한다.
+
+```json
+{
+  "data": {
+    "document_id": "uuid",
+    "job_id": "uuid",
+    "task_type": "document_parse",
+    "status": "queued"
+  },
+  "meta": {"request_id": "..."}
+}
+```
 
 `GET /ai-jobs/{job_id}`는 인증된 바이어 본인 또는 `X-Organization-Id`로 확인된 셀러
 조직 구성원만 조회할 수 있다. 응답은 provider 원문이나 계약 내용을 포함하지 않고 다음
@@ -669,12 +687,21 @@ Information Extract job 생성은 후속 AI 처리 API에서 명시적으로 시
 지원 형식은 PDF, DOCX, JPG/JPEG, PNG이고 기본 최대 크기는 20 MiB다. seller 소유 파일은
 `X-Organization-Id`, 모든 upload URL 요청은 `Idempotency-Key`가 필요하다.
 
-네 document API의 응답은 실제 Storage bucket과 object path를 반환하지 않는다. upload URL은
+document API 응답은 실제 Storage bucket과 object path를 반환하지 않는다. upload URL은
 Supabase Storage의 provider 고정 유효시간을 따르고, download URL은 기본 5분 동안 유효하다.
+
+Document Parse 전체 결과는 private `ai-artifacts` bucket에 JSON으로 보관한다. 추출 핵심값과
+낮은 confidence·missing 확인 목록, 공고 terms/version/clauses 후보는
+`documents.extracted_data`에 저장한다. 후보는 셀러가 명시적으로 확인하기 전까지 실제
+`listing_terms`, `listing_versions`, `listing_clauses`에 반영하지 않는다.
 
 공식 RAG 자료는 MVP에서 PDF를 Markdown으로 변환하지 않고 그대로 Upstage Files API에 업로드한다. 텍스트가 없는 스캔 PDF만 Document Parse/OCR을 거친 검색 가능한 PDF 또는 parse artifact를 사용한다. 국내여행 표준약관은 물리적으로 `common` corpus에 한 번만 저장하되 `contract_categories=["tour"]`로 제한한다.
 
 과제/API 명세에서는 이 단계를 `Information Extract`로 부른다. 실제 Upstage SDK 또는 콘솔에서 기능명이 `Universal Extraction`이면 provider adapter 내부에서만 해당 이름을 사용한다. 외부 job type과 domain interface는 `information_extract`로 유지한다.
+adapter는 공식 Universal Extraction 형식에 맞춰 `/v1/information-extraction`에 원문을 base64
+data URL로 전달하며, 문서 원문이나 parse artifact를 Upstage Files/Vector Store에는 업로드하지
+않는다. Upstage의 `high`/`low` confidence 등급은 내부 seller-confirmation 임계값 검사를 위해
+각각 `1.0`/`0.0`으로 정규화하고, element 단위 page/bbox를 provenance로 보존한다.
 
 Information Extract의 필수 top-level 결과는 다음 일곱 영역이다.
 
@@ -1279,11 +1306,11 @@ backend/app/
 | 4 | `feature/seller-listings` | `feat(listings): 공고 공개 상태 전이 추가` | `POST /seller/listings/{id}/publish`<br>`POST /seller/listings/{id}/pause`<br>`POST /seller/listings/{id}/archive` | verified seller만 publish할 수 있다. 유효하지 않은 상태 전이는 `INVALID_STATE_TRANSITION`을 반환한다. |
 | 4 | `feature/seller-listings` | `test(listings): 셀러 소유권과 상태 전이 검증` | 위 seller listing API | 다른 셀러의 공고 접근, 미검증 publish, 필수값 누락, pause/publish 재개, archived 변경 차단을 테스트한다. |
 | 5 | `feat/documents-storage` | `feat(storage): add signed upload and download URLs` | `POST /documents/upload-url`<br>`POST /documents/{id}/download-url` | listing/contract 소유권을 확인한 후 짧은 만료시간의 Supabase Storage signed URL을 발급한다. 파일은 FastAPI 메모리를 통과해 업로드하지 않는다. |
-| 5 | `feat/documents-storage` | `feat(documents): complete uploaded documents` | `POST /documents/{id}/complete`<br>`GET /documents/{id}` | 업로드 object의 크기·MIME·hash를 확인하고 document 처리 job을 만든다. PDF/DOCX/JPG/PNG와 최대 용량 제한을 적용한다. |
+| 5 | `feat/documents-storage` | `feat(documents): complete uploaded documents` | `POST /documents/{id}/complete`<br>`GET /documents/{id}` | 업로드 object의 크기·MIME·hash를 확인하고 `uploaded` 상태로 만든다. PDF/DOCX/JPG/PNG와 최대 용량 제한을 적용한다. |
 | 5 | `feat/documents-storage` | `test(documents): validate ownership and file metadata` | 위 document API | 다른 조직 파일 접근, MIME 위조, 크기 초과, 존재하지 않는 Storage object를 테스트한다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): add provider interfaces and job APIs` | `GET /ai-jobs/{id}` | `DocumentProcessor`, `ContractGenerator`, `ContractReviewAgent` interface와 fake provider를 만든다. job 상태는 queued/processing/succeeded/failed다. |
 | 6 | `feat/ai-contract-review` | `feat(db): track bounded contract review agent runs` | 없음 | 구현 시점의 다음 새 migration으로 execution mode, Agent 이름, 최대/실제 iteration, 종료 사유와 비민감 실행 metadata를 `ai_analysis_runs`에 추가한다. 기존 migration은 수정하지 않는다. |
-| 6 | `feat/ai-contract-review` | `feat(ai): parse and extract uploaded contracts` | `POST /documents/{id}/complete`의 비동기 처리 | Upstage Document Parse → Information Extract로 요금·기간·취소·환불·안전·보상·책임과 listing clauses 후보를 만든다. 실제 provider 기능명이 Universal Extraction이면 adapter 내부에서만 매핑한다. |
+| 6 | `feature/ai-document-processing` | `feat(ai): parse and extract uploaded contracts` | `POST /documents/{id}/process`<br>`GET /documents/{id}/processing-result` | Upstage Document Parse → Information Extract로 요금·기간·취소·환불·안전·보상·책임과 셀러 확인용 listing 후보를 만든다. 실제 provider 기능명이 Universal Extraction이면 adapter 내부에서만 매핑한다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): generate contracts with fixed tasks` | `POST /seller/listings/{id}/generate` | 고정 prompt/JSON Schema 함수로 직접 입력 조건의 초안을 생성한다. 생성 함수에는 자율 tool 호출 권한을 주지 않는다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): review contracts with a bounded single agent` | `POST /seller/listings/{id}/analyses` | `ContractReviewAgent`가 조항 조회·공식 근거 검색·승인 템플릿 검색 도구만 최대 2회 반복 호출한다. seller/buyer 관점 분석을 분리 저장하고 공개 API는 buyer 분석만 사용한다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): apply reviewed safeguard clauses` | `POST /ai-findings/{id}/apply`<br>`POST /ai-findings/{id}/dismiss` | AI 제안은 자동 반영하지 않는다. 적용 시 immutable 새 version을 만들고 재분석하며, 적용/기각 모두 audit event를 남긴다. |

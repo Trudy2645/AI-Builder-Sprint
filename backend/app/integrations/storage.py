@@ -27,6 +27,10 @@ class StorageProvider(Protocol):
 
     def iter_object(self, bucket: str, object_path: str) -> AsyncIterator[bytes]: ...
 
+    async def put_object(
+        self, bucket: str, object_path: str, content: bytes, content_type: str
+    ) -> None: ...
+
 
 class SupabaseStorageProvider:
     """Small Storage REST adapter; file bodies are consumed as an async stream."""
@@ -112,6 +116,20 @@ class SupabaseStorageProvider:
             except httpx.HTTPError as exc:
                 raise StorageProviderError from exc
 
+    async def put_object(
+        self, bucket: str, object_path: str, content: bytes, content_type: str
+    ) -> None:
+        encoded = self._encoded_path(bucket, object_path)
+        headers = {**self._headers, "Content-Type": content_type, "x-upsert": "false"}
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            try:
+                response = await client.post(
+                    f"{self._base_url}/object/{encoded}", headers=headers, content=content
+                )
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise StorageProviderError from exc
+
     @staticmethod
     def _encoded_path(bucket: str, object_path: str) -> str:
         return f"{quote(bucket, safe='')}/{quote(object_path, safe='/')}"
@@ -160,6 +178,16 @@ class FakeStorageProvider:
 
     def put(self, bucket: str, object_path: str, data: bytes) -> None:
         self.objects[(bucket, object_path)] = data
+
+    async def put_object(
+        self, bucket: str, object_path: str, content: bytes, content_type: str
+    ) -> None:
+        del content_type
+        self._check_available()
+        key = (bucket, object_path)
+        if key in self.objects:
+            raise StorageProviderError
+        self.objects[key] = content
 
     def _check_available(self) -> None:
         if self.unavailable:

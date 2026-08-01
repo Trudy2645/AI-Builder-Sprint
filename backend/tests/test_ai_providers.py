@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 import httpx
@@ -11,7 +12,13 @@ from app.ai.providers.base import (
 )
 from app.ai.providers.fake import FakeAIProvider
 from app.ai.providers.upstage import UpstageAIProvider
-from app.ai.schemas import DocumentInput, LanguageModelRequest
+from app.ai.schemas import (
+    DocumentInput,
+    DocumentParseResult,
+    LanguageModelRequest,
+    ParsedBlock,
+    ParsedPage,
+)
 
 
 class SummaryOutput(BaseModel):
@@ -105,6 +112,12 @@ async def test_upstage_retries_429_and_temporary_5xx_with_exponential_backoff() 
                     "category": "paragraph",
                     "content": "제1조 계약의 목적",
                     "page": 1,
+                    "coordinates": [
+                        {"x": 0.1, "y": 0.2},
+                        {"x": 0.5, "y": 0.2},
+                        {"x": 0.5, "y": 0.4},
+                        {"x": 0.1, "y": 0.4},
+                    ],
                 }
             ],
         }
@@ -115,6 +128,8 @@ async def test_upstage_retries_429_and_temporary_5xx_with_exponential_backoff() 
 
     assert result.markdown == "# 계약"
     assert result.pages[0].blocks[0].content == "제1조 계약의 목적"
+    assert result.pages[0].blocks[0].bbox is not None
+    assert result.pages[0].blocks[0].bbox.width == pytest.approx(0.4)
     assert sleeps == [0.5, 1.0]
 
 
@@ -146,3 +161,97 @@ async def test_upstage_rejects_invalid_structured_model_output() -> None:
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(AIProviderInvalidResponseError):
             await provider(client).generate_structured(request, SummaryOutput)
+
+
+@pytest.mark.asyncio
+async def test_upstage_maps_universal_extraction_values_and_provenance() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/information-extraction"
+        assert request.headers["content-type"] == "application/json"
+        body = request.read()
+        request_json = httpx.Response(200, content=body).json()
+        assert request_json["model"] == "information-extract"
+        assert request_json["messages"][0]["content"][0]["image_url"]["url"].startswith(
+            "data:application/octet-stream;base64,"
+        )
+        assert (
+            "price_amount_minor"
+            in request_json["response_format"]["json_schema"]["schema"]["properties"]
+        )
+        assert request_json["location"] is True
+        assert request_json["confidence"] is True
+        return httpx.Response(
+            200,
+            request=request,
+            headers={"x-request-id": "extract-request"},
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"price_amount_minor":145000,"price_currency":"KRW"}',
+                            "tool_calls": [
+                                {
+                                    "function": {
+                                        "name": "additional_values",
+                                        "arguments": json.dumps(
+                                            {
+                                                "additional_values": {
+                                                    "price_amount_minor": {
+                                                        "confidence": "high",
+                                                        "page": 2,
+                                                        "coordinates": [
+                                                            {"x": 0.1, "y": 0.2},
+                                                            {"x": 0.4, "y": 0.2},
+                                                            {"x": 0.4, "y": 0.3},
+                                                            {"x": 0.1, "y": 0.3},
+                                                        ],
+                                                    },
+                                                    "price_currency": {
+                                                        "confidence": "low",
+                                                        "page": 2,
+                                                    },
+                                                }
+                                            }
+                                        ),
+                                    }
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+        )
+
+    parsed = DocumentParseResult(
+        pages=[
+            ParsedPage(
+                page_number=2,
+                blocks=[
+                    ParsedBlock(
+                        block_id="price",
+                        block_type="paragraph",
+                        content="객실당 145,000원 (KRW)",
+                        page_number=2,
+                    )
+                ],
+            )
+        ]
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await provider(client).extract_information(document(), parsed)
+
+    amount = result.price.fields["amount_minor"]
+    assert amount.value == 145000
+    assert amount.confidence == 1.0
+    assert amount.source_page == 2
+    assert amount.source_quote == "객실당 145,000원 (KRW)"
+    assert amount.bbox is not None
+    assert amount.bbox.model_dump() == {
+        "x": 0.1,
+        "y": 0.2,
+        "width": pytest.approx(0.3),
+        "height": pytest.approx(0.1),
+    }
+    assert result.price.fields["currency"].confidence == 0.0
+    assert result.refund.missing is True
+    assert result.provider_request_id == "extract-request"
