@@ -354,7 +354,7 @@ AI target은 listing version 또는 contract version 중 정확히 하나다.
 - 공개 API는 buyer 분석만 반환한다.
 - 모든 finding은 모델명, prompt version, evidence와 disclaimer를 가진다.
 
-향후 AI 구현용 새 migration에서는 `ai_analysis_runs`에 다음 실행 metadata를 추가한다.
+`014_ai_contract_review_agent.sql`은 `ai_analysis_runs`에 다음 실행 metadata를 추가한다.
 
 | 컬럼 | 의미 |
 | --- | --- |
@@ -365,7 +365,14 @@ AI target은 listing version 또는 contract version 중 정확히 하나다.
 | `stop_reason` | `completed`, `max_iterations`, `insufficient_evidence`, `provider_error` |
 | `execution_metadata` | 사용한 tool 이름, 호출 순서, schema version 등 비민감 metadata |
 
-원문 prompt, 전체 계약서, API 응답 전문은 `execution_metadata`에 저장하지 않는다. Agent의 각 File Search 호출은 기존 `rag_retrieval_runs`에 별도 행으로 남기며, 최종 채택된 근거만 `rag_evidence`에 고정한다.
+원문 prompt, 전체 계약서, API 응답 전문은 `execution_metadata`에 저장하지 않는다. RAG knowledge
+base 단계에서는 Agent의 각 File Search 호출을 `rag_retrieval_runs`에 별도 행으로 남기고,
+최종 채택된 근거만 `rag_evidence`에 고정한다.
+
+`ai_findings.is_public`은 시스템이 승인한 buyer finding만 공개 API에 노출하기 위한 값이다.
+seller 관점 결과는 Agent 출력과 무관하게 항상 `false`로 저장된다. 이 branch에서는 채택한
+검색 결과의 제한된 metadata를 `ai_findings.evidence` snapshot에도 보존하며, knowledge registry와
+연결된 정규화 `rag_retrieval_runs`/`rag_evidence` 기록은 RAG knowledge base 단계에서 완성한다.
 
 ### RAG knowledge registry
 

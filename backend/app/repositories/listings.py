@@ -164,6 +164,7 @@ class SqlAlchemyPublicListingRepository:
                 limit 1
             )
               and af.status in ('open', 'applied')
+              and af.is_public = true
               and af.listing_clause_id is not null
         ), 0)::integer
     """
@@ -362,6 +363,7 @@ class SqlAlchemyPublicListingRepository:
                     from public.ai_findings af
                     where af.analysis_run_id = (select id from latest_buyer_analysis)
                       and af.status in ('open', 'applied')
+                      and af.is_public = true
                     order by
                         case af.severity
                             when 'high' then 1 when 'medium' then 2

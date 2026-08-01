@@ -803,17 +803,19 @@ version과 clauses를 저장하고 `ready`로 전이한다. 결과를 자동 게
 또는 숫자·날짜·단가·수량 불변식 위반은 `AI_GENERATION_INVALID`로 반환한다. provider 실패 시 job을 failed로
 기록하고 listing을 `draft`로 되돌려 동일 요청을 재시도할 수 있게 한다.
 
-### `POST /seller/listings/{listing_id}/analyses`
+### `[구현] POST /seller/listings/{listing_id}/analyses`
 
 ```json
 {
-  "listing_version_id": "uuid",
+  "version_id": "uuid",
   "viewer_role": "seller",
   "analysis_types": ["summary", "risk", "missing_terms"]
 }
 ```
 
-분석 결과는 seller workspace에만 노출한다. 공개 시에는 별도의 `viewer_role=buyer` 분석을 생성한다.
+셀러 조직 구성원만 실행할 수 있다. `viewer_role=seller` 결과는 seller workspace에만
+노출하고, 공개 시에는 같은 endpoint로 별도의 `viewer_role=buyer` 분석을 생성한다.
+두 분석은 서로 다른 run과 finding으로 저장된다.
 
 응답 job에는 실행 방식을 명시한다.
 
@@ -831,6 +833,19 @@ version과 clauses를 저장하고 `ready`로 전이한다. 결과를 자동 게
 ```
 
 Agent는 계약을 수정하거나 서명 요청을 만들 수 없다. 최종 출력은 JSON Schema를 통과한 finding 후보뿐이며, 새 version 생성은 사용자가 `apply`를 호출했을 때 domain service가 수행한다.
+
+### `[구현] POST /contracts/{contract_id}/analyses`
+
+공고 분석과 같은 request/response schema를 사용한다. 바이어는 본인 계약에
+`viewer_role=buyer`, 셀러 조직 구성원은 `viewer_role=seller`만 요청할 수 있다. 선택한
+`version_id`가 해당 계약에 속하지 않으면 `VERSION_NOT_FOUND`, 인증 당사자와 관점이 다르면
+`REVIEW_VIEWER_ROLE_FORBIDDEN`이다.
+
+### `[구현] GET /ai-analysis-runs/{analysis_run_id}`
+
+완료된 run과 finding을 반환한다. 각 finding에는 viewer role, clause ID, 위험도, 설명,
+추천 문구, grounding status, disclaimer, 공개 가능 여부와 run의 model/prompt version이 포함된다.
+공고 run은 셀러 조직 구성원, 계약 run은 해당 관점의 계약 당사자만 조회할 수 있다.
 
 ### `[구현] POST /seller/listings/{listing_id}/complete`
 
@@ -1356,7 +1371,7 @@ backend/app/
 | 5 | `feat/documents-storage` | `feat(documents): complete uploaded documents` | `POST /documents/{id}/complete`<br>`GET /documents/{id}` | 업로드 object의 크기·MIME·hash를 확인하고 `uploaded` 상태로 만든다. PDF/DOCX/JPG/PNG와 최대 용량 제한을 적용한다. |
 | 5 | `feat/documents-storage` | `test(documents): validate ownership and file metadata` | 위 document API | 다른 조직 파일 접근, MIME 위조, 크기 초과, 존재하지 않는 Storage object를 테스트한다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): add provider interfaces and job APIs` | `GET /ai-jobs/{id}` | `DocumentProcessor`, `ContractGenerator`, `ContractReviewAgent` interface와 fake provider를 만든다. job 상태는 queued/processing/succeeded/failed다. |
-| 6 | `feat/ai-contract-review` | `feat(db): track bounded contract review agent runs` | 없음 | 구현 시점의 다음 새 migration으로 execution mode, Agent 이름, 최대/실제 iteration, 종료 사유와 비민감 실행 metadata를 `ai_analysis_runs`에 추가한다. 기존 migration은 수정하지 않는다. |
+| 6 | `feat/ai-contract-review` | `feat(db): track bounded contract review agent runs` | 없음 | migration `014`가 execution mode, Agent 이름, 최대/실제 iteration, 종료 사유와 비민감 실행 metadata를 `ai_analysis_runs`에 추가한다. 기존 migration은 수정하지 않는다. |
 | 6 | `feature/ai-document-processing` | `feat(ai): parse and extract uploaded contracts` | `POST /documents/{id}/process`<br>`GET /documents/{id}/processing-result` | Upstage Document Parse → Information Extract로 요금·기간·취소·환불·안전·보상·책임과 셀러 확인용 listing 후보를 만든다. 실제 provider 기능명이 Universal Extraction이면 adapter 내부에서만 매핑한다. |
 | 6 | `feature/ai-contract-generation` | `feat(ai): generate contracts with fixed tasks` | `POST /seller/listings/{id}/generate` | 고정 prompt/JSON Schema 함수로 직접 입력 조건의 초안을 생성한다. 생성 함수에는 자율 tool 호출 권한을 주지 않는다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): review contracts with a bounded single agent` | `POST /seller/listings/{id}/analyses` | `ContractReviewAgent`가 조항 조회·공식 근거 검색·승인 템플릿 검색 도구만 최대 2회 반복 호출한다. seller/buyer 관점 분석을 분리 저장하고 공개 API는 buyer 분석만 사용한다. |

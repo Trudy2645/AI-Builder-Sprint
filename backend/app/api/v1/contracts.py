@@ -1,15 +1,21 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, status
 
-from app.api.dependencies import get_contract_service, get_modusign_client
+from app.api.dependencies import (
+    get_contract_review_service,
+    get_contract_service,
+    get_modusign_client,
+)
 from app.core.auth import get_current_user
 from app.core.config import Settings, get_settings
+from app.domain.contract_review.service import ContractReviewService
 from app.domain.contracts.service import ContractService
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.modusign import ModusignClient
 from app.schemas.common import SuccessEnvelope, typed_envelope
+from app.schemas.contract_review import ContractReviewAccepted, ContractReviewRequest
 from app.schemas.contracts import (
     BuyerContractListItem,
     ContractBucket,
@@ -28,6 +34,34 @@ from app.schemas.contracts import (
 )
 
 router = APIRouter(tags=["contracts"])
+
+
+@router.post(
+    "/contracts/{contract_id}/analyses",
+    response_model=SuccessEnvelope[ContractReviewAccepted],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def analyze_contract_version(
+    request: Request,
+    contract_id: UUID,
+    payload: ContractReviewRequest,
+    background_tasks: BackgroundTasks,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractReviewService, Depends(get_contract_review_service)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[ContractReviewAccepted]:
+    started = await service.start_contract_review(
+        contract_id, payload, actor, organization_id, idempotency_key
+    )
+    if started.should_schedule:
+        background_tasks.add_task(
+            service.run,
+            job_id=started.response.job_id,
+            target=started.target,
+            viewer_role=started.viewer_role,
+        )
+    return typed_envelope(request, started.response)
 
 
 @router.post(

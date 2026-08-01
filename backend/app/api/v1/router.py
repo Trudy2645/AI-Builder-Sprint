@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.ai_analyses import router as ai_analyses_router
 from app.api.v1.ai_jobs import router as ai_jobs_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.contracts import router as contracts_router
@@ -14,6 +15,7 @@ from app.api.v1.seller_listings import router as seller_listings_router
 router = APIRouter()
 router.include_router(auth_router)
 router.include_router(ai_jobs_router)
+router.include_router(ai_analyses_router)
 router.include_router(public_listings_router)
 router.include_router(profiles_router)
 router.include_router(contracts_router)
