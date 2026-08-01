@@ -3,11 +3,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, status
 
-from app.api.dependencies import get_contract_review_service, get_contract_service
+from app.api.dependencies import (
+    get_contract_review_service,
+    get_contract_service,
+    get_modusign_client,
+)
 from app.core.auth import get_current_user
+from app.core.config import Settings, get_settings
 from app.domain.contract_review.service import ContractReviewService
 from app.domain.contracts.service import ContractService
 from app.integrations.auth import AuthenticatedUser
+from app.integrations.modusign import ModusignClient
 from app.schemas.common import SuccessEnvelope, typed_envelope
 from app.schemas.contract_review import ContractReviewAccepted, ContractReviewRequest
 from app.schemas.contracts import (
@@ -17,12 +23,14 @@ from app.schemas.contracts import (
     ContractDetail,
     ContractRequestCreate,
     ContractRequestCreated,
+    ContractSignatureRequestCreate,
     ContractVersionApprovalsResponse,
     ContractVersionApproveResponse,
     ContractVersionCompareResponse,
     ContractVersionListItem,
     SellerContractListItem,
     SellerDashboard,
+    SignatureRequestCreated,
 )
 
 router = APIRouter(tags=["contracts"])
@@ -152,6 +160,35 @@ async def get_contract_version_approvals(
         contract_id, version_id, actor, organization_id
     )
     return typed_envelope(request, approvals)
+
+
+@router.post(
+    "/contracts/{contract_id}/versions/{version_id}/signature-requests",
+    response_model=SuccessEnvelope[SignatureRequestCreated],
+)
+async def create_contract_signature_request(
+    request: Request,
+    contract_id: UUID,
+    version_id: UUID,
+    payload: ContractSignatureRequestCreate,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractService, Depends(get_contract_service)],
+    client: Annotated[ModusignClient, Depends(get_modusign_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[SignatureRequestCreated]:
+    result = await service.create_signature_request(
+        contract_id,
+        version_id,
+        payload,
+        actor,
+        organization_id,
+        idempotency_key,
+        client,
+        settings.modusign_template_id,
+    )
+    return typed_envelope(request, result)
 
 
 @router.get("/me/contracts", response_model=SuccessEnvelope[list[BuyerContractListItem]])
