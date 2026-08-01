@@ -50,6 +50,7 @@ class SellerListingRecord:
     status: str
     creation_method: str
     seller_description: str | None
+    public_headline: str | None
     ai_summary: str | None
     hero_document_id: UUID | None
     current_version_id: UUID
@@ -59,10 +60,14 @@ class SellerListingRecord:
     current_version_created_at: datetime
     contract_request_count: int
     contract_count: int
+    attention_required_count: int
     service_start_date: date | None
     service_end_date: date | None
     supply_quantity: int | None
+    supply_quantity_description: str | None
     quantity_unit: str | None
+    minimum_quantity: int | None
+    maximum_quantity: int | None
     people_per_unit: int | None
     base_price_amount_minor: int | None
     currency: str | None
@@ -196,7 +201,10 @@ class SqlAlchemySellerListingRepository:
         "service_start_date",
         "service_end_date",
         "supply_quantity",
+        "supply_quantity_description",
         "quantity_unit",
+        "minimum_quantity",
+        "maximum_quantity",
         "people_per_unit",
         "base_price_amount_minor",
         "currency",
@@ -220,6 +228,7 @@ class SqlAlchemySellerListingRepository:
         "display_title",
         "hero_document_id",
         "seller_description",
+        "public_headline",
     }
     _SELECT = """
         select l.id, l.seller_organization_id, o.name as organization_name,
@@ -227,15 +236,32 @@ class SqlAlchemySellerListingRepository:
                l.display_title, l.display_company_name, l.district,
                l.category::text as category, l.language::text as language,
                l.status::text as status, l.creation_method::text as creation_method,
-               l.seller_description, l.ai_summary, l.hero_document_id,
+               l.seller_description, l.public_headline, l.ai_summary, l.hero_document_id,
                l.current_version_id, lv.version_no as current_version_no,
                lv.title as current_version_title, lv.body as current_version_body,
                lv.created_at as current_version_created_at,
                l.contract_request_count::integer,
                (select count(*)::integer from public.contracts c where c.listing_id = l.id)
                    as contract_count,
+               coalesce((
+                   select count(distinct finding.listing_clause_id)
+                   from public.ai_findings finding
+                   where finding.analysis_run_id = (
+                       select run.id
+                       from public.ai_analysis_runs run
+                       where run.listing_version_id = l.current_version_id
+                         and run.viewer_role = 'seller'
+                         and run.status = 'succeeded'
+                       order by run.completed_at desc nulls last, run.created_at desc
+                       limit 1
+                   )
+                     and finding.status = 'open'
+                     and finding.listing_clause_id is not null
+               ), 0)::integer as attention_required_count,
                lt.service_start_date, lt.service_end_date, lt.supply_quantity,
-               lt.quantity_unit, lt.people_per_unit, lt.base_price_amount_minor,
+               lt.supply_quantity_description, lt.quantity_unit,
+               lt.minimum_quantity, lt.maximum_quantity,
+               lt.people_per_unit, lt.base_price_amount_minor,
                lt.currency, lt.price_unit, lt.minimum_people, lt.maximum_people,
                lt.cancellation_policy, lt.no_show_policy, lt.refund_policy,
                lt.settlement_policy, lt.safety_policy, lt.compensation_policy,

@@ -38,7 +38,10 @@ def complete_terms() -> dict[str, object]:
         "service_start_date": "2026-08-01",
         "service_end_date": "2026-08-31",
         "supply_quantity": 30,
+        "supply_quantity_description": "주말 객실 최대 30실",
         "quantity_unit": "room",
+        "minimum_quantity": 10,
+        "maximum_quantity": 30,
         "people_per_unit": 2,
         "base_price_amount_minor": 145000,
         "currency": "KRW",
@@ -141,6 +144,7 @@ class FakeSellerListingRepository:
             status="draft",
             creation_method=creation_method,
             seller_description=None,
+            public_headline=None,
             ai_summary=None,
             hero_document_id=None,
             current_version_id=version_id,
@@ -150,10 +154,14 @@ class FakeSellerListingRepository:
             current_version_created_at=NOW,
             contract_request_count=0,
             contract_count=0,
+            attention_required_count=0,
             service_start_date=None,
             service_end_date=None,
             supply_quantity=None,
+            supply_quantity_description=None,
             quantity_unit=None,
+            minimum_quantity=None,
+            maximum_quantity=None,
             people_per_unit=None,
             base_price_amount_minor=None,
             currency=None,
@@ -364,6 +372,8 @@ def test_create_list_and_get_draft(listing_client: TestClient) -> None:
 
     assert listing_list.status_code == 200
     assert listing_list.json()["data"][0]["status"] == "draft"
+    assert listing_list.json()["data"][0]["contract_available"] is False
+    assert listing_list.json()["data"][0]["attention_required_count"] == 0
     assert detail.status_code == 200
     assert detail.json()["data"]["current_version"]["version_no"] == 1
     assert "cancellation_policy" in detail.json()["data"]["missing_fields"]
@@ -559,6 +569,68 @@ def test_terms_validate_period_and_people_ranges(listing_client: TestClient) -> 
     assert invalid_period.json()["error"]["code"] == "VALIDATION_ERROR"
     assert invalid_people.status_code == 400
     assert invalid_people.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_terms_validate_supply_quantity_range(listing_client: TestClient) -> None:
+    listing_id = create_listing(listing_client)
+
+    response = listing_client.patch(
+        f"/api/v1/seller/listings/{listing_id}/terms",
+        headers=headers(),
+        json={
+            "base_version_no": 1,
+            "terms": {"minimum_quantity": 40, "maximum_quantity": 20},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_frontend_listing_fields_are_enough_to_complete_and_publish(
+    listing_client: TestClient,
+) -> None:
+    listing_id = create_listing(listing_client)
+    terms = listing_client.patch(
+        f"/api/v1/seller/listings/{listing_id}/terms",
+        headers=headers(),
+        json={
+            "base_version_no": 1,
+            "terms": {
+                "service_start_date": "2026-08-01",
+                "service_end_date": "2026-08-31",
+                "supply_quantity_description": "주말 객실 최대 30실",
+                "minimum_quantity": 10,
+                "maximum_quantity": 30,
+                "base_price_amount_minor": 145000,
+                "currency": "KRW",
+                "price_unit": "객실당",
+                "cancellation_policy": "체크인 7일 전까지 무료 취소",
+                "no_show_policy": "객실 1박 요금 청구",
+                "settlement_policy": "매월 말 마감 후 익월 15일 지급",
+                "liability_policy": "각 당사자의 귀책 사유에 따른다",
+                "termination_policy": "30일 전 서면 통지로 해지 가능",
+                "special_terms": "성수기 별도 협의",
+            },
+        },
+    )
+    presentation = listing_client.patch(
+        f"/api/v1/seller/listings/{listing_id}/presentation",
+        headers=headers(),
+        json={"public_headline": "성수기 주말 객실을 안정적으로 확보하세요."},
+    )
+    completed = listing_client.post(
+        f"/api/v1/seller/listings/{listing_id}/complete", headers=headers()
+    )
+    published = listing_client.post(
+        f"/api/v1/seller/listings/{listing_id}/publish", headers=headers()
+    )
+
+    assert terms.status_code == 200
+    assert terms.json()["data"]["missing_fields"] == []
+    assert presentation.json()["data"]["public_headline"].startswith("성수기")
+    assert completed.json()["data"]["status"] == "ready"
+    assert published.json()["data"]["status"] == "published"
 
 
 def test_contract_request_blocks_risky_term_change(

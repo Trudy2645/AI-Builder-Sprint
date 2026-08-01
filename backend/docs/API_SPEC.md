@@ -1,6 +1,6 @@
 > 버전: Figma·backend aligned MVP v1.5
 >
-> 구현 기준: 현재 작업 브랜치의 router/schema와 migration `001`~`010`
+> 구현 기준: 현재 작업 브랜치의 router/schema와 migration `001`~`011`
 > 
 > 
 > 백엔드: FastAPI 단일 애플리케이션
@@ -496,7 +496,7 @@ Query:
 
 ### `[구현] GET /public/listings/{listing_id}`
 
-계약명, 셀러, 지역, 평점, 공고 상태, 계산된 계약 가능 여부, 공급 수량, 단위당 인원, 기준 단가, 최소·최대 인원, 공급 기간과 조항을 반환한다. 정책 필드는 `cancellation_policy`, `no_show_policy`, `refund_policy`, `settlement_policy`, `safety_policy`, `compensation_policy`, `liability_policy`, `termination_policy`, `special_terms`, `price_display_basis`, `contract_availability_note`다. 현재 canonical source가 없는 `vat_included`만 항상 `null`이다. 별도 `contract_available` 컬럼을 저장하지 않고 `status == published`인지 계산한다.
+계약명, 셀러, 지역, 평점, 공고 상태, 계산된 계약 가능 여부, 셀러가 입력한 `public_headline`, 공급 수량 문구, 최소·최대 공급 수량, 단위당 인원, 기준 단가, 최소·최대 인원, 공급 기간과 조항을 반환한다. 정책 필드는 `cancellation_policy`, `no_show_policy`, `refund_policy`, `settlement_policy`, `safety_policy`, `compensation_policy`, `liability_policy`, `termination_policy`, `special_terms`, `price_display_basis`, `contract_availability_note`다. 현재 canonical source가 없는 `vat_included`만 항상 `null`이다. 별도 `contract_available` 컬럼을 저장하지 않고 `status == published`인지 계산한다.
 
 ### `[구현] GET /public/listings/{listing_id}/contract-preview`
 
@@ -567,7 +567,7 @@ Query:
 
 ### `[구현] GET /seller/listings`
 
-셀러 조직이 소유한 draft/processing/ready/published/paused/expired/archived 공고를 반환한다. `X-Organization-Id`와 organization membership을 확인하며 각 공고에는 현재 version 번호, 요청 수와 작성 완료에 부족한 `missing_fields`가 포함된다.
+셀러 조직이 소유한 draft/processing/ready/published/paused/expired/archived 공고를 반환한다. `X-Organization-Id`와 organization membership을 확인하며 각 공고에는 기간, 공급 수량 문구, 기준 단가, 공개용 한 줄 소개, 계산된 계약 가능 여부, 최신 셀러 분석의 확인 필요 조항 수, 현재 version 번호, 요청 수와 작성 완료에 부족한 `missing_fields`가 포함된다.
 
 ### `[구현] GET /seller/listings/{listing_id}`
 
@@ -598,7 +598,10 @@ Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, c
     "service_start_date": "2026-07-01",
     "service_end_date": "2026-08-31",
     "supply_quantity": 30,
+    "supply_quantity_description": "주말 객실 최대 30실",
     "quantity_unit": "room",
+    "minimum_quantity": 10,
+    "maximum_quantity": 30,
     "people_per_unit": 2,
     "base_price_amount_minor": 145000,
     "currency": "KRW",
@@ -617,7 +620,7 @@ Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, c
 }
 ```
 
-부분 입력을 현재 terms와 합쳐 저장하며 기간과 최소·최대 인원 범위를 검사한다. 저장할 때 기존 version을 수정하지 않고 구조화 terms snapshot, 계약 정책 clauses와 본문을 가진 V2, V3 등의 새 version을 만든다. 현재 version 번호가 `base_version_no`와 다르면 `VERSION_CONFLICT`다. 계약 요청이 하나라도 존재하면 가격·기간·정책을 포함한 terms 변경을 `LISTING_HAS_CONTRACTS`로 차단한다. 이미 공개 또는 중지된 공고는 필수값을 제거하는 수정도 허용하지 않는다.
+부분 입력을 현재 terms와 합쳐 저장하며 기간, 최소·최대 공급 수량, 최소·최대 인원 범위를 검사한다. `supply_quantity_description`은 프론트의 “주말 객실 최대 30실” 같은 자유형 문구를 손실 없이 보존하고, `minimum_quantity`/`maximum_quantity`는 실제 과금 수량 범위다. 저장할 때 기존 version을 수정하지 않고 구조화 terms snapshot, 계약 정책 clauses와 본문을 가진 V2, V3 등의 새 version을 만든다. 현재 version 번호가 `base_version_no`와 다르면 `VERSION_CONFLICT`다. 계약 요청이 하나라도 존재하면 가격·기간·정책을 포함한 terms 변경을 `LISTING_HAS_CONTRACTS`로 차단한다. 이미 공개 또는 중지된 공고는 필수값을 제거하는 수정도 허용하지 않는다.
 
 ### PDF 등록 흐름
 
@@ -719,14 +722,14 @@ Agent는 계약을 수정하거나 서명 요청을 만들 수 없다. 최종 �
 
 ### `[구현] POST /seller/listings/{listing_id}/complete`
 
-작성 완료 검증 후 `ready`로 변경한다. 최소 필수값:
+작성 완료 검증 후 `ready`로 변경한다. 프론트 공고 작성 화면과 동일한 최소 필수값:
 
 - 계약명/셀러/상품 유형/부산 구 단위 지역
-- 공급 기간/수량/기준 가격
-- 취소/환불/정산/안전/보상/책임 조건
+- 공급 기간/공급 수량 문구(또는 구조화 수량)/기준 가격
+- 취소/노쇼/정산 조건
 - 현재 listing version과 하나 이상의 조항
 
-노쇼·계약 해지·특약은 구조화해 저장하되 모든 상품에 공통 필수로 강제하지 않는다.
+책임·계약 해지·특약과 기존 호환 필드인 환불·안전·보상 조건은 구조화해 저장하되 공통 필수로 강제하지 않는다.
 
 필수값이 부족하면 `LISTING_NOT_PUBLISHABLE`과 `details.missing_fields`를 반환한다. 검증에 성공하면 하나의 transaction에서 `draft → processing → ready`로 전환하고 감사 이벤트를 남긴다. 이 단계는 Python 코드로 입력 terms를 조항화하며 AI/OCR provider를 호출하지 않는다.
 
@@ -738,12 +741,15 @@ Agent는 계약을 수정하거나 서명 요청을 만들 수 없다. 최종 �
   "display_title": "2026 부산 여름 객실 공급",
   "hero_document_id": "uuid",
   "seller_description": "일본 단체 관광객을 위한 금연 트윈룸 중심 상품",
+  "public_headline": "성수기 주말 객실을 안정적으로 확보하세요.",
   "price_display_basis": "30명·2박 기준",
   "contract_availability_note": "주말 잔여 객실에 따라 확정"
 }
 ```
 
 `hero_document_id`는 해당 공고 소유이며 `purpose=listing_hero`, `status=ready`인 기존 document만 연결할 수 있다. 문서 업로드 API와 AI summary 재생성은 후속 브랜치 범위다.
+
+`public_headline`은 셀러가 직접 입력한 공개용 한 줄 소개이고 `ai_summary`와 분리해 저장한다. 응답의 `contract_available`은 현재 상태로 계산한다. AI 위험 요약 노출은 셀러 토글을 저장하지 않고 승인된 buyer 관점 분석만 서버가 공개한다.
 
 ### `[구현] POST /seller/listings/{listing_id}/publish`
 

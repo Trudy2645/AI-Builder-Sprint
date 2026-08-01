@@ -41,6 +41,7 @@ class PublicListingRecord:
     district: str
     category: str
     language: str
+    public_headline: str | None
     ai_summary: str | None
     status: str
     seller_name: str
@@ -50,7 +51,10 @@ class PublicListingRecord:
     service_start_date: date | None
     service_end_date: date | None
     supply_quantity: int | None
+    supply_quantity_description: str | None
     quantity_unit: str | None
+    minimum_quantity: int | None
+    maximum_quantity: int | None
     people_per_unit: int | None
     base_price_amount_minor: int | None
     currency: str | None
@@ -239,13 +243,16 @@ class SqlAlchemyPublicListingRepository:
         query = text(
             f"""
             select l.id, coalesce(l.display_title, l.title) as title, l.district,
-                   l.category::text as category, l.language::text as language, l.ai_summary,
+                   l.category::text as category, l.language::text as language,
+                   l.public_headline, l.ai_summary,
                    l.status::text as status,
                    coalesce(l.display_company_name, o.name) as seller_name,
                    o.verification_status::text as verification_status,
                    o.rating_average, o.rating_count,
                    lt.service_start_date, lt.service_end_date, lt.supply_quantity,
-                   lt.quantity_unit, lt.people_per_unit, lt.base_price_amount_minor,
+                   lt.supply_quantity_description, lt.quantity_unit,
+                   lt.minimum_quantity, lt.maximum_quantity,
+                   lt.people_per_unit, lt.base_price_amount_minor,
                    lt.currency, lt.price_unit,
                    lt.minimum_people, lt.maximum_people,
                    lt.cancellation_policy, lt.no_show_policy, lt.refund_policy,
@@ -269,13 +276,16 @@ class SqlAlchemyPublicListingRepository:
         query = text(
             f"""
             select l.id, coalesce(l.display_title, l.title) as title, l.district,
-                   l.category::text as category, l.language::text as language, l.ai_summary,
+                   l.category::text as category, l.language::text as language,
+                   l.public_headline, l.ai_summary,
                    l.status::text as status,
                    coalesce(l.display_company_name, o.name) as seller_name,
                    o.verification_status::text as verification_status,
                    o.rating_average, o.rating_count,
                    lt.service_start_date, lt.service_end_date, lt.supply_quantity,
-                   lt.quantity_unit, lt.people_per_unit, lt.base_price_amount_minor,
+                   lt.supply_quantity_description, lt.quantity_unit,
+                   lt.minimum_quantity, lt.maximum_quantity,
+                   lt.people_per_unit, lt.base_price_amount_minor,
                    lt.currency, lt.price_unit,
                    lt.minimum_people, lt.maximum_people,
                    lt.cancellation_policy, lt.no_show_policy, lt.refund_policy,

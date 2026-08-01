@@ -85,7 +85,10 @@ class PublicListingService:
         return PublicListingDetail(
             **self._card(listing).model_dump(),
             supply_quantity=listing.supply_quantity,
+            supply_quantity_description=listing.supply_quantity_description,
             quantity_unit=listing.quantity_unit,
+            minimum_quantity=listing.minimum_quantity,
+            maximum_quantity=listing.maximum_quantity,
             people_per_unit=listing.people_per_unit,
             minimum_people=listing.minimum_people,
             maximum_people=listing.maximum_people,
@@ -164,6 +167,7 @@ class PublicListingService:
             district=record.district,
             category=record.category,  # type: ignore[arg-type]
             hero_image_url=None,
+            public_headline=record.public_headline,
             ai_summary=record.ai_summary,
             base_price=base_price,
             availability=Availability(
