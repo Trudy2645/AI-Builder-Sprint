@@ -93,9 +93,26 @@ export function RevisionReviewPage() {
       return;
     }
     setPreviewOpen(false);
-    updateRequestStatus("req-summer-main", "responded", {
+    // 조항별 검토 결과(수락/거절/대안)를 셀러 응답 문구와 함께 요청 상태에 반영해
+    // 협상 중 화면에서 바이어 원안 vs 셀러 제안안을 그대로 이어 볼 수 있게 한다.
+    const revisedRevisions = request.revisions.map((r) => {
+      const d = decisions[r.id];
+      return {
+        id: r.id,
+        clauseNo: r.clauseNo,
+        clauseTitle: r.clauseTitle,
+        original: r.original,
+        changeType: "문구 수정",
+        requested: r.requested,
+        reason: r.reason,
+        sellerDecision: d.kind,
+        sellerResponse: responseText(r.id, r.original, r.requested),
+      };
+    });
+    updateRequestStatus("req-summer-main", "negotiating", {
       currentVersion: "v3",
       latestResponse: "셀러가 취소 조건에 대안을 제시하고 노쇼·정산 조건에 응답했습니다.",
+      revisions: revisedRevisions,
     });
     toast.success(t("rvw.sent"));
     navigate("/seller/negotiating");

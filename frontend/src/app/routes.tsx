@@ -21,6 +21,9 @@ import { UploadOcrPage } from "./pages/seller/UploadOcrPage";
 import { WriteContractPage } from "./pages/seller/WriteContractPage";
 import { ReceivedRequestsPage } from "./pages/seller/ReceivedRequestsPage";
 import { RevisionReviewPage } from "./pages/seller/RevisionReviewPage";
+import { SellerNegotiatingPage } from "./pages/seller/SellerNegotiatingPage";
+import { SellerContractsPage } from "./pages/seller/SellerContractsPage";
+import { SellerMyPage } from "./pages/seller/SellerMyPage";
 import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { FinalApprovePage } from "./pages/negotiation/FinalApprovePage";
 import { ESignaturePage } from "./pages/negotiation/ESignaturePage";
@@ -88,6 +91,9 @@ const sellerListingRoutes = [
 // Seller nav items that now have dedicated pages instead of placeholders.
 const sellerRealPages: Record<string, ReactNode> = {
   "/seller/dashboard": <SellerDashboardPage />,
+  "/seller/negotiating": <SellerNegotiatingPage />,
+  "/seller/contracts": <SellerContractsPage />,
+  "/seller/mypage": <SellerMyPage />,
 };
 
 const sellerChildren = sellerNav
