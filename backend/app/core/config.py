@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -34,6 +35,18 @@ class Settings(BaseSettings):
     demo_buyer_password: str | None = Field(default=None, repr=False)
     demo_seller_email: str | None = None
     demo_seller_password: str | None = Field(default=None, repr=False)
+    ai_provider: Literal["fake", "upstage"] = "fake"
+    upstage_api_key: str | None = Field(default=None, repr=False)
+    upstage_document_base_url: str = "https://api.upstage.ai/v1"
+    upstage_chat_base_url: str = "https://api.upstage.ai/v1"
+    upstage_agent_base_url: str = "https://api.upstage.ai/v2"
+    upstage_chat_model: str = "solar-pro3"
+    upstage_official_vector_store_id: str | None = Field(default=None, repr=False)
+    upstage_template_vector_store_id: str | None = Field(default=None, repr=False)
+    ai_prompt_version: str = "busan-link-v1"
+    ai_agent_max_iterations: int = Field(default=2, ge=1, le=2)
+    ai_max_retries: int = Field(default=3, ge=0, le=5)
+    ai_request_timeout_seconds: float = Field(default=60, gt=0, le=180)
 
 
 @lru_cache

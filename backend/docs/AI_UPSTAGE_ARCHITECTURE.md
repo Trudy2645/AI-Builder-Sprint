@@ -83,6 +83,20 @@ MVP의 `단체서명`은 참가자 전원이 각각 전자서명하는 방식이
 
 ## 3. 최종 아키텍처
 
+공통 구현은 `backend/app/ai` 아래에서 provider, task, agent, tool, prompt, schema를 분리한다.
+개발·테스트 기본 provider는 `fake`이며 `AI_PROVIDER=upstage`와 API key를 명시한 환경에서만
+실제 Upstage adapter를 구성한다.
+
+```text
+backend/app/ai/
+├── providers/      # protocol, deterministic fake, Upstage HTTP adapter
+├── schemas/        # Pydantic provider input/output
+├── tasks/          # 고정 task registry
+├── agents/         # contract_review 전용
+├── tools/          # 네 개 도구 allowlist
+└── prompts/v1/     # versioned prompt constants
+```
+
 ```mermaid
 flowchart TD
     UI["셀러 작성/업로드 또는 바이어 공개 계약 조회"] --> API["FastAPI Workflow Orchestrator"]

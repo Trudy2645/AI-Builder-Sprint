@@ -3,10 +3,13 @@ from typing import Annotated
 from fastapi import Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.providers.fake import FakeAIProvider
+from app.ai.providers.upstage import UpstageAIProvider
 from app.core.auth import get_auth_account_provider
 from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.core.errors import AppError
+from app.domain.ai_jobs.service import AIJobService
 from app.domain.auth_accounts.service import AuthAccountService, DemoLoginConfig
 from app.domain.contracts.service import ContractService
 from app.domain.documents.service import DocumentService
@@ -19,6 +22,7 @@ from app.domain.seller_listings.service import SellerListingService
 from app.integrations.auth import AuthAccountProvider
 from app.integrations.exchange_rates import ExchangeRateProvider, FakeExchangeRateProvider
 from app.integrations.storage import StorageProvider, SupabaseStorageProvider
+from app.repositories.ai_jobs import AIJobRepository, SqlAlchemyAIJobRepository
 from app.repositories.auth_accounts import (
     RegistrationRepository,
     SqlAlchemyRegistrationRepository,
@@ -43,6 +47,40 @@ def get_registration_repository(
     session: Annotated[AsyncSession, Depends(get_database_session)],
 ) -> RegistrationRepository:
     return SqlAlchemyRegistrationRepository(session)
+
+
+def get_ai_job_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> AIJobRepository:
+    return SqlAlchemyAIJobRepository(session)
+
+
+def get_ai_job_service(
+    repository: Annotated[AIJobRepository, Depends(get_ai_job_repository)],
+) -> AIJobService:
+    return AIJobService(repository)
+
+
+def get_ai_provider(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> FakeAIProvider | UpstageAIProvider:
+    if settings.ai_provider == "fake":
+        return FakeAIProvider()
+    if not settings.upstage_api_key:
+        raise AppError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="AI_PROVIDER_UNAVAILABLE",
+            message="The AI provider is not configured.",
+        )
+    return UpstageAIProvider(
+        api_key=settings.upstage_api_key,
+        document_base_url=settings.upstage_document_base_url,
+        chat_base_url=settings.upstage_chat_base_url,
+        agent_base_url=settings.upstage_agent_base_url,
+        chat_model=settings.upstage_chat_model,
+        timeout_seconds=settings.ai_request_timeout_seconds,
+        max_retries=settings.ai_max_retries,
+    )
 
 
 def get_auth_account_service(
