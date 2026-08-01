@@ -5,6 +5,11 @@ from app.ai.schemas.contract_review import (
     ContractReviewToolBatch,
     ContractReviewToolCall,
 )
+from app.ai.schemas.localization import (
+    LocalizedClause,
+    LocalizedFinding,
+    LocalizedPublicContent,
+)
 from app.ai.schemas.providers import (
     BoundingBox,
     ContractExtraction,
@@ -37,6 +42,9 @@ __all__ = [
     "GeneratedContractClause",
     "GeneratedContractDraft",
     "LanguageModelRequest",
+    "LocalizedClause",
+    "LocalizedFinding",
+    "LocalizedPublicContent",
     "ParsedBlock",
     "ParsedPage",
 ]

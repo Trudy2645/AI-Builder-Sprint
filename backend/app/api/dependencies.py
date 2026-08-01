@@ -17,6 +17,7 @@ from app.domain.contracts.service import ContractService
 from app.domain.document_processing.service import DocumentProcessingService
 from app.domain.documents.service import DocumentService
 from app.domain.listings.service import PublicListingService
+from app.domain.localizations.service import LocalizationService
 from app.domain.notifications.service import NotificationService
 from app.domain.pricing.service import PriceCalculator, PriceEstimateService
 from app.domain.profiles.service import ProfileService
@@ -46,6 +47,10 @@ from app.repositories.document_processing import (
 )
 from app.repositories.documents import DocumentRepository, SqlAlchemyDocumentRepository
 from app.repositories.listings import PublicListingRepository, SqlAlchemyPublicListingRepository
+from app.repositories.localizations import (
+    LocalizationRepository,
+    SqlAlchemyLocalizationRepository,
+)
 from app.repositories.notifications import (
     NotificationRepository,
     SqlAlchemyNotificationRepository,
@@ -164,6 +169,26 @@ def get_public_listing_service(
     repository: Annotated[PublicListingRepository, Depends(get_public_listing_repository)],
 ) -> PublicListingService:
     return PublicListingService(repository)
+
+
+def get_localization_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> LocalizationRepository:
+    return SqlAlchemyLocalizationRepository(session)
+
+
+def get_localization_service(
+    repository: Annotated[LocalizationRepository, Depends(get_localization_repository)],
+    provider: Annotated[FakeAIProvider | UpstageAIProvider, Depends(get_ai_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> LocalizationService:
+    return LocalizationService(
+        repository,
+        provider,
+        provider_name=settings.ai_provider,
+        model_name=settings.upstage_chat_model,
+        prompt_version=settings.ai_prompt_version,
+    )
 
 
 def get_notification_repository(

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.ai.schemas import LocalizedPublicContent
 from app.schemas.common import ResponseMeta
 
 
@@ -116,6 +117,9 @@ class PublicListingCard(BaseModel):
             "buyer analysis."
         ),
     )
+    requested_locale: SupportedLocale = SupportedLocale.KO_KR
+    content_locale: SupportedLocale = SupportedLocale.KO_KR
+    fallback_locale: SupportedLocale | None = None
 
 
 class PublicListingListMeta(ResponseMeta):
@@ -161,9 +165,7 @@ class PublicListingDetail(PublicListingCard):
         description="Unsupported until a canonical VAT inclusion source is available.",
     )
     clauses: list[PublicClause]
-    requested_locale: SupportedLocale
-    content_locale: SupportedLocale
-    fallback_locale: SupportedLocale | None
+    localized_content: LocalizedPublicContent | None = None
 
 
 class PublicFinding(BaseModel):
@@ -182,6 +184,7 @@ class PublicContractPreview(BaseModel):
     requested_locale: SupportedLocale
     content_locale: SupportedLocale
     fallback_locale: SupportedLocale | None
+    localized_content: LocalizedPublicContent | None = None
 
 
 class SellerListingCreate(BaseModel):

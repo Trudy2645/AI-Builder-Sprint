@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -7,6 +7,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.ai.tasks.localize_explain import (
+    build_public_localization_source,
+    localization_source_hash,
+)
 from app.api.dependencies import get_public_listing_repository
 from app.repositories.listings import (
     ListingCursor,
@@ -16,6 +20,7 @@ from app.repositories.listings import (
     PublicFindingRecord,
     PublicListingRecord,
     PublicListingVersionRecord,
+    PublicLocalizationRecord,
     SqlAlchemyPublicListingRepository,
 )
 from app.schemas.listings import PublicListingSort
@@ -88,6 +93,7 @@ def listing(
         attention_required_count=1 if version_id == VERSION_ID else 0,
         current_version_id=version_id,
         sort_value=Decimal(0),
+        current_version_hash="a" * 64,
     )
 
 
@@ -189,6 +195,7 @@ class FakePublicListingRepository:
                     clause_key="cancellation",
                     title="제3조 취소 및 변경",
                     body="최종 수량과 취소 수수료는 협상 후 확정됩니다.",
+                    clause_order=3,
                 )
             ]
         }
@@ -200,9 +207,12 @@ class FakePublicListingRepository:
                     explanation="취소 수수료 확정 시점이 모호합니다.",
                     suggested_text="무료 취소 기한을 명시해 보세요.",
                     disclaimer="법률 자문이 아닌 계약 검토 보조 의견입니다.",
+                    id=UUID("50000000-0000-0000-0000-000000000001"),
+                    evidence_numbers=[1],
                 )
             ]
         }
+        self.localizations: dict[tuple[UUID, str], PublicLocalizationRecord] = {}
 
     def _check_available(self) -> None:
         if self.unavailable:
@@ -333,6 +343,18 @@ class FakePublicListingRepository:
     async def list_public_findings(self, version_id: UUID) -> list[PublicFindingRecord]:
         self._check_available()
         return self.findings.get(version_id, [])
+
+    async def get_localized_content(self, version_id: UUID, locale: str):
+        self._check_available()
+        return self.localizations.get((version_id, locale))
+
+    async def list_localized_contents(self, version_ids: list[UUID], locale: str):
+        self._check_available()
+        return {
+            version_id: content
+            for version_id in version_ids
+            if (content := self.localizations.get((version_id, locale))) is not None
+        }
 
 
 class EmptyMappingResult:
@@ -565,6 +587,68 @@ def test_listing_detail_returns_public_terms_and_locale_fallback(
     assert data["requested_locale"] == "en-US"
     assert data["content_locale"] == "ko-KR"
     assert data["fallback_locale"] == "ko-KR"
+
+
+def test_listing_detail_returns_validated_localized_cache(
+    public_client: TestClient,
+    listing_repository: FakePublicListingRepository,
+) -> None:
+    record = next(item for item in listing_repository.listings if item.id == PUBLISHED_ID)
+    clauses = listing_repository.clauses[VERSION_ID]
+    findings = listing_repository.findings[VERSION_ID]
+    source = build_public_localization_source(
+        asdict(record),
+        [asdict(item) for item in clauses],
+        [asdict(item) for item in findings],
+    )
+    content = {
+        "locale": "en-US",
+        "title": "2026 Busan Summer Room Supply",
+        "public_headline": "Oceanstay group accommodation in Haeundae",
+        "summary": "Public summary for 2026 group accommodation.",
+        "easy_explanation": "Plain-language guidance for this public contract.",
+        "terms": source["terms"],
+        "clauses": [
+            {
+                "clause_id": item["clause_id"],
+                "clause_no": item["clause_no"],
+                "title": item["title"],
+                "body": item["body"],
+                "easy_explanation": "Review the cancellation conditions.",
+            }
+            for item in source["clauses"]
+        ],
+        "findings": source["findings"],
+        "preserved_facts": source["preserved_facts"],
+        "preserved_names": source["preserved_names"],
+        "disclaimer": "This is contract review assistance, not legal advice.",
+    }
+    listing_repository.localizations[(VERSION_ID, "en-US")] = PublicLocalizationRecord(
+        source_hash=localization_source_hash(source),
+        content=content,
+    )
+
+    response = public_client.get(
+        f"/api/v1/public/listings/{PUBLISHED_ID}", params={"locale": "en-US"}
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["content_locale"] == "en-US"
+    assert data["fallback_locale"] is None
+    assert data["localized_content"]["easy_explanation"].startswith("Plain-language")
+    assert data["localized_content"]["preserved_names"] == [
+        "해운대 오션스테이",
+        "해운대구",
+    ]
+
+    list_response = public_client.get("/api/v1/public/listings", params={"locale": "en-US"})
+    card = next(item for item in list_response.json()["data"] if item["id"] == str(PUBLISHED_ID))
+    assert card["title"] == "2026 Busan Summer Room Supply"
+    assert card["public_headline"] == "Oceanstay group accommodation in Haeundae"
+    assert card["ai_summary"] == "Public summary for 2026 group accommodation."
+    assert card["content_locale"] == "en-US"
+    assert card["fallback_locale"] is None
 
 
 def test_paused_listing_remains_readable_but_is_not_contractable(
