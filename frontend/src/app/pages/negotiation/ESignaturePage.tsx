@@ -1,6 +1,6 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, CheckCircle2, Clock, PenLine, ShieldCheck, Building2, CalendarRange, FileCheck2, Wallet, FastForward } from "lucide-react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
@@ -12,6 +12,7 @@ import { useRoleBase } from "../../hooks/useRoleBase";
 import { useNegotiation } from "../../store/NegotiationContext";
 import { finalContractInfo } from "../../data/negotiation";
 import { formatKRW } from "../../data/contracts";
+import { friendlyApiError, syncSignatureRequest, type SignatureRequest } from "../../lib/api";
 
 function InfoRow({ icon: Icon, label, children }: { icon: typeof Building2; label: string; children: ReactNode }) {
   return (
@@ -46,6 +47,7 @@ function SignRow({ label, name, signed, signedText, waitingText }: { label: stri
 export function ESignaturePage() {
   const { t } = useApp();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const { role, base } = useRoleBase();
   const { flow, directContractId, directContract, bothApproved, buyerSigned, sellerSigned, bothSigned, sign } = useNegotiation();
   const isDirect = flow === "direct";
@@ -64,6 +66,30 @@ export function ESignaturePage() {
     : t("es.estimatedNote");
 
   const mySigned = role === "buyer" ? buyerSigned : sellerSigned;
+  const signatureRequestId = params.get("signatureRequestId");
+  const [signatureRequest, setSignatureRequest] = useState<SignatureRequest | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const refreshSignatureStatus = async () => {
+    if (!signatureRequestId) return;
+    setSyncing(true);
+    try {
+      const result = await syncSignatureRequest(signatureRequestId);
+      setSignatureRequest(result);
+      if (result.status === "completed") {
+        if (!buyerSigned) sign("buyer");
+        if (!sellerSigned) sign("seller");
+      }
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshSignatureStatus();
+  }, [signatureRequestId]);
 
   // 협상 경로의 모두싸인 데모: 상대방은 먼저 서명을 완료하고 현재 사용자가 마지막 서명을 진행한다.
   // 조건 그대로 경로는 셀러의 공개 조건을 사전 동의로 간주해 바이어 서명만 받는다.
@@ -149,6 +175,14 @@ export function ESignaturePage() {
         <Separator className="my-5" />
 
         <div className="flex flex-col items-center gap-3">
+          {signatureRequestId && (
+            <Button type="button" variant="outline" disabled={syncing} onClick={() => void refreshSignatureStatus()}>
+              {syncing ? "서명 상태 확인 중…" : "모두싸인 서명 상태 새로고침"}
+            </Button>
+          )}
+          {signatureRequest?.provider_status && (
+            <p className="text-center text-xs text-muted-foreground">모두싸인 상태: {signatureRequest.provider_status}</p>
+          )}
           <Button
             size="lg"
             className="w-full gap-2 whitespace-nowrap sm:w-auto"
