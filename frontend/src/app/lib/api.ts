@@ -110,6 +110,54 @@ export function getMyContracts(): Promise<ContractListItem[]> {
   return apiFetch<ContractListItem[]>("/me/contracts");
 }
 
+export type ContractDetail = {
+  id: string;
+  listing_title: string;
+  status: string;
+  parties: Array<{ role: "buyer" | "seller"; name: string }>;
+  current_version: { id: string; version_no: number; title: string; body: string };
+};
+
+export type ApprovalStatus = {
+  contract_id: string;
+  contract_version_id: string;
+  buyer: { approved: boolean };
+  seller: { approved: boolean };
+  all_approved: boolean;
+  contract_status?: string;
+};
+
+export function getContractDetail(contractId: string): Promise<ContractDetail> {
+  return apiFetch<ContractDetail>(`/contracts/${contractId}`);
+}
+
+export function getContractApprovals(contractId: string, versionId: string): Promise<ApprovalStatus> {
+  return apiFetch<ApprovalStatus>(`/contracts/${contractId}/versions/${versionId}/approvals`);
+}
+
+export function approveContractVersion(contractId: string, versionId: string): Promise<ApprovalStatus> {
+  return apiFetch<ApprovalStatus>(`/contracts/${contractId}/versions/${versionId}/approve`, { method: "POST" });
+}
+
+export type SignatureRequest = {
+  id: string;
+  contract_id: string;
+  contract_version_id: string;
+  status: "preparing" | "in_progress" | "completed" | "failed" | "cancelled";
+  provider_document_id: string | null;
+  provider_status: string | null;
+  current_signing_order: number | null;
+  completed_at: string | null;
+};
+
+export function getSignatureRequest(id: string): Promise<SignatureRequest> {
+  return apiFetch<SignatureRequest>(`/signature-requests/${id}`);
+}
+
+export function syncSignatureRequest(id: string): Promise<SignatureRequest> {
+  return apiFetch<SignatureRequest>(`/signature-requests/${id}/sync`, { method: "POST" });
+}
+
 export type PublicListing = {
   id: string;
   seller: { name: string };
