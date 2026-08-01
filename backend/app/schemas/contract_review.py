@@ -39,6 +39,7 @@ class ContractReviewFindingResponse(BaseModel):
     title: str
     explanation: str
     suggested_text: str | None
+    suggested_text_hash: str | None
     grounding_status: Literal["grounded", "insufficient_evidence", "not_required"]
     confidence: float | None
     source_location: dict[str, Any]
@@ -68,3 +69,39 @@ class ContractReviewRunResponse(BaseModel):
     model_name: str
     prompt_version: str
     findings: list[ContractReviewFindingResponse]
+
+
+class FindingApplyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    base_version_no: int = Field(gt=0)
+    suggested_text_hash: str = Field(pattern=r"^(sha256:)?[0-9a-f]{64}$")
+    edited_text: str | None = Field(default=None, min_length=1, max_length=20_000)
+
+
+class FindingApplyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    finding_id: UUID
+    finding_status: Literal["applied"] = "applied"
+    target_type: Literal["listing_version", "contract_version"]
+    resource_id: UUID
+    previous_version_id: UUID
+    version_id: UUID
+    version_no: int = Field(gt=0)
+    analysis_job_ids: list[UUID] = Field(min_length=1, max_length=2)
+    replayed: bool = False
+
+
+class FindingDismissRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class FindingDismissResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    finding_id: UUID
+    finding_status: Literal["dismissed"] = "dismissed"
+    replayed: bool = False

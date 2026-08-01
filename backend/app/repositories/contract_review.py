@@ -44,6 +44,7 @@ class StoredReviewFinding:
     title: str
     explanation: str
     suggested_text: str | None
+    suggested_text_sha256: str | None
     grounding_status: str
     confidence: float | None
     source_location: dict[str, Any]
@@ -71,11 +72,71 @@ class StoredReviewRun:
     findings: list[StoredReviewFinding]
 
 
+@dataclass(frozen=True, slots=True)
+class FindingActionContext:
+    finding_id: UUID
+    finding_status: str
+    target_type: Literal["listing_version", "contract_version"]
+    resource_id: UUID
+    version_id: UUID
+    version_no: int
+    current_version_id: UUID
+    current_version_no: int
+    resource_status: str
+    seller_organization_id: UUID
+    buyer_user_id: UUID | None
+    viewer_role: str
+    clause_id: UUID | None
+    title: str
+    suggested_text: str | None
+    suggested_text_sha256: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class FindingReviewJob:
+    job_id: UUID
+    viewer_role: Literal["buyer", "seller"]
+
+
+@dataclass(frozen=True, slots=True)
+class FindingApplyRecord:
+    finding_id: UUID
+    target_type: Literal["listing_version", "contract_version"]
+    resource_id: UUID
+    previous_version_id: UUID
+    version_id: UUID
+    version_no: int
+    jobs: list[FindingReviewJob]
+    replayed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class FindingDismissRecord:
+    finding_id: UUID
+    replayed: bool
+
+
 class ContractReviewRepositoryError(Exception):
     pass
 
 
 class ContractReviewIdempotencyConflictError(Exception):
+    pass
+
+
+class FindingActionNotFoundError(Exception):
+    pass
+
+
+class FindingActionConflictError(Exception):
+    pass
+
+
+class FindingActionVersionConflictError(Exception):
+    pass
+
+
+class FindingSuggestionConflictError(Exception):
     pass
 
 
@@ -133,6 +194,33 @@ class ContractReviewRepository(Protocol):
     ) -> None: ...
 
     async def get_run(self, run_id: UUID) -> StoredReviewRun | None: ...
+
+    async def get_finding_action_context(self, finding_id: UUID) -> FindingActionContext | None: ...
+
+    async def apply_finding(
+        self,
+        *,
+        finding_id: UUID,
+        actor_user_id: UUID,
+        base_version_no: int,
+        suggested_text_hash: str,
+        edited_text: str | None,
+        idempotency_key: str,
+        request_hash: str,
+        provider: str,
+        model_name: str,
+        prompt_version: str,
+    ) -> FindingApplyRecord: ...
+
+    async def dismiss_finding(
+        self,
+        *,
+        finding_id: UUID,
+        actor_user_id: UUID,
+        reason: str,
+        idempotency_key: str,
+        request_hash: str,
+    ) -> FindingDismissRecord: ...
 
 
 class SqlAlchemyContractReviewRepository:
@@ -488,7 +576,8 @@ class SqlAlchemyContractReviewRepository:
             """
             select id, coalesce(listing_clause_id, contract_clause_id) as clause_id,
                    category, severity::text, importance::text, title, explanation,
-                   suggested_text, grounding_status::text, confidence::float,
+                   suggested_text, suggested_text_sha256, grounding_status::text,
+                   confidence::float,
                    source_location, evidence, disclaimer, is_public
             from public.ai_findings where analysis_run_id = :run_id
             order by created_at, id
@@ -497,6 +586,549 @@ class SqlAlchemyContractReviewRepository:
         )
         findings = [StoredReviewFinding(**item) for item in finding_rows]
         return StoredReviewRun(**dict(row), findings=findings)
+
+    async def get_finding_action_context(self, finding_id: UUID) -> FindingActionContext | None:
+        row = await self._one(self._FINDING_ACTION_QUERY, {"finding_id": finding_id})
+        return FindingActionContext(**dict(row)) if row else None
+
+    async def apply_finding(
+        self,
+        *,
+        finding_id: UUID,
+        actor_user_id: UUID,
+        base_version_no: int,
+        suggested_text_hash: str,
+        edited_text: str | None,
+        idempotency_key: str,
+        request_hash: str,
+        provider: str,
+        model_name: str,
+        prompt_version: str,
+    ) -> FindingApplyRecord:
+        operation = f"finding_apply:{finding_id}"
+        try:
+            if self._session.in_transaction():
+                await self._session.rollback()
+            async with self._session.begin():
+                replay = await self._claim_action_idempotency(
+                    actor_user_id, operation, idempotency_key, request_hash
+                )
+                if replay is not None:
+                    return self._apply_record(replay, replayed=True)
+
+                context = await self._lock_finding(finding_id)
+                if context.finding_status != "open" or not context.suggested_text:
+                    raise FindingActionConflictError
+                if context.resource_status not in {
+                    "draft",
+                    "ready",
+                    "published",
+                    "paused",
+                    "seller_review",
+                    "revision_requested",
+                }:
+                    raise FindingActionConflictError
+                if (
+                    context.version_id != context.current_version_id
+                    or context.version_no != context.current_version_no
+                    or context.version_no != base_version_no
+                ):
+                    raise FindingActionVersionConflictError
+                if context.suggested_text_sha256 != suggested_text_hash.removeprefix("sha256:"):
+                    raise FindingSuggestionConflictError
+
+                applied_text = edited_text or context.suggested_text
+                version_id, version_no = await self._create_safeguard_version(
+                    context, actor_user_id, applied_text
+                )
+                updated = await self._session.execute(
+                    text(
+                        """
+                        update public.ai_findings
+                        set status = 'applied', applied_version_id = :version_id,
+                            dismissed_reason = null, updated_at = now()
+                        where id = :finding_id and status = 'open'
+                        returning id
+                        """
+                    ),
+                    {"finding_id": finding_id, "version_id": version_id},
+                )
+                if updated.scalar_one_or_none() is None:
+                    raise FindingActionConflictError
+
+                jobs = await self._queue_reanalysis_jobs(
+                    context=context,
+                    version_id=version_id,
+                    provider=provider,
+                    model_name=model_name,
+                    prompt_version=prompt_version,
+                )
+                await self._insert_finding_audit(
+                    context,
+                    actor_user_id,
+                    "ai_finding_applied",
+                    {
+                        "finding_id": str(finding_id),
+                        "base_version_id": str(context.version_id),
+                        "base_version_no": context.version_no,
+                        "applied_version_id": str(version_id),
+                        "applied_version_no": version_no,
+                        "suggested_text_sha256": context.suggested_text_sha256,
+                        "applied_text_sha256": hashlib.sha256(applied_text.encode()).hexdigest(),
+                        "edited": edited_text is not None,
+                    },
+                )
+                response = {
+                    "finding_id": str(finding_id),
+                    "target_type": context.target_type,
+                    "resource_id": str(context.resource_id),
+                    "previous_version_id": str(context.version_id),
+                    "version_id": str(version_id),
+                    "version_no": version_no,
+                    "jobs": [
+                        {"job_id": str(job.job_id), "viewer_role": job.viewer_role} for job in jobs
+                    ],
+                }
+                await self._complete_action_idempotency(
+                    actor_user_id,
+                    operation,
+                    idempotency_key,
+                    response,
+                    finding_id,
+                )
+            return self._apply_record(response, replayed=False)
+        except (
+            ContractReviewIdempotencyConflictError,
+            FindingActionNotFoundError,
+            FindingActionConflictError,
+            FindingActionVersionConflictError,
+            FindingSuggestionConflictError,
+        ):
+            raise
+        except SQLAlchemyError as exc:
+            raise ContractReviewRepositoryError from exc
+
+    async def dismiss_finding(
+        self,
+        *,
+        finding_id: UUID,
+        actor_user_id: UUID,
+        reason: str,
+        idempotency_key: str,
+        request_hash: str,
+    ) -> FindingDismissRecord:
+        operation = f"finding_dismiss:{finding_id}"
+        try:
+            if self._session.in_transaction():
+                await self._session.rollback()
+            async with self._session.begin():
+                replay = await self._claim_action_idempotency(
+                    actor_user_id, operation, idempotency_key, request_hash
+                )
+                if replay is not None:
+                    return FindingDismissRecord(
+                        finding_id=UUID(replay["finding_id"]), replayed=True
+                    )
+                context = await self._lock_finding(finding_id)
+                if context.finding_status != "open":
+                    raise FindingActionConflictError
+                updated = await self._session.execute(
+                    text(
+                        """
+                        update public.ai_findings
+                        set status = 'dismissed', dismissed_reason = :reason,
+                            applied_version_id = null, updated_at = now()
+                        where id = :finding_id and status = 'open'
+                        returning id
+                        """
+                    ),
+                    {"finding_id": finding_id, "reason": reason},
+                )
+                if updated.scalar_one_or_none() is None:
+                    raise FindingActionConflictError
+                await self._insert_finding_audit(
+                    context,
+                    actor_user_id,
+                    "ai_finding_dismissed",
+                    {"finding_id": str(finding_id), "reason": reason},
+                )
+                response = {"finding_id": str(finding_id)}
+                await self._complete_action_idempotency(
+                    actor_user_id,
+                    operation,
+                    idempotency_key,
+                    response,
+                    finding_id,
+                )
+            return FindingDismissRecord(finding_id=finding_id, replayed=False)
+        except (
+            ContractReviewIdempotencyConflictError,
+            FindingActionNotFoundError,
+            FindingActionConflictError,
+        ):
+            raise
+        except SQLAlchemyError as exc:
+            raise ContractReviewRepositoryError from exc
+
+    _FINDING_ACTION_QUERY = """
+        select f.id as finding_id, f.status::text as finding_status,
+               case when ar.listing_version_id is not null
+                    then 'listing_version' else 'contract_version' end as target_type,
+               coalesce(l.id, c.id) as resource_id,
+               coalesce(lv.id, cv.id) as version_id,
+               coalesce(lv.version_no, cv.version_no) as version_no,
+               coalesce(l.current_version_id, c.current_version_id) as current_version_id,
+               coalesce(current_lv.version_no, current_cv.version_no) as current_version_no,
+               coalesce(l.status::text, c.status::text) as resource_status,
+               coalesce(l.seller_organization_id, c.seller_organization_id)
+                   as seller_organization_id,
+               c.buyer_user_id, ar.viewer_role::text,
+               coalesce(f.listing_clause_id, f.contract_clause_id) as clause_id,
+               f.title, f.suggested_text, f.suggested_text_sha256
+        from public.ai_findings f
+        join public.ai_analysis_runs ar on ar.id = f.analysis_run_id
+        left join public.listing_versions lv on lv.id = ar.listing_version_id
+        left join public.listings l on l.id = lv.listing_id
+        left join public.listing_versions current_lv on current_lv.id = l.current_version_id
+        left join public.contract_versions cv on cv.id = ar.contract_version_id
+        left join public.contracts c on c.id = cv.contract_id
+        left join public.contract_versions current_cv on current_cv.id = c.current_version_id
+        where f.id = :finding_id
+    """
+
+    async def _lock_finding(self, finding_id: UUID) -> FindingActionContext:
+        result = await self._session.execute(
+            text(self._FINDING_ACTION_QUERY + " for update of f"),
+            {"finding_id": finding_id},
+        )
+        row = result.mappings().one_or_none()
+        if row is None:
+            raise FindingActionNotFoundError
+        context = FindingActionContext(**dict(row))
+        resource_table = "listings" if context.target_type == "listing_version" else "contracts"
+        await self._session.execute(
+            text(
+                f"select id from public.{resource_table} where id = :resource_id for update"  # noqa: S608
+            ),
+            {"resource_id": context.resource_id},
+        )
+        refreshed = await self._session.execute(
+            text(self._FINDING_ACTION_QUERY), {"finding_id": finding_id}
+        )
+        return FindingActionContext(**dict(refreshed.mappings().one()))
+
+    async def _create_safeguard_version(
+        self, context: FindingActionContext, actor_user_id: UUID, applied_text: str
+    ) -> tuple[UUID, int]:
+        version_id = uuid4()
+        version_no = context.version_no + 1
+        prefix = "listing" if context.target_type == "listing_version" else "contract"
+        version_table = f"{prefix}_versions"
+        clause_table = f"{prefix}_clauses"
+        version_column = f"{prefix}_version_id"
+        resource_table = "listings" if prefix == "listing" else "contracts"
+        clause_rows = await self._session.execute(
+            text(
+                f"""
+                select * from public.{clause_table}
+                where {version_column} = :version_id order by clause_order
+                """  # noqa: S608
+            ),
+            {"version_id": context.version_id},
+        )
+        clauses = [dict(row) for row in clause_rows.mappings().all()]
+        matched = False
+        for clause in clauses:
+            if clause["id"] == context.clause_id:
+                clause["body"] = applied_text
+                matched = True
+        if context.clause_id is not None and not matched:
+            raise FindingActionVersionConflictError
+        if context.clause_id is None:
+            clauses.append(
+                {
+                    "clause_order": len(clauses) + 1,
+                    "clause_key": None,
+                    "title": context.title,
+                    "body": applied_text,
+                    "source_page": None,
+                    "source_bbox": None,
+                    "source_listing_clause_id": None,
+                }
+            )
+        body = "\n\n".join(f"{item['title']}\n{item['body']}" for item in clauses)
+        if prefix == "listing":
+            insert = f"""
+                insert into public.{version_table} (
+                    id, listing_id, version_no, title, body, content_sha256,
+                    source_document_id, structured_data, created_by
+                )
+                select :id, listing_id, :version_no, title, :body,
+                       encode(digest(:body, 'sha256'), 'hex'), source_document_id,
+                       structured_data, :actor_user_id
+                from public.{version_table}
+                where id = :base_version_id
+                returning id
+            """
+        else:
+            insert = f"""
+                insert into public.{version_table} (
+                    id, contract_id, version_no, title, body, content_sha256,
+                    source_listing_version_id, created_from_revision_request_id,
+                    structured_data, created_by
+                )
+                select :id, contract_id, :version_no, title, :body,
+                       encode(digest(:body, 'sha256'), 'hex'), source_listing_version_id,
+                       null, structured_data, :actor_user_id
+                from public.{version_table}
+                where id = :base_version_id
+                returning id
+            """
+        created = await self._session.execute(
+            text(insert),
+            {
+                "id": version_id,
+                "version_no": version_no,
+                "body": body,
+                "actor_user_id": actor_user_id,
+                "base_version_id": context.version_id,
+            },
+        )
+        if created.scalar_one_or_none() is None:
+            raise FindingActionVersionConflictError
+        for order, clause in enumerate(clauses, start=1):
+            columns = ""
+            values = ""
+            params = {
+                "version_id": version_id,
+                "clause_order": order,
+                "clause_key": clause.get("clause_key"),
+                "title": clause["title"],
+                "body": clause["body"],
+                "source_page": clause.get("source_page"),
+                "source_bbox": json.dumps(clause.get("source_bbox")),
+            }
+            if prefix == "contract":
+                columns = "source_listing_clause_id, "
+                values = ":source_listing_clause_id, "
+                params["source_listing_clause_id"] = clause.get("source_listing_clause_id")
+            await self._session.execute(
+                text(
+                    f"""
+                    insert into public.{clause_table} (
+                        {version_column}, {columns}clause_order, clause_key, title, body,
+                        source_page, source_bbox
+                    ) values (
+                        :version_id, {values}:clause_order, :clause_key, :title, :body,
+                        :source_page, cast(:source_bbox as jsonb)
+                    )
+                    """  # noqa: S608
+                ),
+                params,
+            )
+        current = await self._session.execute(
+            text(
+                f"""
+                update public.{resource_table}
+                set current_version_id = :version_id, updated_at = now()
+                where id = :resource_id and current_version_id = :base_version_id
+                returning id
+                """  # noqa: S608
+            ),
+            {
+                "version_id": version_id,
+                "resource_id": context.resource_id,
+                "base_version_id": context.version_id,
+            },
+        )
+        if current.scalar_one_or_none() is None:
+            raise FindingActionVersionConflictError
+        return version_id, version_no
+
+    async def _queue_reanalysis_jobs(
+        self,
+        *,
+        context: FindingActionContext,
+        version_id: UUID,
+        provider: str,
+        model_name: str,
+        prompt_version: str,
+    ) -> list[FindingReviewJob]:
+        jobs: list[FindingReviewJob] = []
+        for viewer_role in ("seller", "buyer"):
+            job_id = uuid4()
+            scoped_key = hashlib.sha256(
+                f"finding_reanalysis:{context.finding_id}:{version_id}:{viewer_role}".encode()
+            ).hexdigest()
+            await self._session.execute(
+                text(
+                    """
+                    insert into public.ai_jobs (
+                        id, listing_version_id, contract_version_id, job_type, status,
+                        idempotency_key, provider, model_name, prompt_version, result_metadata
+                    ) values (
+                        :id, :listing_version_id, :contract_version_id, 'risk_analysis',
+                        'queued', :idempotency_key, :provider, :model_name,
+                        :prompt_version, cast(:metadata as jsonb)
+                    )
+                    """
+                ),
+                {
+                    "id": job_id,
+                    "listing_version_id": (
+                        version_id if context.target_type == "listing_version" else None
+                    ),
+                    "contract_version_id": (
+                        version_id if context.target_type == "contract_version" else None
+                    ),
+                    "idempotency_key": scoped_key,
+                    "provider": provider,
+                    "model_name": model_name,
+                    "prompt_version": prompt_version,
+                    "metadata": json.dumps(
+                        {
+                            "viewer_role": viewer_role,
+                            "trigger": "finding_applied",
+                            "finding_id": str(context.finding_id),
+                        }
+                    ),
+                },
+            )
+            jobs.append(FindingReviewJob(job_id=job_id, viewer_role=viewer_role))  # type: ignore[arg-type]
+        return jobs
+
+    async def _insert_finding_audit(
+        self,
+        context: FindingActionContext,
+        actor_user_id: UUID,
+        event_type: str,
+        event_data: dict[str, Any],
+    ) -> None:
+        await self._session.execute(
+            text(
+                """
+                insert into public.audit_events (
+                    contract_id, listing_id, actor_user_id, actor_role,
+                    event_type, target_type, target_id, event_data
+                ) values (
+                    :contract_id, :listing_id, :actor_user_id, 'seller',
+                    :event_type, 'ai_finding', :finding_id, cast(:event_data as jsonb)
+                )
+                """
+            ),
+            {
+                "contract_id": (
+                    context.resource_id if context.target_type == "contract_version" else None
+                ),
+                "listing_id": (
+                    context.resource_id if context.target_type == "listing_version" else None
+                ),
+                "actor_user_id": actor_user_id,
+                "event_type": event_type,
+                "finding_id": context.finding_id,
+                "event_data": json.dumps(event_data),
+            },
+        )
+
+    async def _claim_action_idempotency(
+        self,
+        actor_user_id: UUID,
+        operation: str,
+        key: str,
+        request_hash: str,
+    ) -> dict[str, Any] | None:
+        await self._session.execute(
+            text(
+                """
+                delete from public.idempotency_records
+                where actor_user_id = :actor_user_id and operation = :operation
+                  and idempotency_key = :key and expires_at <= now()
+                """
+            ),
+            {"actor_user_id": actor_user_id, "operation": operation, "key": key},
+        )
+        inserted = await self._session.execute(
+            text(
+                """
+                insert into public.idempotency_records (
+                    actor_user_id, operation, idempotency_key, request_hash, expires_at
+                ) values (
+                    :actor_user_id, :operation, :key, :request_hash,
+                    now() + interval '24 hours'
+                )
+                on conflict (actor_user_id, operation, idempotency_key)
+                    where actor_user_id is not null do nothing
+                returning id
+                """
+            ),
+            {
+                "actor_user_id": actor_user_id,
+                "operation": operation,
+                "key": key,
+                "request_hash": request_hash,
+            },
+        )
+        if inserted.scalar_one_or_none() is not None:
+            return None
+        existing = await self._session.execute(
+            text(
+                """
+                select request_hash, response_body from public.idempotency_records
+                where actor_user_id = :actor_user_id and operation = :operation
+                  and idempotency_key = :key for update
+                """
+            ),
+            {"actor_user_id": actor_user_id, "operation": operation, "key": key},
+        )
+        row = existing.mappings().one()
+        if row["request_hash"] != request_hash or row["response_body"] is None:
+            raise ContractReviewIdempotencyConflictError
+        return dict(row["response_body"])
+
+    async def _complete_action_idempotency(
+        self,
+        actor_user_id: UUID,
+        operation: str,
+        key: str,
+        response: dict[str, Any],
+        resource_id: UUID,
+    ) -> None:
+        await self._session.execute(
+            text(
+                """
+                update public.idempotency_records
+                set response_status = :response_status,
+                    response_body = cast(:response as jsonb),
+                    resource_type = 'ai_finding', resource_id = :resource_id
+                where actor_user_id = :actor_user_id and operation = :operation
+                  and idempotency_key = :key
+                """
+            ),
+            {
+                "actor_user_id": actor_user_id,
+                "operation": operation,
+                "key": key,
+                "response": json.dumps(response),
+                "resource_id": resource_id,
+                "response_status": 202 if operation.startswith("finding_apply:") else 200,
+            },
+        )
+
+    @staticmethod
+    def _apply_record(response: dict[str, Any], *, replayed: bool) -> FindingApplyRecord:
+        return FindingApplyRecord(
+            finding_id=UUID(response["finding_id"]),
+            target_type=response["target_type"],
+            resource_id=UUID(response["resource_id"]),
+            previous_version_id=UUID(response["previous_version_id"]),
+            version_id=UUID(response["version_id"]),
+            version_no=int(response["version_no"]),
+            jobs=[
+                FindingReviewJob(job_id=UUID(item["job_id"]), viewer_role=item["viewer_role"])
+                for item in response["jobs"]
+            ],
+            replayed=replayed,
+        )
 
     async def _clauses(self, target: str, version_id: UUID) -> list[ReviewClauseInput]:
         table = "listing_clauses" if target == "listing" else "contract_clauses"

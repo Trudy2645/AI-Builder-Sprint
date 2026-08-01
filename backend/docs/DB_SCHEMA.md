@@ -374,6 +374,12 @@ seller 관점 결과는 Agent 출력과 무관하게 항상 `false`로 저장된
 검색 결과의 제한된 metadata를 `ai_findings.evidence` snapshot에도 보존하며, knowledge registry와
 연결된 정규화 `rag_retrieval_runs`/`rag_evidence` 기록은 RAG knowledge base 단계에서 완성한다.
 
+finding 적용은 `suggested_text_sha256`, 분석 대상 version, resource의 현재 version을 한
+transaction에서 잠그고 검증한다. 기존 version/clause 행은 유지한 채 새 immutable version과
+clause snapshot을 생성하고 `applied_version_id`에 새 version id를 기록한다. 적용과 기각 이력은
+`audit_events`에 append-only로 저장하며, 중복 action은 `idempotency_records`의 24시간 결과
+snapshot을 재사용한다.
+
 ### RAG knowledge registry
 
 공식 법령·행정규칙·표준약관과 팀 승인 템플릿은 사용자 파일용 `documents`에 섞지 않고 다음 전용 테이블로 관리한다.
