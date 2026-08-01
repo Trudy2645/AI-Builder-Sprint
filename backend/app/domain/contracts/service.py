@@ -16,6 +16,7 @@ from app.integrations.modusign import (
     ModusignRequestError,
     ModusignUnavailableError,
 )
+from app.integrations.storage import StorageProvider, StorageProviderError
 from app.repositories.contracts import (
     ContractCreatedRecord,
     ContractRecord,
@@ -530,6 +531,103 @@ class ContractService:
         except ContractRepositoryUnavailableError:
             # Preserve the provider-facing error; the request remains safely idempotent in DB.
             return
+
+    async def get_signature_request(
+        self,
+        signature_request_id: UUID,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+    ) -> SignatureRequestCreated:
+        try:
+            record = await self._repository.get_signature_request(signature_request_id)
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        if record is None:
+            self._raise(
+                status.HTTP_404_NOT_FOUND,
+                "SIGNATURE_REQUEST_NOT_FOUND",
+                "Signature request was not found.",
+            )
+        context = await self._approval_context(record.contract_id, record.contract_version_id)
+        await self._authorize_approval_context(context, actor, header_organization_id)
+        return self._signature_response(record)
+
+    async def sync_signature_request(
+        self,
+        signature_request_id: UUID,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+        client: ModusignClient,
+        storage: StorageProvider,
+    ) -> SignatureRequestCreated:
+        record = await self.get_signature_request(
+            signature_request_id, actor, header_organization_id
+        )
+        if not record.provider_document_id:
+            return record
+        if record.status == "completed":
+            return record
+        try:
+            provider_document = await client.get_document(record.provider_document_id)
+            provider_status = str(provider_document.get("status", "UNKNOWN"))
+            updated = await self._repository.update_signature_request_status(
+                signature_request_id,
+                provider_status=provider_status,
+                current_signing_order=provider_document.get("currentSigningOrder"),
+            )
+            if provider_status != "COMPLETED":
+                return self._signature_response(updated)
+            signed_url = (provider_document.get("file") or {}).get("downloadUrl")
+            audit_url = (provider_document.get("auditTrail") or {}).get("downloadUrl")
+            if not isinstance(signed_url, str) or not isinstance(audit_url, str):
+                self._raise(
+                    status.HTTP_409_CONFLICT,
+                    "MODUSIGN_FILE_NOT_AVAILABLE",
+                    "Completed signature files are not available yet.",
+                )
+            signed_bytes, signed_type = await client.fetch_file(signed_url)
+            audit_bytes, audit_type = await client.fetch_file(audit_url)
+            if signed_type != "application/pdf" or audit_type != "application/pdf":
+                self._raise(
+                    status.HTTP_502_BAD_GATEWAY,
+                    "MODUSIGN_INVALID_FILE",
+                    "Modusign returned an unexpected completion file type.",
+                )
+            base_path = f"contracts/{updated.contract_id}/signatures/{updated.id}"
+            await storage.put_object(
+                "contract-documents", f"{base_path}/signed.pdf", signed_bytes, signed_type
+            )
+            await storage.put_object(
+                "contract-documents", f"{base_path}/audit-trail.pdf", audit_bytes, audit_type
+            )
+            updated = await self._repository.complete_signature_request(
+                signature_request_id,
+                signed_size_bytes=len(signed_bytes),
+                signed_sha256=hashlib.sha256(signed_bytes).hexdigest(),
+                audit_size_bytes=len(audit_bytes),
+                audit_sha256=hashlib.sha256(audit_bytes).hexdigest(),
+            )
+        except ModusignUnavailableError:
+            self._raise(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "MODUSIGN_UNAVAILABLE",
+                "Could not reach Modusign. Please try again shortly.",
+            )
+        except ModusignRequestError:
+            self._raise(
+                status.HTTP_502_BAD_GATEWAY,
+                "MODUSIGN_REQUEST_REJECTED",
+                "Modusign rejected the status request.",
+            )
+        except StorageProviderError:
+            self._raise(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "STORAGE_PROVIDER_UNAVAILABLE",
+                "Could not store the completed signature files. Please try again shortly.",
+            )
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        return self._signature_response(updated)
 
     @staticmethod
     def _signature_response(record: Any, *, reused: bool = False) -> SignatureRequestCreated:
