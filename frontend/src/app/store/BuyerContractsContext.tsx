@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApp } from "../context/AppContext";
+import { getAccessToken, getMyContracts } from "../lib/api";
 
 export type BuyerContractStatus =
   | "draft"
@@ -101,7 +102,42 @@ export function BuyerContractsProvider({ children }: { children: ReactNode }) {
   const [contracts, setContracts] = useState<BuyerContract[]>([]);
 
   useEffect(() => {
-    setContracts(isDemoSession ? seed : []);
+    if (isDemoSession) {
+      setContracts(seed);
+      return;
+    }
+    if (!getAccessToken()) {
+      setContracts([]);
+      return;
+    }
+    let active = true;
+    getMyContracts()
+      .then((items) => {
+        if (!active) return;
+        setContracts(items.map((item) => ({
+          id: item.id,
+          title: item.listing_title,
+          buyerName: "",
+          sellerName: item.seller_name,
+          category: "",
+          startDate: item.service_start_date,
+          endDate: item.service_end_date,
+          peopleCount: item.requested_people,
+          quantity: 0,
+          unitPrice: item.amount_minor ?? 0,
+          cancellationPolicy: "",
+          settlementPolicy: "",
+          status: item.status,
+          source: "write",
+          createdAt: item.created_at,
+          signedAt: item.status === "signed" ? item.created_at : undefined,
+          signatureStatus: item.status === "signed" ? "completed" : undefined,
+        })));
+      })
+      .catch(() => {
+        if (active) setContracts([]);
+      });
+    return () => { active = false; };
   }, [isDemoSession]);
 
   const createContractRequest: BuyerContractsContextValue["createContractRequest"] = (

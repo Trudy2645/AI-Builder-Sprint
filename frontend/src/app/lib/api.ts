@@ -93,6 +93,23 @@ export function signup(payload: Record<string, unknown>): Promise<AuthResponse> 
   });
 }
 
+export type ContractListItem = {
+  id: string;
+  listing_title: string;
+  seller_name: string;
+  status: "draft" | "seller_review" | "revision_requested" | "signing" | "signed" | "cancelled";
+  service_start_date: string;
+  service_end_date: string;
+  requested_people: number;
+  amount_minor: number | null;
+  currency: string | null;
+  created_at: string;
+};
+
+export function getMyContracts(): Promise<ContractListItem[]> {
+  return apiFetch<ContractListItem[]>("/me/contracts");
+}
+
 export type PublicListing = {
   id: string;
   seller: { name: string };
