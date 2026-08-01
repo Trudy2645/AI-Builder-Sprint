@@ -29,6 +29,12 @@ from app.repositories.contract_review import (
     ContractReviewRepository,
     ContractReviewRepositoryError,
     ContractReviewTargetRecord,
+    FindingActionConflictError,
+    FindingActionContext,
+    FindingActionNotFoundError,
+    FindingActionVersionConflictError,
+    FindingReviewJob,
+    FindingSuggestionConflictError,
     StoredReviewRun,
 )
 from app.schemas.contract_review import (
@@ -36,6 +42,10 @@ from app.schemas.contract_review import (
     ContractReviewFindingResponse,
     ContractReviewRequest,
     ContractReviewRunResponse,
+    FindingApplyRequest,
+    FindingApplyResponse,
+    FindingDismissRequest,
+    FindingDismissResponse,
 )
 
 
@@ -45,6 +55,18 @@ class StartedContractReview:
     should_schedule: bool
     target: ContractReviewTargetRecord
     viewer_role: Literal["buyer", "seller"]
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledFindingReview:
+    job: FindingReviewJob
+    target: ContractReviewTargetRecord
+
+
+@dataclass(frozen=True, slots=True)
+class StartedFindingApply:
+    response: FindingApplyResponse
+    reviews: list[ScheduledFindingReview]
 
 
 class ContractReviewService:
@@ -217,6 +239,119 @@ class ContractReviewService:
         await self._authorize_run(run, actor, organization_header)
         return self._run_response(run)
 
+    async def apply_finding(
+        self,
+        finding_id: UUID,
+        payload: FindingApplyRequest,
+        actor: AuthenticatedUser,
+        organization_header: str | None,
+        idempotency_key: str,
+    ) -> StartedFindingApply:
+        context = await self._finding_context(finding_id)
+        await self._authorize_finding_action(context, actor, organization_header)
+        self._validate_idempotency_key(idempotency_key)
+        request_hash = self._hash(
+            {"finding_id": str(finding_id), **payload.model_dump(mode="json")}
+        )
+        try:
+            applied = await self._repository.apply_finding(
+                finding_id=finding_id,
+                actor_user_id=actor.id,
+                base_version_no=payload.base_version_no,
+                suggested_text_hash=payload.suggested_text_hash,
+                edited_text=payload.edited_text,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                provider=self._provider_name,
+                model_name=self._model_name,
+                prompt_version=self._prompt_version,
+            )
+        except ContractReviewIdempotencyConflictError as exc:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "IDEMPOTENCY_CONFLICT",
+                "Idempotency-Key was already used with another finding action.",
+                exc,
+            )
+        except FindingActionNotFoundError as exc:
+            self._finding_not_found(exc)
+        except FindingActionConflictError as exc:
+            self._finding_not_actionable(exc)
+        except FindingActionVersionConflictError as exc:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "VERSION_CONFLICT",
+                "The finding version is no longer the current version.",
+                exc,
+            )
+        except FindingSuggestionConflictError as exc:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "SUGGESTED_TEXT_CONFLICT",
+                "suggested_text_hash does not match the reviewed suggestion.",
+                exc,
+            )
+        except ContractReviewRepositoryError as exc:
+            self._database_unavailable(exc)
+
+        reviews: list[ScheduledFindingReview] = []
+        if not applied.replayed:
+            target = await self._action_target(applied)
+            reviews = [ScheduledFindingReview(job=job, target=target) for job in applied.jobs]
+        return StartedFindingApply(
+            response=FindingApplyResponse(
+                finding_id=applied.finding_id,
+                target_type=applied.target_type,
+                resource_id=applied.resource_id,
+                previous_version_id=applied.previous_version_id,
+                version_id=applied.version_id,
+                version_no=applied.version_no,
+                analysis_job_ids=[job.job_id for job in applied.jobs],
+                replayed=applied.replayed,
+            ),
+            reviews=reviews,
+        )
+
+    async def dismiss_finding(
+        self,
+        finding_id: UUID,
+        payload: FindingDismissRequest,
+        actor: AuthenticatedUser,
+        organization_header: str | None,
+        idempotency_key: str,
+    ) -> FindingDismissResponse:
+        context = await self._finding_context(finding_id)
+        await self._authorize_finding_action(context, actor, organization_header)
+        self._validate_idempotency_key(idempotency_key)
+        request_hash = self._hash(
+            {"finding_id": str(finding_id), **payload.model_dump(mode="json")}
+        )
+        try:
+            dismissed = await self._repository.dismiss_finding(
+                finding_id=finding_id,
+                actor_user_id=actor.id,
+                reason=payload.reason,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+            )
+        except ContractReviewIdempotencyConflictError as exc:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "IDEMPOTENCY_CONFLICT",
+                "Idempotency-Key was already used with another finding action.",
+                exc,
+            )
+        except FindingActionNotFoundError as exc:
+            self._finding_not_found(exc)
+        except FindingActionConflictError as exc:
+            self._finding_not_actionable(exc)
+        except ContractReviewRepositoryError as exc:
+            self._database_unavailable(exc)
+        return FindingDismissResponse(
+            finding_id=dismissed.finding_id,
+            replayed=dismissed.replayed,
+        )
+
     async def _claim(
         self,
         target: ContractReviewTargetRecord,
@@ -295,6 +430,32 @@ class ContractReviewService:
         ):
             self._forbidden()
 
+    async def _finding_context(self, finding_id: UUID) -> FindingActionContext:
+        try:
+            context = await self._repository.get_finding_action_context(finding_id)
+        except ContractReviewRepositoryError as exc:
+            self._database_unavailable(exc)
+        if context is None:
+            self._finding_not_found()
+        return context
+
+    async def _authorize_finding_action(
+        self,
+        context: FindingActionContext,
+        actor: AuthenticatedUser,
+        organization_header: str | None,
+    ) -> None:
+        organization_id = self._organization_id(organization_header)
+        if context.seller_organization_id != organization_id or not await self._member(
+            actor.id, organization_id
+        ):
+            self._forbidden()
+
+    async def _action_target(self, applied) -> ContractReviewTargetRecord:
+        if applied.target_type == "listing_version":
+            return await self._listing_target(applied.resource_id, applied.version_id)
+        return await self._contract_target(applied.resource_id, applied.version_id)
+
     async def _listing_target(
         self, listing_id: UUID, version_id: UUID
     ) -> ContractReviewTargetRecord:
@@ -349,6 +510,11 @@ class ContractReviewService:
                     title=finding.title,
                     explanation=finding.explanation,
                     suggested_text=finding.suggested_text,
+                    suggested_text_hash=(
+                        f"sha256:{finding.suggested_text_sha256}"
+                        if finding.suggested_text_sha256
+                        else None
+                    ),
                     grounding_status=finding.grounding_status,  # type: ignore[arg-type]
                     confidence=finding.confidence,
                     source_location=finding.source_location,
@@ -384,6 +550,33 @@ class ContractReviewService:
     def _hash(value: dict) -> str:
         payload = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str).encode()
         return hashlib.sha256(payload).hexdigest()
+
+    @staticmethod
+    def _validate_idempotency_key(value: str) -> None:
+        if not value.strip():
+            ContractReviewService._raise(
+                status.HTTP_400_BAD_REQUEST,
+                "VALIDATION_ERROR",
+                "Idempotency-Key cannot be blank.",
+            )
+
+    @staticmethod
+    def _finding_not_found(cause: Exception | None = None) -> NoReturn:
+        ContractReviewService._raise(
+            status.HTTP_404_NOT_FOUND,
+            "FINDING_NOT_FOUND",
+            "Finding was not found.",
+            cause,
+        )
+
+    @staticmethod
+    def _finding_not_actionable(cause: Exception | None = None) -> NoReturn:
+        ContractReviewService._raise(
+            status.HTTP_409_CONFLICT,
+            "FINDING_NOT_ACTIONABLE",
+            "Only an open finding with suggested text can be acted on.",
+            cause,
+        )
 
     @staticmethod
     def _failure_code(exc: Exception) -> str:

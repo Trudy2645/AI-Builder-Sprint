@@ -723,9 +723,11 @@ Information Extract의 필수 top-level 결과는 다음 일곱 영역이다.
 
 AI 패널의 `[1]`, `[2]` 근거 번호를 클릭할 때 호출한다. finding 조회 권한과 evidence 소속을 확인한 후 내부 PDF viewer URL, page/section/bbox, 짧은 excerpt, 공식 원문 URL, 시행일과 조회일을 반환한다. Storage 원본은 private으로 유지하고 짧은 만료시간의 signed URL만 viewer에 제공한다.
 
-### `POST /ai-findings/{finding_id}/apply`
+### `[구현] POST /ai-findings/{finding_id}/apply`
 
 AI가 제안한 표준 안전장치 또는 대안 문구를 사람이 명시적으로 선택했을 때만 호출한다.
+`X-Organization-Id`와 `Idempotency-Key`가 필수이며 해당 listing/contract의 셀러 조직
+구성원만 호출할 수 있다. 바이어의 계약 변경 제안은 revision request workflow를 사용한다.
 
 ```json
 {
@@ -742,15 +744,24 @@ AI가 제안한 표준 안전장치 또는 대안 문구를 사람이 명시적�
 3. 제안 문구가 분석 당시 값과 같은지 hash로 확인한다.
 4. 기존 version을 수정하지 않고 새 version과 clauses를 생성한다.
 5. finding을 `applied` 처리하고 audit event를 남긴다.
-6. 새 version에 대한 규칙 검사와 역할별 AI 분석을 다시 실행한다.
+6. 새 version에 대한 seller/buyer 규칙 검사와 역할별 AI 분석 job을 다시 실행한다.
 
-### `POST /ai-findings/{finding_id}/dismiss`
+`202 Accepted` 응답은 기존·신규 version id, 신규 `version_no`, 두 역할의
+`analysis_job_ids`를 반환한다.
+`edited_text`를 사용해도 hash는 분석 당시 원 추천 문구를 기준으로 검증하며, 감사 기록에는
+원문 대신 추천·적용 문구의 SHA-256과 사용자 편집 여부만 저장한다. 만료·보관된 공고와
+서명 중·서명 완료·취소된 계약에는 적용할 수 없다. finding 조회 응답은 적용 요청에 사용할
+`suggested_text_hash`를 `sha256:<hex>` 형식으로 함께 반환한다.
+
+### `[구현] POST /ai-findings/{finding_id}/dismiss`
 
 ```json
 { "reason": "현재 계약 운영 방식과 맞지 않아 유지" }
 ```
 
-finding을 `dismissed`로 표시하되 계약 원문은 변경하지 않는다. 적용과 기각 모두 자동으로 서명 요청을 만들지 않는다.
+`X-Organization-Id`와 `Idempotency-Key`가 필수다. 셀러 조직 구성원만 호출할 수 있으며,
+finding을 `dismissed`로 표시하고 사유를 append-only audit event에 남기되 계약 원문은 변경하지
+않는다. 적용과 기각 모두 자동으로 서명 요청을 만들지 않는다.
 
 ### `[구현] POST /seller/listings/{listing_id}/generate`
 

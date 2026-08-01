@@ -513,6 +513,11 @@ Solar가 만든 `suggested_text`는 자동으로 계약서에 쓰지 않는다.
 
 `suggested_text_hash`와 분석 대상 version을 함께 검사해 오래된 추천 문구가 최신 계약에 잘못 적용되지 않게 한다. 적용·기각·사용자 편집은 모두 audit event에 남긴다.
 
+구현 API는 셀러 조직 구성원만 호출할 수 있고 모든 action POST에 `Idempotency-Key`를 요구한다.
+적용은 원본 조항과 version을 수정하지 않고 새 version/clauses를 생성한 뒤 seller와 buyer 관점
+`risk_analysis` job을 각각 큐에 넣는다. 기각은 finding 상태와 사유만 변경한다. 감사 event에는
+계약 문구 원문 대신 version id, SHA-256, 사용자 편집 여부를 기록한다.
+
 ### 6.8 전자서명
 
 AI는 서명자를 대신해 동의하거나 서명을 실행하지 않는다.

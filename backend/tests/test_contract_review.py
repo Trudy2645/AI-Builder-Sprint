@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from datetime import date
 from typing import Any
@@ -184,6 +185,11 @@ class FakeContractReviewRepository:
                 title=item.title,
                 explanation=item.explanation,
                 suggested_text=item.suggested_text,
+                suggested_text_sha256=(
+                    hashlib.sha256(item.suggested_text.encode()).hexdigest()
+                    if item.suggested_text
+                    else None
+                ),
                 grounding_status=item.grounding_status,
                 confidence=item.confidence,
                 source_location=item.source_location,
@@ -399,6 +405,7 @@ def test_authorized_seller_can_read_stored_analysis(client: TestClient, review_c
     assert data["model_name"] == "solar-pro3"
     assert data["prompt_version"].endswith("contract-review-v1")
     assert data["findings"][0]["viewer_role"] == "seller"
+    assert data["findings"][0]["suggested_text_hash"].startswith("sha256:")
 
 
 @pytest.mark.asyncio
