@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { translate, type Lang } from "../i18n/translations";
+import { setAccessToken } from "../lib/api";
 
 export type Role = "buyer" | "seller";
 
@@ -12,6 +13,7 @@ interface AppContextValue {
   currentRole: Role | null;
   isDemoSession: boolean;
   login: (role: Role, company?: string, isDemo?: boolean) => void;
+  loginWithSession: (role: Role, company: string, accessToken: string) => void;
   logout: () => void;
 }
 
@@ -30,9 +32,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    setAccessToken(null);
     setCurrentRole(null);
     setCompanyName("");
     setIsDemoSession(false);
+  };
+
+  const loginWithSession = (role: Role, company: string, accessToken: string) => {
+    setAccessToken(accessToken);
+    login(role, company, false);
   };
 
   const value = useMemo<AppContextValue>(
@@ -45,6 +53,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentRole,
       isDemoSession,
       login,
+      loginWithSession,
       logout,
     }),
     [lang, companyName, currentRole, isDemoSession],

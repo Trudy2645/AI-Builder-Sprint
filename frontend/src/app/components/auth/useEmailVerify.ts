@@ -44,10 +44,6 @@ export function useEmailVerify() {
       setEmailError("err.email");
       return false;
     }
-    if (!verified) {
-      setEmailError("err.emailNotVerified");
-      return false;
-    }
     setEmailError(undefined);
     return true;
   };

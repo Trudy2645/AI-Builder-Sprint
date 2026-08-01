@@ -22,6 +22,16 @@ export class ApiError extends Error {
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const accessTokenKey = "busan-link-access-token";
+
+export function setAccessToken(token: string | null): void {
+  if (token) window.localStorage.setItem(accessTokenKey, token);
+  else window.localStorage.removeItem(accessTokenKey);
+}
+
+export function getAccessToken(): string | null {
+  return window.localStorage.getItem(accessTokenKey);
+}
 
 export function friendlyApiError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -46,7 +56,11 @@ export function friendlyApiError(error: unknown): string {
 export async function apiFetch<Data>(path: string, init: RequestInit = {}): Promise<Data> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
-    headers: { Accept: "application/json", ...init.headers },
+    headers: {
+      Accept: "application/json",
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+      ...init.headers,
+    },
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok || payload?.error) {
@@ -56,6 +70,27 @@ export async function apiFetch<Data>(path: string, init: RequestInit = {}): Prom
     });
   }
   return payload.data as Data;
+}
+
+export type Role = "buyer" | "seller";
+
+type AuthSession = { access_token: string; refresh_token: string; token_type: string; expires_in: number };
+export type AuthResponse = { user_id: string; email: string; role?: Role; organization_id?: string | null; session: AuthSession | null };
+
+export function loginWithPassword(email: string, password: string): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function signup(payload: Record<string, unknown>): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 export type PublicListing = {
