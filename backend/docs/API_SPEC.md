@@ -632,6 +632,32 @@ Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, c
 6. 규칙 엔진 실행 후 단일 `ContractReviewAgent`가 필요한 근거만 공식/템플릿 Vector Store에서 File Search
 7. `GET /ai-jobs/{job_id}` polling
 
+`GET /ai-jobs/{job_id}`는 인증된 바이어 본인 또는 `X-Organization-Id`로 확인된 셀러
+조직 구성원만 조회할 수 있다. 응답은 provider 원문이나 계약 내용을 포함하지 않고 다음
+비민감 진행 정보만 반환한다.
+
+```json
+{
+  "data": {
+    "id": "uuid",
+    "task_type": "document_parse",
+    "status": "processing",
+    "progress": 35,
+    "result_resource_type": null,
+    "result_resource_id": null,
+    "failure_code": null,
+    "created_at": "2026-08-01T12:00:00Z",
+    "started_at": "2026-08-01T12:00:01Z",
+    "completed_at": null
+  },
+  "meta": {"request_id": "..."}
+}
+```
+
+상태는 DB enum과 동일하게 `queued → processing → succeeded` 또는 `failed`를 사용한다.
+동일 immutable target, task, prompt, model, viewer role은 결정적 idempotency key로 중복 실행을
+막는다.
+
 사용자 계약서 원문은 공용 Vector Store에 올리지 않는다. Upstage Files/Vector Store는 별도로 검수한 공식 근거와 승인 템플릿에만 사용한다.
 
 문서 저장 브랜치에서 `complete`는 Storage object를 streaming으로 읽어 파일 signature,
