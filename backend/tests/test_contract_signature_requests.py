@@ -5,7 +5,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_contract_service, get_modusign_client
+from app.api.dependencies import get_contract_service, get_modusign_client, get_storage_provider
 from app.core.auth import get_current_user
 from app.core.config import Settings, get_settings
 from app.domain.contracts.service import ContractService
@@ -13,6 +13,7 @@ from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.exchange_rates import FakeExchangeRateProvider
 from app.integrations.modusign import ModusignParticipant, ModusignUnavailableError
+from app.integrations.storage import FakeStorageProvider
 from app.repositories.contracts import (
     ContractStateConflictError,
     ContractVersionApprovalContextRecord,
@@ -88,11 +89,40 @@ class FakeSignatureRepository:
     async def mark_signature_request_failed(self, request_id: UUID) -> None:
         return None
 
+    async def get_signature_request(self, request_id: UUID):
+        for record in self.requests.values():
+            if record.id == request_id:
+                return record
+        return None
+
+    async def update_signature_request_status(
+        self, request_id: UUID, *, provider_status: str, current_signing_order: int | None
+    ):
+        for key, record in self.requests.items():
+            if record.id == request_id:
+                updated = replace(
+                    record,
+                    provider_status=provider_status,
+                    current_signing_order=current_signing_order,
+                )
+                self.requests[key] = updated
+                return updated
+        raise AssertionError("unknown request")
+
+    async def complete_signature_request(self, request_id: UUID, **_kwargs):
+        for key, record in self.requests.items():
+            if record.id == request_id:
+                updated = replace(record, status="completed", provider_status="COMPLETED")
+                self.requests[key] = updated
+                return updated
+        raise AssertionError("unknown request")
+
 
 class FakeModusignClient:
     def __init__(self) -> None:
         self.calls = 0
         self.unavailable = False
+        self.completed = False
 
     async def create_signature_request(
         self, *, template_id: str, title: str, participants: list[ModusignParticipant]
@@ -103,6 +133,20 @@ class FakeModusignClient:
         assert template_id == "template-1"
         assert len(participants) == 2
         return {"id": "modusign-doc-1", "status": "ON_PROCESSING"}
+
+    async def get_document(self, document_id: str) -> dict[str, object]:
+        assert document_id == "modusign-doc-1"
+        if self.completed:
+            return {
+                "id": document_id,
+                "status": "COMPLETED",
+                "file": {"downloadUrl": "https://files.test/signed"},
+                "auditTrail": {"downloadUrl": "https://files.test/audit"},
+            }
+        return {"id": document_id, "status": "ON_GOING", "currentSigningOrder": 2}
+
+    async def fetch_file(self, url: str) -> tuple[bytes, str]:
+        return (b"signed" if url.endswith("signed") else b"audit", "application/pdf")
 
 
 @pytest.fixture
@@ -121,6 +165,7 @@ def signature_client(
     )
     app.dependency_overrides[get_contract_service] = lambda: service
     app.dependency_overrides[get_modusign_client] = lambda: provider
+    app.dependency_overrides[get_storage_provider] = lambda: FakeStorageProvider()
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
         id=BUYER_ID, email="buyer@example.test"
     )
@@ -193,3 +238,37 @@ def test_requires_both_approvals_before_calling_provider(
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "SIGNATURE_NOT_READY"
     assert provider.calls == 0
+
+
+def test_sync_refreshes_provider_status(
+    signature_client: tuple[TestClient, FakeModusignClient],
+) -> None:
+    client, _provider = signature_client
+    created = client.post(
+        f"/api/v1/contracts/{CONTRACT_ID}/versions/{VERSION_ID}/signature-requests",
+        headers={"Idempotency-Key": "signature-request-1"},
+        json=_payload(),
+    )
+
+    response = client.post(f"/api/v1/signature-requests/{created.json()['data']['id']}/sync")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["provider_status"] == "ON_GOING"
+    assert response.json()["data"]["current_signing_order"] == 2
+
+
+def test_sync_completion_stores_artifacts_before_marking_completed(
+    signature_client: tuple[TestClient, FakeModusignClient],
+) -> None:
+    client, provider = signature_client
+    created = client.post(
+        f"/api/v1/contracts/{CONTRACT_ID}/versions/{VERSION_ID}/signature-requests",
+        headers={"Idempotency-Key": "signature-request-1"},
+        json=_payload(),
+    )
+    provider.completed = True
+
+    response = client.post(f"/api/v1/signature-requests/{created.json()['data']['id']}/sync")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "completed"
