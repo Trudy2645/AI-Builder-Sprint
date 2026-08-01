@@ -335,6 +335,28 @@ def test_contract_request_creates_expected_initial_state(
     assert contract_repository.copied_clause_counts[-1] == 1
 
 
+def test_published_seat_listing_accepts_contract_request_with_same_unit(
+    contract_client: TestClient,
+    contract_repository: FakeContractRepository,
+) -> None:
+    contract_repository.source = replace(
+        contract_repository.source,
+        quantity_unit="seat",
+        price_unit="seat",
+    )
+
+    response = post_request(
+        contract_client,
+        request_payload(people=4, quantity=4, quantity_unit="seat"),
+        key="published-seat-listing",
+    )
+
+    assert response.status_code == 200
+    created = contract_repository.created_data[-1]
+    assert created.amount_minor == 400_000
+    assert created.calculation_snapshot["formula"] == "100000 KRW × 4 seat"
+
+
 def test_individual_group_representative_is_snapshotted(
     contract_client: TestClient,
     contract_repository: FakeContractRepository,

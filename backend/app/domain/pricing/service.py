@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import status
 
 from app.core.errors import AppError
+from app.domain.pricing.units import PRICE_UNIT_RULES, SUPPORTED_QUANTITY_UNITS
 from app.integrations.exchange_rates import (
     ExchangeRateProvider,
     ExchangeRateProviderError,
@@ -22,13 +23,6 @@ PRICE_ESTIMATE_DISCLAIMER = (
     "This is an estimated price based on the current listing terms and exchange rate. "
     "The final contract price may differ."
 )
-_PRICE_UNIT_RULES = {
-    "person": ("person", False),
-    "room": ("room", False),
-    "room_night": ("room", True),
-    "vehicle": ("vehicle", False),
-}
-_SUPPORTED_QUANTITY_UNITS = {"person", "room", "vehicle"}
 
 
 class PriceEstimateService:
@@ -166,19 +160,19 @@ class PriceCalculator:
         terms: ListingPriceTermsRecord,
         request: PriceEstimateRequest,
     ) -> tuple[str, bool]:
-        if request.quantity_unit not in _SUPPORTED_QUANTITY_UNITS:
+        if request.quantity_unit not in SUPPORTED_QUANTITY_UNITS:
             cls._raise(
                 status.HTTP_400_BAD_REQUEST,
                 "UNSUPPORTED_QUANTITY_UNIT",
                 "The requested quantity unit is not supported.",
             )
-        if terms.price_unit not in _PRICE_UNIT_RULES:
+        if terms.price_unit not in PRICE_UNIT_RULES:
             cls._raise(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
                 "UNSUPPORTED_PRICE_UNIT",
                 "The listing price unit is not supported.",
             )
-        expected_quantity_unit, uses_nights = _PRICE_UNIT_RULES[terms.price_unit]
+        expected_quantity_unit, uses_nights = PRICE_UNIT_RULES[terms.price_unit]
         if terms.quantity_unit != expected_quantity_unit:
             cls._raise(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,

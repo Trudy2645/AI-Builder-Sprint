@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import status
 
 from app.core.errors import AppError
+from app.domain.pricing.units import PRICE_UNIT_RULES, SUPPORTED_QUANTITY_UNITS
 from app.integrations.auth import AuthenticatedUser
 from app.repositories.seller_listings import (
     NewSellerListingClause,
@@ -63,6 +64,7 @@ _TERM_FIELDS = (
 _REQUIRED_TERMS = (
     "service_start_date",
     "service_end_date",
+    "quantity_unit",
     "base_price_amount_minor",
     "currency",
     "price_unit",
@@ -165,6 +167,7 @@ class SellerListingService:
             )
         merged = {**self._term_values(record), **changes}
         self._validate_term_ranges(merged)
+        self._validate_term_units(merged)
         clauses = self._build_clauses(merged)
         if record.status in {"published", "paused"}:
             missing = self._missing_fields(record, len(clauses), merged)
@@ -257,6 +260,7 @@ class SellerListingService:
     ) -> SellerListingMutationResponse:
         organization_id, _ = await self._authorize_organization(actor, header_organization_id)
         record = await self._get_owned_listing(listing_id, organization_id)
+        self._validate_term_units(self._term_values(record))
         clauses = await self._clauses(record.current_version_id)
         missing = self._missing_fields(record, len(clauses))
         if missing:
@@ -294,6 +298,7 @@ class SellerListingService:
                 message="Only a verified seller organization can publish listings.",
             )
         record = await self._get_owned_listing(listing_id, organization_id)
+        self._validate_term_units(self._term_values(record))
         clauses = await self._clauses(record.current_version_id)
         missing = self._missing_fields(record, len(clauses))
         if missing:
@@ -428,6 +433,31 @@ class SellerListingService:
                 code="VALIDATION_ERROR",
                 message=("minimum_quantity must be less than or equal to maximum_quantity."),
             )
+
+    @staticmethod
+    def _validate_term_units(terms: dict[str, Any]) -> None:
+        quantity_unit = terms["quantity_unit"]
+        price_unit = terms["price_unit"]
+        if quantity_unit is not None and quantity_unit not in SUPPORTED_QUANTITY_UNITS:
+            raise AppError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="UNSUPPORTED_QUANTITY_UNIT",
+                message="The listing quantity unit is not supported.",
+            )
+        if price_unit is not None and price_unit not in PRICE_UNIT_RULES:
+            raise AppError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="UNSUPPORTED_PRICE_UNIT",
+                message="The listing price unit is not supported.",
+            )
+        if quantity_unit is not None and price_unit is not None:
+            expected_quantity_unit = PRICE_UNIT_RULES[price_unit].quantity_unit
+            if quantity_unit != expected_quantity_unit:
+                raise AppError(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code="UNSUPPORTED_QUANTITY_UNIT",
+                    message="The listing quantity unit does not match its price unit.",
+                )
 
     @staticmethod
     def _build_clauses(terms: dict[str, Any]) -> list[NewSellerListingClause]:
