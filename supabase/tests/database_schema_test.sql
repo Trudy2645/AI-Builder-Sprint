@@ -79,6 +79,21 @@ select migration_test.assert_true(
     'seller business verification documents must support organization ownership'
 );
 
+select migration_test.assert_true(
+    (
+        select count(*)
+        from information_schema.columns
+        where table_schema = 'public'
+          and (table_name, column_name) in (
+              ('listings', 'public_headline'),
+              ('listing_terms', 'supply_quantity_description'),
+              ('listing_terms', 'minimum_quantity'),
+              ('listing_terms', 'maximum_quantity')
+          )
+    ) = 4,
+    'seller listing form fields must have canonical database columns'
+);
+
 insert into auth.users (id, email) values
     ('00000000-0000-0000-0000-000000000001', 'seller@example.test'),
     ('00000000-0000-0000-0000-000000000002', 'buyer@example.test'),

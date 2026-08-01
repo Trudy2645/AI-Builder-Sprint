@@ -103,6 +103,7 @@ class PublicListingCard(BaseModel):
     district: str
     category: ListingCategory
     hero_image_url: str | None
+    public_headline: str | None
     ai_summary: str | None
     base_price: Money | None
     availability: Availability
@@ -137,7 +138,10 @@ class PublicClause(BaseModel):
 
 class PublicListingDetail(PublicListingCard):
     supply_quantity: int | None
+    supply_quantity_description: str | None
     quantity_unit: str | None
+    minimum_quantity: int | None
+    maximum_quantity: int | None
     people_per_unit: int | None
     minimum_people: int | None
     maximum_people: int | None
@@ -196,7 +200,10 @@ class SellerListingTermsPatchValues(BaseModel):
     service_start_date: date | None = None
     service_end_date: date | None = None
     supply_quantity: int | None = Field(default=None, gt=0)
+    supply_quantity_description: str | None = Field(default=None, min_length=1, max_length=500)
     quantity_unit: str | None = Field(default=None, min_length=1, max_length=32)
+    minimum_quantity: int | None = Field(default=None, gt=0)
+    maximum_quantity: int | None = Field(default=None, gt=0)
     people_per_unit: int | None = Field(default=None, gt=0)
     base_price_amount_minor: int | None = Field(default=None, ge=0)
     currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
@@ -230,6 +237,7 @@ class SellerListingPresentationPatch(BaseModel):
     display_title: str | None = Field(default=None, max_length=200)
     hero_document_id: UUID | None = None
     seller_description: str | None = Field(default=None, max_length=5000)
+    public_headline: str | None = Field(default=None, max_length=1000)
     price_display_basis: str | None = Field(default=None, max_length=500)
     contract_availability_note: str | None = Field(default=None, max_length=1000)
 
@@ -255,7 +263,10 @@ class SellerListingTerms(BaseModel):
     service_start_date: date | None
     service_end_date: date | None
     supply_quantity: int | None
+    supply_quantity_description: str | None
     quantity_unit: str | None
+    minimum_quantity: int | None
+    maximum_quantity: int | None
     people_per_unit: int | None
     base_price_amount_minor: int | None
     currency: str | None
@@ -283,6 +294,13 @@ class SellerListingSummary(BaseModel):
     district: str
     status: ListingStatus
     creation_method: ListingCreationMethod
+    public_headline: str | None
+    service_start_date: date | None
+    service_end_date: date | None
+    supply_quantity_description: str | None
+    base_price: Money | None
+    contract_available: bool
+    attention_required_count: int = Field(ge=0)
     current_version_no: int
     contract_request_count: int = Field(ge=0)
     missing_fields: list[str]

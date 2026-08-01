@@ -21,6 +21,7 @@ from app.repositories.seller_listings import (
     SellerListingVersionConflictError,
 )
 from app.schemas.listings import (
+    Money,
     SellerListingClause,
     SellerListingCreate,
     SellerListingCreated,
@@ -37,7 +38,10 @@ _TERM_FIELDS = (
     "service_start_date",
     "service_end_date",
     "supply_quantity",
+    "supply_quantity_description",
     "quantity_unit",
+    "minimum_quantity",
+    "maximum_quantity",
     "people_per_unit",
     "base_price_amount_minor",
     "currency",
@@ -59,17 +63,12 @@ _TERM_FIELDS = (
 _REQUIRED_TERMS = (
     "service_start_date",
     "service_end_date",
-    "supply_quantity",
-    "quantity_unit",
     "base_price_amount_minor",
     "currency",
     "price_unit",
     "cancellation_policy",
-    "refund_policy",
+    "no_show_policy",
     "settlement_policy",
-    "safety_policy",
-    "compensation_policy",
-    "liability_policy",
 )
 _CLAUSE_FIELDS = (
     ("cancellation_policy", "취소 조건"),
@@ -219,6 +218,7 @@ class SellerListingService:
                 "display_title",
                 "hero_document_id",
                 "seller_description",
+                "public_headline",
             }
         }
         term_changes = {
@@ -416,6 +416,18 @@ class SellerListingService:
                 code="VALIDATION_ERROR",
                 message="minimum_people must be less than or equal to maximum_people.",
             )
+        minimum_quantity = terms["minimum_quantity"]
+        maximum_quantity = terms["maximum_quantity"]
+        if (
+            minimum_quantity is not None
+            and maximum_quantity is not None
+            and minimum_quantity > maximum_quantity
+        ):
+            raise AppError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="VALIDATION_ERROR",
+                message=("minimum_quantity must be less than or equal to maximum_quantity."),
+            )
 
     @staticmethod
     def _build_clauses(terms: dict[str, Any]) -> list[NewSellerListingClause]:
@@ -432,7 +444,14 @@ class SellerListingService:
         terms: dict[str, Any] | None = None,
     ) -> list[str]:
         values = terms or SellerListingService._term_values(record)
-        missing = [field for field in _REQUIRED_TERMS if values[field] is None]
+        missing = [
+            field
+            for field in _REQUIRED_TERMS
+            if values[field] is None
+            or (isinstance(values[field], str) and not values[field].strip())
+        ]
+        if not values["supply_quantity_description"] and values["supply_quantity"] is None:
+            missing.append("supply_quantity_description")
         if not record.title.strip():
             missing.insert(0, "title")
         if not record.district.strip():
@@ -450,6 +469,13 @@ class SellerListingService:
 
     @classmethod
     def _summary(cls, record: SellerListingRecord) -> SellerListingSummary:
+        base_price = None
+        if record.base_price_amount_minor is not None and record.currency is not None:
+            base_price = Money(
+                amount_minor=record.base_price_amount_minor,
+                currency=record.currency,
+                unit=record.price_unit,
+            )
         return SellerListingSummary(
             id=record.id,
             title=record.title,
@@ -458,6 +484,13 @@ class SellerListingService:
             district=record.district,
             status=record.status,
             creation_method=record.creation_method,
+            public_headline=record.public_headline,
+            service_start_date=record.service_start_date,
+            service_end_date=record.service_end_date,
+            supply_quantity_description=record.supply_quantity_description,
+            base_price=base_price,
+            contract_available=record.status == "published",
+            attention_required_count=record.attention_required_count,
             current_version_no=record.current_version_no,
             contract_request_count=record.contract_request_count,
             missing_fields=cls._missing_fields(record),

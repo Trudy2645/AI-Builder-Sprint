@@ -1,7 +1,7 @@
 > 기준: 특별상 과제 요구사항 + 외국인 개인 바이어/셀러 와이어프레임 반영 v1.4
 > 
 > 
-> 현재 적용 순서: `001_initial_schema.sql`부터 `010_auth_account_profiles.sql`까지 파일명 순서대로 적용
+> 현재 적용 순서: `001_initial_schema.sql`부터 `011_listing_form_alignment.sql`까지 파일명 순서대로 적용
 > 
 
 기존 migration에 없던 Figma 정렬용 컬럼·테이블은 후속 번호의 migration으로 추가한다.
@@ -138,6 +138,7 @@ erDiagram
 | `district` | 부산 구 단위 지역 |
 | `category` | 자동차 렌탈/액티비티/투어/숙박 |
 | `seller_description` | AI 요약 근거가 되는 셀러 설명 |
+| `public_headline` | 셀러가 직접 입력한 공개 카드 한 줄 소개 |
 | `ai_summary` | 공개 카드 한 줄 요약 |
 | `hero_document_id` | 대표 이미지 document |
 | `current_version_id` | 현재 공개/편집 계약 버전 |
@@ -165,6 +166,8 @@ erDiagram
 
 - 공급 시작/종료일
 - 공급 수량과 단위
+- 화면에 입력한 공급 수량 문구(`supply_quantity_description`)
+- 최소/최대 실제 공급 수량(`minimum_quantity`, `maximum_quantity`)
 - 단위당 기본 인원(`people_per_unit`, 선택). 가격 계산 시 이를 가정값으로 숨기지 않고 화면에 표시한다.
 - 기준 단가, 통화, 가격 단위
 - 최소/최대 인원
@@ -180,6 +183,8 @@ erDiagram
 - 가격 표시 기준과 계약 가능 안내
 
 `008_seller_listing_alignment.sql`은 초기 schema에 없던 `people_per_unit`, `no_show_policy`, `termination_policy`, `special_terms`를 추가한다. `people_per_unit`은 입력된 경우 양수여야 하며 서버가 객실당 인원 같은 값을 임의로 추론하지 않는다. 계약 요청 존재 여부를 빠르게 확인하도록 `contracts(listing_id)` partial index도 추가한다.
+
+`011_listing_form_alignment.sql`은 프론트 공고 작성 폼을 손실 없이 저장하기 위해 `public_headline`, `supply_quantity_description`, `minimum_quantity`, `maximum_quantity`를 추가한다. 공급 수량과 여행 인원은 서로 다른 개념이므로 최소·최대 수량을 기존 `minimum_people`/`maximum_people`에 대신 저장하지 않는다.
 
 ### `listing_versions`, `listing_clauses`
 
