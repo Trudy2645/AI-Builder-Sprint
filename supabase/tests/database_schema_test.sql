@@ -45,6 +45,40 @@ select migration_test.assert_true(
     'required list and dashboard indexes must exist'
 );
 
+select migration_test.assert_true(
+    (
+        select count(*)
+        from information_schema.columns
+        where table_schema = 'public'
+          and (table_name, column_name) in (
+              ('profiles', 'affiliation_name'),
+              ('profiles', 'business_type'),
+              ('organizations', 'representative_name'),
+              ('organizations', 'business_address'),
+              ('organizations', 'supply_categories'),
+              ('organization_members', 'job_title')
+          )
+    ) = 6,
+    'auth signup profile and organization columns must exist'
+);
+
+select migration_test.assert_true(
+    exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'documents'
+          and column_name = 'organization_id'
+    ) and exists (
+        select 1
+        from pg_enum
+        join pg_type on pg_type.oid = pg_enum.enumtypid
+        where pg_type.typname = 'document_purpose'
+          and pg_enum.enumlabel = 'business_verification'
+    ),
+    'seller business verification documents must support organization ownership'
+);
+
 insert into auth.users (id, email) values
     ('00000000-0000-0000-0000-000000000001', 'seller@example.test'),
     ('00000000-0000-0000-0000-000000000002', 'buyer@example.test'),
@@ -77,6 +111,20 @@ insert into public.organization_members (organization_id, user_id, role) values 
     'owner'
 );
 
+insert into public.documents (
+    organization_id,
+    purpose,
+    storage_bucket,
+    storage_object_path,
+    uploaded_by
+) values (
+    '10000000-0000-0000-0000-000000000001',
+    'business_verification',
+    'private-documents',
+    'organizations/10000000-0000-0000-0000-000000000001/registration.pdf',
+    '00000000-0000-0000-0000-000000000001'
+);
+
 select set_config(
     'request.jwt.claim.sub',
     '00000000-0000-0000-0000-000000000001',
@@ -87,6 +135,10 @@ set role authenticated;
 select migration_test.assert_true(
     (select count(*) from public.profiles) = 1,
     'a user can read only their own profile'
+);
+select migration_test.assert_true(
+    (select count(*) from public.documents where organization_id is not null) = 1,
+    'a seller organization member can read its business verification document'
 );
 
 insert into public.listings (
@@ -225,6 +277,10 @@ set role authenticated;
 select migration_test.assert_true(
     (select count(*) from public.contracts) = 0,
     'an unrelated user cannot read another buyer contract'
+);
+select migration_test.assert_true(
+    (select count(*) from public.documents where organization_id is not null) = 0,
+    'an unrelated user cannot read a seller business verification document'
 );
 
 reset role;

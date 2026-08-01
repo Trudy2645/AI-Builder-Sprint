@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     supabase_jwks_url: str | None = None
     supabase_jwks_cache_seconds: int = Field(default=600, ge=60, le=1200)
     supabase_auth_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    auth_password_reset_redirect_url: str | None = None
+    demo_login_enabled: bool = False
+    demo_buyer_email: str | None = None
+    demo_buyer_password: str | None = Field(default=None, repr=False)
+    demo_seller_email: str | None = None
+    demo_seller_password: str | None = Field(default=None, repr=False)
 
 
 @lru_cache

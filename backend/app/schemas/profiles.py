@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.listings import ListingCategory
+
 SupportedLocale = Literal["ko-KR", "en-US", "ja-JP", "zh-CN"]
 BusinessRole = Literal["buyer", "seller"]
 OrganizationMemberRole = Literal["owner", "admin", "member"]
@@ -21,6 +23,8 @@ class ProfilePatch(BaseModel):
     locale: SupportedLocale | None = None
     preferred_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
     default_group_name: str | None = Field(default=None, max_length=160)
+    affiliation_name: str | None = Field(default=None, max_length=200)
+    business_type: str | None = Field(default=None, max_length=80)
 
     @field_validator("username", "display_name", "locale", "preferred_currency")
     @classmethod
@@ -47,6 +51,8 @@ class MeResponse(BaseModel):
     locale: SupportedLocale
     preferred_currency: str
     default_group_name: str | None
+    affiliation_name: str | None = None
+    business_type: str | None = None
     role: BusinessRole
     created_at: datetime
     updated_at: datetime
@@ -59,6 +65,9 @@ class OrganizationPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     legal_name: str | None = Field(default=None, max_length=200)
     business_registration_no: str | None = Field(default=None, max_length=80)
+    representative_name: str | None = Field(default=None, max_length=120)
+    business_address: str | None = Field(default=None, max_length=500)
+    supply_categories: list[ListingCategory] | None = Field(default=None, max_length=4)
 
     @field_validator("name")
     @classmethod
@@ -74,6 +83,9 @@ class OrganizationResponse(BaseModel):
     name: str
     legal_name: str | None
     business_registration_no: str | None
+    representative_name: str | None = None
+    business_address: str | None = None
+    supply_categories: list[ListingCategory] = Field(default_factory=list)
     verification_status: VerificationStatus
     rating_average: Decimal
     rating_count: int

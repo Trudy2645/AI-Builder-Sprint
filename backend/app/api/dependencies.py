@@ -3,7 +3,10 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_auth_account_provider
+from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
+from app.domain.auth_accounts.service import AuthAccountService, DemoLoginConfig
 from app.domain.contracts.service import ContractService
 from app.domain.listings.service import PublicListingService
 from app.domain.notifications.service import NotificationService
@@ -11,7 +14,12 @@ from app.domain.pricing.service import PriceCalculator, PriceEstimateService
 from app.domain.profiles.service import ProfileService
 from app.domain.revisions.service import RevisionService
 from app.domain.seller_listings.service import SellerListingService
+from app.integrations.auth import AuthAccountProvider
 from app.integrations.exchange_rates import ExchangeRateProvider, FakeExchangeRateProvider
+from app.repositories.auth_accounts import (
+    RegistrationRepository,
+    SqlAlchemyRegistrationRepository,
+)
 from app.repositories.contracts import ContractRepository, SqlAlchemyContractRepository
 from app.repositories.listings import PublicListingRepository, SqlAlchemyPublicListingRepository
 from app.repositories.notifications import (
@@ -25,6 +33,49 @@ from app.repositories.seller_listings import (
     SellerListingRepository,
     SqlAlchemySellerListingRepository,
 )
+
+
+def get_registration_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> RegistrationRepository:
+    return SqlAlchemyRegistrationRepository(session)
+
+
+def get_auth_account_service(
+    repository: Annotated[RegistrationRepository, Depends(get_registration_repository)],
+    provider: Annotated[AuthAccountProvider, Depends(get_auth_account_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AuthAccountService:
+    return AuthAccountService(
+        repository,
+        provider,
+        demo_config=DemoLoginConfig(
+            enabled=settings.demo_login_enabled,
+            buyer_email=settings.demo_buyer_email,
+            buyer_password=settings.demo_buyer_password,
+            seller_email=settings.demo_seller_email,
+            seller_password=settings.demo_seller_password,
+        ),
+        password_reset_redirect_url=settings.auth_password_reset_redirect_url,
+    )
+
+
+def get_auth_session_service(
+    provider: Annotated[AuthAccountProvider, Depends(get_auth_account_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AuthAccountService:
+    return AuthAccountService(
+        None,
+        provider,
+        demo_config=DemoLoginConfig(
+            enabled=settings.demo_login_enabled,
+            buyer_email=settings.demo_buyer_email,
+            buyer_password=settings.demo_buyer_password,
+            seller_email=settings.demo_seller_email,
+            seller_password=settings.demo_seller_password,
+        ),
+        password_reset_redirect_url=settings.auth_password_reset_redirect_url,
+    )
 
 
 def get_public_listing_repository(
