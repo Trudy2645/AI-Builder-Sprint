@@ -22,6 +22,16 @@ export class ApiError extends Error {
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
+const accessTokenKey = "busan-link-access-token";
+
+export function setAccessToken(token: string | null): void {
+  if (token) window.localStorage.setItem(accessTokenKey, token);
+  else window.localStorage.removeItem(accessTokenKey);
+}
+
+export function getAccessToken(): string | null {
+  return window.localStorage.getItem(accessTokenKey);
+}
 
 export function friendlyApiError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -46,7 +56,11 @@ export function friendlyApiError(error: unknown): string {
 export async function apiFetch<Data>(path: string, init: RequestInit = {}): Promise<Data> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
-    headers: { Accept: "application/json", ...init.headers },
+    headers: {
+      Accept: "application/json",
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+      ...init.headers,
+    },
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok || payload?.error) {
@@ -56,6 +70,122 @@ export async function apiFetch<Data>(path: string, init: RequestInit = {}): Prom
     });
   }
   return payload.data as Data;
+}
+
+export type Role = "buyer" | "seller";
+
+type AuthSession = { access_token: string; refresh_token: string; token_type: string; expires_in: number };
+export type AuthResponse = { user_id: string; email: string; role?: Role; organization_id?: string | null; session: AuthSession | null };
+
+export function loginWithPassword(email: string, password: string): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function signup(payload: Record<string, unknown>): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export type ContractListItem = {
+  id: string;
+  listing_title: string;
+  seller_name: string;
+  status: "draft" | "seller_review" | "revision_requested" | "signing" | "signed" | "cancelled";
+  service_start_date: string;
+  service_end_date: string;
+  requested_people: number;
+  amount_minor: number | null;
+  currency: string | null;
+  created_at: string;
+};
+
+export function getMyContracts(): Promise<ContractListItem[]> {
+  return apiFetch<ContractListItem[]>("/me/contracts");
+}
+
+export type ContractDetail = {
+  id: string;
+  listing_title: string;
+  status: string;
+  parties: Array<{ role: "buyer" | "seller"; name: string }>;
+  current_version: { id: string; version_no: number; title: string; body: string };
+};
+
+export type ApprovalStatus = {
+  contract_id: string;
+  contract_version_id: string;
+  buyer: { approved: boolean };
+  seller: { approved: boolean };
+  all_approved: boolean;
+  contract_status?: string;
+};
+
+export function getContractDetail(contractId: string): Promise<ContractDetail> {
+  return apiFetch<ContractDetail>(`/contracts/${contractId}`);
+}
+
+export function getContractApprovals(contractId: string, versionId: string): Promise<ApprovalStatus> {
+  return apiFetch<ApprovalStatus>(`/contracts/${contractId}/versions/${versionId}/approvals`);
+}
+
+export function approveContractVersion(contractId: string, versionId: string): Promise<ApprovalStatus> {
+  return apiFetch<ApprovalStatus>(`/contracts/${contractId}/versions/${versionId}/approve`, { method: "POST" });
+}
+
+export type SignatureRequest = {
+  id: string;
+  contract_id: string;
+  contract_version_id: string;
+  status: "preparing" | "in_progress" | "completed" | "failed" | "cancelled";
+  provider_document_id: string | null;
+  provider_status: string | null;
+  current_signing_order: number | null;
+  completed_at: string | null;
+};
+
+export function getSignatureRequest(id: string): Promise<SignatureRequest> {
+  return apiFetch<SignatureRequest>(`/signature-requests/${id}`);
+}
+
+export function syncSignatureRequest(id: string): Promise<SignatureRequest> {
+  return apiFetch<SignatureRequest>(`/signature-requests/${id}/sync`, { method: "POST" });
+}
+
+export type SignatureParticipant = { name: string; email: string };
+
+export function createSignatureRequest(
+  contractId: string,
+  versionId: string,
+  payload: { title: string; buyer: SignatureParticipant; seller: SignatureParticipant },
+): Promise<SignatureRequest> {
+  return apiFetch<SignatureRequest>(`/contracts/${contractId}/versions/${versionId}/signature-requests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function downloadModusignFile(documentId: string, kind: "signed" | "audit-trail"): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/modusign/documents/${documentId}/${kind === "signed" ? "download" : "audit-trail"}`, {
+    headers: getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {},
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(payload?.error ?? { code: "DOWNLOAD_FAILED", message: "파일을 내려받지 못했습니다." });
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${documentId}-${kind}.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export type PublicListing = {
