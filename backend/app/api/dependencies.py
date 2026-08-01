@@ -22,6 +22,7 @@ from app.domain.revisions.service import RevisionService
 from app.domain.seller_listings.service import SellerListingService
 from app.integrations.auth import AuthAccountProvider
 from app.integrations.exchange_rates import ExchangeRateProvider, FakeExchangeRateProvider
+from app.integrations.modusign import ModusignClient
 from app.integrations.storage import StorageProvider, SupabaseStorageProvider
 from app.repositories.ai_jobs import AIJobRepository, SqlAlchemyAIJobRepository
 from app.repositories.auth_accounts import (
@@ -273,3 +274,20 @@ def get_profile_service(
     repository: Annotated[ProfileRepository, Depends(get_profile_repository)],
 ) -> ProfileService:
     return ProfileService(repository)
+
+
+def get_modusign_client(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ModusignClient:
+    if not settings.modusign_api_key or not settings.modusign_auth_email:
+        raise AppError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="MODUSIGN_NOT_CONFIGURED",
+            message="Modusign integration is not configured.",
+        )
+    return ModusignClient(
+        base_url=settings.modusign_base_url,
+        api_key=settings.modusign_api_key,
+        auth_email=settings.modusign_auth_email,
+        timeout_seconds=settings.modusign_timeout_seconds,
+    )
