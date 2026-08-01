@@ -273,3 +273,36 @@ class ContractCancelResponse(BaseModel):
     contract_id: UUID
     status: Literal["cancelled"]
     cancelled_at: datetime
+
+
+class SignatureRequestStatusResponse(BaseModel):
+    id: UUID
+    contract_id: UUID
+    contract_version_id: UUID
+    status: Literal["preparing", "in_progress", "completed", "failed", "cancelled"]
+    provider: Literal["modusign"]
+    provider_document_id: str | None = None
+    provider_status: str | None = None
+    current_signing_order: int | None = None
+    completed_at: datetime | None = None
+
+
+class SignatureRequestCreated(SignatureRequestStatusResponse):
+    reused: bool = False
+
+
+class ContractSignatureParticipant(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=200)
+    email: str = Field(min_length=3, max_length=254)
+
+
+class ContractSignatureRequestCreate(BaseModel):
+    """Contact snapshots used for one immutable contract signing request."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    title: str = Field(min_length=1, max_length=200)
+    buyer: ContractSignatureParticipant
+    seller: ContractSignatureParticipant

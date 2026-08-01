@@ -10,6 +10,12 @@ from fastapi import status
 from app.core.errors import AppError
 from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
+from app.integrations.modusign import (
+    ModusignClient,
+    ModusignParticipant,
+    ModusignRequestError,
+    ModusignUnavailableError,
+)
 from app.repositories.contracts import (
     ContractCreatedRecord,
     ContractRecord,
@@ -37,6 +43,7 @@ from app.schemas.contracts import (
     ContractPartySummary,
     ContractRequestCreate,
     ContractRequestCreated,
+    ContractSignatureRequestCreate,
     ContractSummary,
     ContractTermsResponse,
     ContractVersionApprovalsResponse,
@@ -51,6 +58,7 @@ from app.schemas.contracts import (
     SellerContractListItem,
     SellerDashboard,
     SellerDashboardStats,
+    SignatureRequestCreated,
     VersionClauseChange,
     VersionClauseChangeSummary,
     VersionClauseSnapshot,
@@ -408,6 +416,134 @@ class ContractService:
             approved_role=mutation.approved_role,
             already_approved=mutation.already_approved,
             contract_status=mutation.contract_status,
+        )
+
+    async def create_signature_request(
+        self,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        payload: ContractSignatureRequestCreate,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+        idempotency_key: str,
+        client: ModusignClient,
+        template_id: str | None,
+    ) -> SignatureRequestCreated:
+        if not template_id:
+            self._raise(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "MODUSIGN_TEMPLATE_NOT_CONFIGURED",
+                "The signature template is not configured on the server.",
+            )
+        context = await self._approval_context(contract_id, contract_version_id)
+        await self._authorize_approval_context(context, actor, header_organization_id)
+        if context.current_version_id != contract_version_id:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "VERSION_CONFLICT",
+                "Only the current contract version can be sent for signature.",
+            )
+        try:
+            signature_request = await self._repository.begin_signature_request(
+                contract_id=contract_id,
+                contract_version_id=contract_version_id,
+                requested_by=actor.id,
+                idempotency_key=idempotency_key,
+                provider_template_id=template_id,
+                buyer_name=payload.buyer.name,
+                buyer_email=payload.buyer.email,
+                seller_name=payload.seller.name,
+                seller_email=payload.seller.email,
+            )
+        except IdempotencyConflictError as exc:
+            raise AppError(
+                status_code=status.HTTP_409_CONFLICT,
+                code="IDEMPOTENCY_KEY_REUSED",
+                message="This idempotency key was already used for a different contract version.",
+            ) from exc
+        except ContractVersionConflictError as exc:
+            raise AppError(
+                status_code=status.HTTP_409_CONFLICT,
+                code="VERSION_CONFLICT",
+                message=(
+                    "The current contract version changed before the signature request was created."
+                ),
+            ) from exc
+        except ContractStateConflictError as exc:
+            raise AppError(
+                status_code=status.HTTP_409_CONFLICT,
+                code="SIGNATURE_NOT_READY",
+                message="Both parties must approve the current contract version before signing.",
+            ) from exc
+        except ContractVersionNotFoundError as exc:
+            raise AppError(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="CONTRACT_VERSION_NOT_FOUND",
+                message="Contract version was not found.",
+            ) from exc
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+
+        if signature_request.reused:
+            return self._signature_response(signature_request, reused=True)
+        try:
+            provider_document = await client.create_signature_request(
+                template_id=template_id,
+                title=payload.title,
+                participants=[
+                    ModusignParticipant(
+                        role="바이어", name=payload.buyer.name, email=payload.buyer.email
+                    ),
+                    ModusignParticipant(
+                        role="셀러", name=payload.seller.name, email=payload.seller.email
+                    ),
+                ],
+            )
+            provider_document_id = provider_document.get("id")
+            if not isinstance(provider_document_id, str) or not provider_document_id:
+                raise ModusignUnavailableError
+            signature_request = await self._repository.mark_signature_request_dispatched(
+                signature_request.id,
+                provider_document_id,
+                str(provider_document.get("status", "ON_PROCESSING")),
+            )
+        except (ModusignRequestError, ModusignUnavailableError) as exc:
+            await self._mark_signature_failed(signature_request.id)
+            if isinstance(exc, ModusignRequestError):
+                self._raise(
+                    status.HTTP_502_BAD_GATEWAY,
+                    "MODUSIGN_REQUEST_REJECTED",
+                    "Modusign rejected the signature request. Check the template and participants.",
+                )
+            self._raise(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "MODUSIGN_UNAVAILABLE",
+                "Could not reach Modusign. Please try again shortly.",
+            )
+        except (ContractStateConflictError, ContractRepositoryUnavailableError) as exc:
+            self._database_unavailable(exc)
+        return self._signature_response(signature_request)
+
+    async def _mark_signature_failed(self, signature_request_id: UUID) -> None:
+        try:
+            await self._repository.mark_signature_request_failed(signature_request_id)
+        except ContractRepositoryUnavailableError:
+            # Preserve the provider-facing error; the request remains safely idempotent in DB.
+            return
+
+    @staticmethod
+    def _signature_response(record: Any, *, reused: bool = False) -> SignatureRequestCreated:
+        return SignatureRequestCreated(
+            id=record.id,
+            contract_id=record.contract_id,
+            contract_version_id=record.contract_version_id,
+            status=record.status,
+            provider=record.provider,
+            provider_document_id=record.provider_document_id,
+            provider_status=record.provider_status,
+            current_signing_order=record.current_signing_order,
+            completed_at=record.completed_at,
+            reused=reused,
         )
 
     async def list_received_contracts(
