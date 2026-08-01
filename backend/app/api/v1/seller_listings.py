@@ -1,15 +1,21 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, status
 
-from app.api.dependencies import get_contract_generation_service, get_seller_listing_service
+from app.api.dependencies import (
+    get_contract_generation_service,
+    get_contract_review_service,
+    get_seller_listing_service,
+)
 from app.core.auth import get_current_user
 from app.domain.contract_generation.service import ContractGenerationService
+from app.domain.contract_review.service import ContractReviewService
 from app.domain.seller_listings.service import SellerListingService
 from app.integrations.auth import AuthenticatedUser
 from app.schemas.common import SuccessEnvelope, typed_envelope
 from app.schemas.contract_generation import ContractGenerationRequest, ContractGenerationResponse
+from app.schemas.contract_review import ContractReviewAccepted, ContractReviewRequest
 from app.schemas.listings import (
     SellerListingCreate,
     SellerListingCreated,
@@ -90,6 +96,34 @@ async def generate_seller_listing_contract(
 ) -> SuccessEnvelope[ContractGenerationResponse]:
     generated = await service.generate(listing_id, payload, actor, organization_id, idempotency_key)
     return typed_envelope(request, generated)
+
+
+@router.post(
+    "/{listing_id}/analyses",
+    response_model=SuccessEnvelope[ContractReviewAccepted],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def analyze_seller_listing_contract(
+    request: Request,
+    listing_id: UUID,
+    payload: ContractReviewRequest,
+    background_tasks: BackgroundTasks,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractReviewService, Depends(get_contract_review_service)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: OrganizationHeader = None,
+) -> SuccessEnvelope[ContractReviewAccepted]:
+    started = await service.start_listing_review(
+        listing_id, payload, actor, organization_id, idempotency_key
+    )
+    if started.should_schedule:
+        background_tasks.add_task(
+            service.run,
+            job_id=started.response.job_id,
+            target=started.target,
+            viewer_role=started.viewer_role,
+        )
+    return typed_envelope(request, started.response)
 
 
 @router.post(

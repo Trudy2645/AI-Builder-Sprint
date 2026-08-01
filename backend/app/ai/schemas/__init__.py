@@ -1,4 +1,10 @@
 from app.ai.schemas.contract_generation import GeneratedContractClause, GeneratedContractDraft
+from app.ai.schemas.contract_review import (
+    ContractReviewFindingCandidate,
+    ContractReviewSubmission,
+    ContractReviewToolBatch,
+    ContractReviewToolCall,
+)
 from app.ai.schemas.providers import (
     BoundingBox,
     ContractExtraction,
@@ -17,6 +23,10 @@ from app.ai.schemas.providers import (
 __all__ = [
     "BoundingBox",
     "ContractExtraction",
+    "ContractReviewFindingCandidate",
+    "ContractReviewSubmission",
+    "ContractReviewToolBatch",
+    "ContractReviewToolCall",
     "DocumentInput",
     "DocumentParseResult",
     "ExtractedSection",

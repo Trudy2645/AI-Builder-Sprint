@@ -12,6 +12,7 @@ from app.core.errors import AppError
 from app.domain.ai_jobs.service import AIJobService
 from app.domain.auth_accounts.service import AuthAccountService, DemoLoginConfig
 from app.domain.contract_generation.service import ContractGenerationService
+from app.domain.contract_review.service import ContractReviewService
 from app.domain.contracts.service import ContractService
 from app.domain.document_processing.service import DocumentProcessingService
 from app.domain.documents.service import DocumentService
@@ -33,6 +34,10 @@ from app.repositories.auth_accounts import (
 from app.repositories.contract_generation import (
     ContractGenerationRepository,
     SqlAlchemyContractGenerationRepository,
+)
+from app.repositories.contract_review import (
+    ContractReviewRepository,
+    SqlAlchemyContractReviewRepository,
 )
 from app.repositories.contracts import ContractRepository, SqlAlchemyContractRepository
 from app.repositories.document_processing import (
@@ -104,6 +109,12 @@ def get_contract_generation_repository(
     session: Annotated[AsyncSession, Depends(get_database_session)],
 ) -> ContractGenerationRepository:
     return SqlAlchemyContractGenerationRepository(session)
+
+
+def get_contract_review_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> ContractReviewRepository:
+    return SqlAlchemyContractReviewRepository(session)
 
 
 def get_auth_account_service(
@@ -253,6 +264,24 @@ def get_contract_generation_service(
         model_name=settings.upstage_chat_model,
         prompt_version=settings.ai_prompt_version,
         template_vector_store_id=settings.upstage_template_vector_store_id,
+    )
+
+
+def get_contract_review_service(
+    repository: Annotated[ContractReviewRepository, Depends(get_contract_review_repository)],
+    provider: Annotated[FakeAIProvider | UpstageAIProvider, Depends(get_ai_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ContractReviewService:
+    return ContractReviewService(
+        repository,
+        provider,
+        provider,
+        provider_name=settings.ai_provider,
+        model_name=settings.upstage_chat_model,
+        prompt_version=settings.ai_prompt_version,
+        official_vector_store_id=settings.upstage_official_vector_store_id,
+        template_vector_store_id=settings.upstage_template_vector_store_id,
+        max_iterations=settings.ai_agent_max_iterations,
     )
 
 

@@ -721,6 +721,8 @@ sha256(
 | `POST /ai-findings/{id}/apply` | safeguard apply → new version → re-analysis | 비동기 | 적용된 새 version과 재분석 job |
 | `POST /seller/listings/{id}/generate` | contract_generate 고정 함수 → contract_review Agent | 비동기 | 계약 초안과 셀러 finding |
 | `POST /seller/listings/{id}/analyses` | contract_review Agent | 비동기 | 특정 version 재분석 |
+| `POST /contracts/{id}/analyses` | contract_review Agent | 비동기 | 계약 당사자 관점의 특정 version 분석 |
+| `GET /ai-analysis-runs/{id}` | 모델 호출 없음 | 동기 | 권한이 확인된 run과 finding |
 | `POST /seller/listings/{id}/complete` | rule validation | 동기 | 필수값 누락 목록 |
 | `POST /seller/listings/{id}/publish` | buyer analysis + summary + localization 확인 | 혼합 | 공개 가능 또는 준비 중 |
 | `GET /public/listings` | 모델 호출 없음 | 동기 | 저장된 요약/번역 |
