@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.health import router as health_router
 from app.api.v1.router import router as api_v1_router
@@ -28,6 +29,13 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     application.add_middleware(RequestContextMiddleware)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Organization-Id"],
+    )
     register_exception_handlers(application)
     application.include_router(health_router)
     application.include_router(api_v1_router, prefix=settings.api_v1_prefix)
