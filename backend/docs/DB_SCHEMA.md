@@ -329,6 +329,11 @@ contract version으로 만들고, 부분 수락이나 counter는 바이어가 �
 
 사용자 계약 원본은 Supabase Storage에 두고 Document Parse/Information Extract 결과를 조항별로 직접 분석한다. 실제 Upstage 제품 adapter가 Universal Extraction 명칭을 사용하더라도 내부 job/API 명칭은 과제 요구사항에 맞춰 `information_extract`로 통일한다. 사용자 계약서는 공용 Vector Store에 올리지 않는다. 별도로 검수한 공식 근거와 승인 템플릿만 Upstage Files/Vector Store에 두며, DB에는 전용 knowledge registry와 provider id, 처리 상태를 저장한다.
 
+업로드 요청에서 받은 `expected_mime_type`, `expected_size_bytes`,
+`expected_content_sha256`는 신뢰하지 않는 비교 기준으로 보존한다. `complete`가 Storage object를
+직접 streaming 검증한 뒤에만 실제 `mime_type`, `size_bytes`, `content_sha256`를 기록하고
+상태를 `uploaded`로 변경한다.
+
 ### `ai_jobs`, `ai_analysis_runs`, `ai_findings`
 
 AI target은 listing version 또는 contract version 중 정확히 하나다.

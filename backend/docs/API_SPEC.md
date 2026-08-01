@@ -257,7 +257,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 내 공고문·편집 | `GET /seller/listings`, `GET /seller/listings/{id}` | 구현 |
 | 직접 작성 | `POST /seller/listings`, `PATCH /seller/listings/{id}/terms` | 구현 |
 | AI 계약 생성 | `POST /seller/listings/{id}/generate` | 계획 |
-| PDF 등록/OCR | `POST /documents/upload-url`, `POST /documents/{id}/complete` | 계획 |
+| 문서 업로드·검증 | `POST /documents/upload-url`, `POST /documents/{id}/complete`, `GET /documents/{id}`, `POST /documents/{id}/download-url` | 구현 |
 | 작성 완료·게시 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation`, `POST /seller/listings/{id}/publish`, `POST /seller/listings/{id}/pause`, `POST /seller/listings/{id}/archive` | 구현 |
 | 수정 요청 알림·판단 | revision request API와 알림 생성 | 구현 |
 | 계약 상세·취소 | `GET /contracts/{id}`, `POST /contracts/{id}/cancel` | 구현 |
@@ -633,6 +633,18 @@ Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, c
 7. `GET /ai-jobs/{job_id}` polling
 
 사용자 계약서 원문은 공용 Vector Store에 올리지 않는다. Upstage Files/Vector Store는 별도로 검수한 공식 근거와 승인 템플릿에만 사용한다.
+
+문서 저장 브랜치에서 `complete`는 Storage object를 streaming으로 읽어 파일 signature,
+크기와 SHA-256을 검증하고 `documents.status=uploaded`까지만 변경한다. Document Parse와
+Information Extract job 생성은 후속 AI 처리 API에서 명시적으로 시작한다.
+
+`POST /documents/upload-url` 요청은 `organization_id`, `listing_id`, `contract_id` 중 정확히
+하나와 `purpose`, `original_filename`, `mime_type`, `size_bytes`, `content_sha256`를 받는다.
+지원 형식은 PDF, DOCX, JPG/JPEG, PNG이고 기본 최대 크기는 20 MiB다. seller 소유 파일은
+`X-Organization-Id`, 모든 upload URL 요청은 `Idempotency-Key`가 필요하다.
+
+네 document API의 응답은 실제 Storage bucket과 object path를 반환하지 않는다. upload URL은
+Supabase Storage의 provider 고정 유효시간을 따르고, download URL은 기본 5분 동안 유효하다.
 
 공식 RAG 자료는 MVP에서 PDF를 Markdown으로 변환하지 않고 그대로 Upstage Files API에 업로드한다. 텍스트가 없는 스캔 PDF만 Document Parse/OCR을 거친 검색 가능한 PDF 또는 parse artifact를 사용한다. 국내여행 표준약관은 물리적으로 `common` corpus에 한 번만 저장하되 `contract_categories=["tour"]`로 제한한다.
 
@@ -1147,7 +1159,7 @@ backend/app/
 │   └── schemas/
 ├── integrations/
 │   ├── upstage.py
-│   ├── supabase_storage.py
+│   ├── storage.py
 │   └── modusign.py
 ├── repositories/
 └── schemas/

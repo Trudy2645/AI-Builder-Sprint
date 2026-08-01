@@ -1,13 +1,15 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_auth_account_provider
 from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
+from app.core.errors import AppError
 from app.domain.auth_accounts.service import AuthAccountService, DemoLoginConfig
 from app.domain.contracts.service import ContractService
+from app.domain.documents.service import DocumentService
 from app.domain.listings.service import PublicListingService
 from app.domain.notifications.service import NotificationService
 from app.domain.pricing.service import PriceCalculator, PriceEstimateService
@@ -16,11 +18,13 @@ from app.domain.revisions.service import RevisionService
 from app.domain.seller_listings.service import SellerListingService
 from app.integrations.auth import AuthAccountProvider
 from app.integrations.exchange_rates import ExchangeRateProvider, FakeExchangeRateProvider
+from app.integrations.storage import StorageProvider, SupabaseStorageProvider
 from app.repositories.auth_accounts import (
     RegistrationRepository,
     SqlAlchemyRegistrationRepository,
 )
 from app.repositories.contracts import ContractRepository, SqlAlchemyContractRepository
+from app.repositories.documents import DocumentRepository, SqlAlchemyDocumentRepository
 from app.repositories.listings import PublicListingRepository, SqlAlchemyPublicListingRepository
 from app.repositories.notifications import (
     NotificationRepository,
@@ -130,6 +134,41 @@ def get_contract_service(
     exchange_rate_provider: Annotated[ExchangeRateProvider, Depends(get_exchange_rate_provider)],
 ) -> ContractService:
     return ContractService(repository, PriceCalculator(exchange_rate_provider))
+
+
+def get_document_repository(
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> DocumentRepository:
+    return SqlAlchemyDocumentRepository(session)
+
+
+def get_storage_provider(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> StorageProvider:
+    if not settings.supabase_url or not settings.supabase_service_role_key:
+        raise AppError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="STORAGE_PROVIDER_UNAVAILABLE",
+            message="The Storage provider is not configured.",
+        )
+    return SupabaseStorageProvider(
+        supabase_url=settings.supabase_url,
+        service_role_key=settings.supabase_service_role_key,
+        timeout_seconds=settings.storage_request_timeout_seconds,
+    )
+
+
+def get_document_service(
+    repository: Annotated[DocumentRepository, Depends(get_document_repository)],
+    storage: Annotated[StorageProvider, Depends(get_storage_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> DocumentService:
+    return DocumentService(
+        repository,
+        storage,
+        max_size_bytes=settings.document_max_size_bytes,
+        download_url_expires_seconds=settings.document_download_url_expires_seconds,
+    )
 
 
 def get_revision_repository(

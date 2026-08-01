@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     supabase_jwks_url: str | None = None
     supabase_jwks_cache_seconds: int = Field(default=600, ge=60, le=1200)
     supabase_auth_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    storage_request_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    document_max_size_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
+    document_download_url_expires_seconds: int = Field(default=300, ge=60, le=3600)
     auth_password_reset_redirect_url: str | None = None
     demo_login_enabled: bool = False
     demo_buyer_email: str | None = None
