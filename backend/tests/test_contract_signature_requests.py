@@ -202,6 +202,9 @@ def test_creates_persisted_signature_request(
         "provider_status": "ON_PROCESSING",
         "current_signing_order": 1,
         "completed_at": None,
+        "signed_document_id": None,
+        "audit_trail_document_id": None,
+        "signing_delivery": "email",
         "reused": False,
     }
     assert provider.calls == 1

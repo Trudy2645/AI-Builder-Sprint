@@ -563,6 +563,28 @@ class ContractService:
         record = await self.get_signature_request(
             signature_request_id, actor, header_organization_id
         )
+        return await self._sync_signature_record(record, client, storage)
+
+    async def sync_signature_request_from_provider_document(
+        self, provider_document_id: str, client: ModusignClient, storage: StorageProvider
+    ) -> SignatureRequestCreated:
+        try:
+            record = await self._repository.get_signature_request_by_provider_document_id(
+                provider_document_id
+            )
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        if record is None:
+            self._raise(
+                status.HTTP_404_NOT_FOUND,
+                "SIGNATURE_REQUEST_NOT_FOUND",
+                "Unknown provider document.",
+            )
+        return await self._sync_signature_record(record, client, storage)
+
+    async def _sync_signature_record(
+        self, record: Any, client: ModusignClient, storage: StorageProvider
+    ) -> SignatureRequestCreated:
         if not record.provider_document_id:
             return record
         if record.status == "completed":
@@ -571,7 +593,7 @@ class ContractService:
             provider_document = await client.get_document(record.provider_document_id)
             provider_status = str(provider_document.get("status", "UNKNOWN"))
             updated = await self._repository.update_signature_request_status(
-                signature_request_id,
+                record.id,
                 provider_status=provider_status,
                 current_signing_order=provider_document.get("currentSigningOrder"),
             )
@@ -601,7 +623,7 @@ class ContractService:
                 "contract-documents", f"{base_path}/audit-trail.pdf", audit_bytes, audit_type
             )
             updated = await self._repository.complete_signature_request(
-                signature_request_id,
+                record.id,
                 signed_size_bytes=len(signed_bytes),
                 signed_sha256=hashlib.sha256(signed_bytes).hexdigest(),
                 audit_size_bytes=len(audit_bytes),
@@ -641,6 +663,8 @@ class ContractService:
             provider_status=record.provider_status,
             current_signing_order=record.current_signing_order,
             completed_at=record.completed_at,
+            signed_document_id=record.signed_document_id,
+            audit_trail_document_id=record.audit_trail_document_id,
             reused=reused,
         )
 

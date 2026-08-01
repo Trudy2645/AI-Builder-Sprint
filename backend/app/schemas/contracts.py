@@ -285,6 +285,9 @@ class SignatureRequestStatusResponse(BaseModel):
     provider_status: str | None = None
     current_signing_order: int | None = None
     completed_at: datetime | None = None
+    signed_document_id: UUID | None = None
+    audit_trail_document_id: UUID | None = None
+    signing_delivery: Literal["email"] = "email"
 
 
 class SignatureRequestCreated(SignatureRequestStatusResponse):

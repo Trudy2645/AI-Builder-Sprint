@@ -163,6 +163,8 @@ class SignatureRequestRecord:
     provider_status: str | None
     current_signing_order: int | None
     completed_at: datetime | None
+    signed_document_id: UUID | None = None
+    audit_trail_document_id: UUID | None = None
     reused: bool = False
 
 
@@ -274,6 +276,10 @@ class ContractRepository(Protocol):
 
     async def get_signature_request(
         self, signature_request_id: UUID
+    ) -> SignatureRequestRecord | None: ...
+
+    async def get_signature_request_by_provider_document_id(
+        self, provider_document_id: str
     ) -> SignatureRequestRecord | None: ...
 
     async def update_signature_request_status(
@@ -1087,7 +1093,8 @@ class SqlAlchemyContractRepository:
                         )
                         returning id, contract_id, contract_version_id, status::text as status,
                                   provider, provider_document_id, provider_status,
-                                  current_signing_order, completed_at
+                                  current_signing_order, completed_at, signed_document_id,
+                                  audit_trail_document_id
                         """
                     ),
                     {
@@ -1186,11 +1193,34 @@ class SqlAlchemyContractRepository:
                     """
                     select id, contract_id, contract_version_id, status::text as status,
                            provider, provider_document_id, provider_status,
-                           current_signing_order, completed_at
+                           current_signing_order, completed_at, signed_document_id,
+                           audit_trail_document_id
                     from public.signature_requests where id = :id
                     """
                 ),
                 {"id": signature_request_id},
+            )
+            row = result.mappings().one_or_none()
+            return SignatureRequestRecord(**row) if row else None
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def get_signature_request_by_provider_document_id(
+        self, provider_document_id: str
+    ) -> SignatureRequestRecord | None:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select id, contract_id, contract_version_id, status::text as status,
+                           provider, provider_document_id, provider_status,
+                           current_signing_order, completed_at, signed_document_id,
+                           audit_trail_document_id
+                    from public.signature_requests
+                    where provider_document_id = :provider_document_id
+                    """
+                ),
+                {"provider_document_id": provider_document_id},
             )
             row = result.mappings().one_or_none()
             return SignatureRequestRecord(**row) if row else None
@@ -1215,7 +1245,8 @@ class SqlAlchemyContractRepository:
                         where id = :id
                         returning id, contract_id, contract_version_id, status::text as status,
                                   provider, provider_document_id, provider_status,
-                                  current_signing_order, completed_at
+                                  current_signing_order, completed_at, signed_document_id,
+                                  audit_trail_document_id
                         """
                     ),
                     {
