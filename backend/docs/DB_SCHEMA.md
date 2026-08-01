@@ -1,10 +1,11 @@
 > 기준: 특별상 과제 요구사항 + 외국인 개인 바이어/셀러 와이어프레임 반영 v1.4
 > 
 > 
-> 현재 적용 순서: `001_initial_schema.sql` → `002_marketplace_wireframe.sql` → `003_individual_buyer.sql` → `004_rag_challenge_alignment.sql`
+> 현재 적용 순서: `001_initial_schema.sql`부터 `010_auth_account_profiles.sql`까지 파일명 순서대로 적용
 > 
 
-이 문서의 Figma 정렬 목표 중 현재 001~004에 없는 컬럼·테이블은 구현 시 다음 번호의 새 migration으로 추가한다. 기존 migration은 수정하지 않는다.
+기존 migration에 없던 Figma 정렬용 컬럼·테이블은 후속 번호의 migration으로 추가한다.
+이미 적용된 migration은 수정하지 않는다.
 
 AI 중간 데이터와 역할별 분석은 `AI_UPSTAGE_ARCHITECTURE.md`, RAG 저장·검색·근거 연결은 `RAG_KNOWLEDGE_BASE.md`를 따른다.
 
@@ -146,13 +147,14 @@ erDiagram
 
 별도 `contract_available` boolean은 저장하지 않는다. API는 `status=published`이면 true, `status=paused`이면 false로 계산한다.
 
-### Figma 정렬용 새 migration이 필요한 이유
+### Figma 정렬용 migration
 
-현재 001~004에는 아래 목표 필드와 테이블이 모두 존재하지 않는다. 기능 구현 시 기존 migration을 고치지 않고 다음 번호의 새 migration으로 추가해야 깨끗한 DB와 이미 운영 중인 DB에 같은 순서로 적용할 수 있다.
+초기 001~004에 없던 아래 필드와 테이블은 후속 migration으로 추가했다. 인증 가입 화면의
+프로필·조직 필드는 `010_auth_account_profiles.sql`이 담당한다.
 
 - 개인 바이어 선택 정보: `profiles.affiliation_name`, `profiles.business_type`
 - 셀러 가입 정보: `organizations.representative_name`, `business_address`, `supply_categories`, `organization_members.job_title`
-- 사업자 검증 문서의 organization 소유권과 `business_verification` purpose
+- 사업자 검증 문서의 `documents.organization_id` 소유권과 `business_verification` purpose
 - 공고 조건: `people_per_unit`, 노쇼·해지·특약
 - 계약 계산 snapshot: 명시 수량·단위·박수
 - 서명 전 합의: `contract_version_approvals`

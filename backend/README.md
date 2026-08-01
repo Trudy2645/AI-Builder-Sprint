@@ -49,6 +49,12 @@ Copy `.env.example` to `.env` and fill only the local file:
 4. Keep `SUPABASE_SERVICE_ROLE_KEY`, database passwords, access tokens, and all other
    secrets only in `.env` or a secret manager. Never paste them into source, tests, logs,
    issues, or chat.
+5. Set `AUTH_PASSWORD_RESET_REDIRECT_URL` to the frontend page that accepts Supabase
+   recovery links. Add the same URL to the Supabase Auth redirect allowlist.
+
+Demo login is disabled by default. In a development/demo environment only, set
+`DEMO_LOGIN_ENABLED=true` and provide the buyer/seller demo email and password variables
+from `.env.example`. Never enable this endpoint with privileged or production accounts.
 
 The official references are [Supabase JWT verification](https://supabase.com/docs/guides/auth/jwts)
 and [JWT signing keys](https://supabase.com/docs/guides/auth/signing-keys).

@@ -1,6 +1,6 @@
 > 버전: Figma·backend aligned MVP v1.5
 >
-> 구현 기준: `origin/main` commit `bfe8ebb` (PR #12), migration `001`~`005`
+> 구현 기준: 현재 작업 브랜치의 router/schema와 migration `001`~`010`
 > 
 > 
 > 백엔드: FastAPI 단일 애플리케이션
@@ -21,11 +21,15 @@ AI task, prompt, rule engine과 Upstage 연동은 `AI_UPSTAGE_ARCHITECTURE.md`, 
 현재 구현 API:
 
 - health: `GET /health/live`, `GET /health/ready`
+- auth: `POST /api/v1/auth/signup`, `POST /api/v1/auth/login`, `POST /api/v1/auth/demo-login`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/password/reset-email`, `PATCH /api/v1/auth/password`
 - profile: `GET /api/v1/me`, `PATCH /api/v1/me`, `GET /api/v1/organizations/{id}`, `PATCH /api/v1/organizations/{id}`
 - public listing: `GET /api/v1/public/listings`, `GET /api/v1/public/listings/{id}`, `GET /api/v1/public/listings/{id}/contract-preview`, `POST /api/v1/public/listings/{id}/price-estimates`
 - contract: `POST /api/v1/listings/{id}/contract-requests`, `GET /api/v1/contracts/{id}`, `GET /api/v1/me/contracts`, `GET /api/v1/seller/contracts/received`, `GET /api/v1/seller/dashboard`, `POST /api/v1/contracts/{id}/cancel`
 
-`POST /api/v1/auth/signup`과 `POST /api/v1/auth/login`은 현재 router에 없다. 인증은 Supabase access token 검증을 사용하며, 해당 endpoint는 이후 구현 여부를 결정할 목표 명세다.
+`POST /api/v1/auth/signup`, `POST /api/v1/auth/login`, `POST /api/v1/auth/demo-login`,
+`POST /api/v1/auth/logout`, `POST /api/v1/auth/password/reset-email`,
+`PATCH /api/v1/auth/password`를 제공한다. 세션과 비밀번호는 Supabase Auth가 관리하고
+애플리케이션 DB에는 저장하지 않는다.
 
 ## 1. 제품 모델과 설계 결정
 
@@ -108,7 +112,11 @@ X-Organization-Id: <seller-organization-uuid>
 Content-Type: application/json
 ```
 
-업무 API는 `/api/v1` 아래에 둔다. 현재 인증 없이 호출할 수 있는 경로는 `/api/v1/public/**`와 `/health/**`다. `/health/**`는 `/api/v1` prefix 밖에 있다. 그 외 구현 API는 Supabase access token이 필요하다. `X-Organization-Id`는 셀러 조직 API에서만 사용하며, 바이어 API의 권한은 로그인한 `auth.uid()`를 기준으로 확인한다.
+업무 API는 `/api/v1` 아래에 둔다. 현재 인증 없이 호출할 수 있는 경로는
+`/api/v1/public/**`, `/api/v1/auth/signup`, `/api/v1/auth/login`, `/health/**`다.
+로그아웃과 비밀번호 변경을 포함한 그 외 구현 API는 Supabase access token이 필요하다.
+`/health/**`는 `/api/v1` prefix 밖에 있다. `X-Organization-Id`는 셀러 조직 API에서만
+사용하며, 바이어 API의 권한은 로그인한 `auth.uid()`를 기준으로 확인한다.
 
 FastAPI는 토큰을 검증한 뒤 바이어 계약은 `contracts.buyer_user_id`, 셀러 기능은 `organization_members`를 확인한다. service role이 RLS를 우회하므로 토큰 검증만으로 권한 검사를 끝내면 안 된다.
 
@@ -235,7 +243,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 화면 | 핵심 API | 상태 |
 | --- | --- | --- |
 | 비로그인 바이어 탐색 | `GET /public/listings` | 구현 |
-| 로그인/가입 | `POST /auth/signup`, `POST /auth/login` | 계획 |
+| 로그인/가입 | `POST /auth/signup`, `POST /auth/login`, `POST /auth/demo-login`, `POST /auth/logout`, `POST /auth/password/reset-email`, `PATCH /auth/password` | 구현 |
 | 로그인 후 역할 확인 | `GET /me` | 구현 |
 | 바이어 공고 상세 | `GET /public/listings/{id}` | 구현 |
 | 계약서 원문/AI 비서 | `GET /public/listings/{id}/contract-preview` | 구현 |
@@ -260,7 +268,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 
 ## 5. 인증·가입·프로필
 
-### `[계획] POST /auth/signup`
+### `[구현] POST /auth/signup`
 
 바이어 예시:
 
@@ -269,6 +277,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
   "role": "buyer",
   "email": "buyer@globaltrip.jp",
   "password": "<submitted-over-tls>",
+  "password_confirmation": "<submitted-over-tls>",
   "username": "globaltrip_aiko",
   "display_name": "Tanaka Aiko",
   "phone": "+81-90-0000-0000",
@@ -288,6 +297,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
   "role": "seller",
   "email": "sales@oceanstay.kr",
   "password": "<submitted-over-tls>",
+  "password_confirmation": "<submitted-over-tls>",
   "username": "oceanstay",
   "display_name": "김부산",
   "phone": "+82-10-0000-0000",
@@ -312,15 +322,53 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 - Figma에서 고른 사업자등록증 파일은 가입 성공 후 발급된 organization id로 인증된 upload URL을 받아 업로드한다. 가입 전 임시 공개 업로드나 base64 파일을 signup JSON에 넣지 않는다.
 - `username`은 표시/검색용 별칭이다. MVP 로그인 식별자는 이메일을 사용한다.
 
-### `[계획] POST /auth/login`
+응답의 `email_confirmation_required`가 `true`이면 Supabase 프로젝트의 이메일 확인
+링크/OTP를 완료한 뒤 로그인한다. 이메일 확인 방식과 템플릿은 Supabase Auth 설정이
+결정하며 애플리케이션 DB에 인증번호를 저장하지 않는다.
+
+### `[구현] POST /auth/login`
 
 ```json
 { "email": "buyer@globaltrip.jp", "password": "<password>" }
 ```
 
-Supabase session을 반환한다. 가능하면 프론트가 Supabase Auth SDK를 직접 사용하고, FastAPI는 access token 검증만 담당해도 된다. 두 방식을 동시에 구현하지 않는다.
+Supabase access token, refresh token과 만료 정보를 반환한다. 현재 구현은 FastAPI가
+Supabase Auth REST API를 호출하는 방식으로 통일한다.
 
 운영 로그인 request에는 `role`을 받지 않는다. 인증 후 프론트는 `GET /me`의 `role`을 확인해 buyer 또는 seller 화면으로 이동한다. Figma의 buyer/seller 데모 버튼은 고정 demo account를 쓰는 개발 환경 기능으로 분리한다.
+
+### `[구현] POST /auth/demo-login`
+
+```json
+{ "role": "buyer" }
+```
+
+`DEMO_LOGIN_ENABLED=true`인 환경에서만 동작한다. 바이어·셀러 데모 계정의 이메일과
+비밀번호는 서버 환경변수에서 읽으며 응답이나 소스 코드에 노출하지 않는다. 운영 환경은
+기본값인 `false`를 유지한다.
+
+### `[구현] POST /auth/logout`
+
+Bearer access token을 검증한 뒤 Supabase 세션을 폐기한다.
+
+### `[구현] PATCH /auth/password`
+
+비밀번호 복구 링크로 돌아와 발급받은 Supabase recovery session을 Bearer token으로 보내고,
+다음 body로 새 비밀번호를 저장한다. 비밀번호는 애플리케이션 DB에 저장하지 않는다.
+
+```json
+{
+  "new_password": "<submitted-over-tls>",
+  "new_password_confirmation": "<submitted-over-tls>"
+}
+```
+
+### `[구현] POST /auth/password/reset-email`
+
+로그인 사용자의 이메일로 Supabase 비밀번호 복구 메일을 보낸다. 마이페이지의
+`비밀번호 변경` 버튼은 이 API를 호출한다. 메일 링크는
+`AUTH_PASSWORD_RESET_REDIRECT_URL`로 이동하며, 프론트가 recovery session을 만든 뒤
+`PATCH /auth/password`를 호출한다.
 
 ### `[구현] GET /me` / `PATCH /me`
 
