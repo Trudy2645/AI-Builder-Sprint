@@ -34,8 +34,8 @@ export function RequestAsIsPage() {
   const { startDirectSignature } = useNegotiation();
 
   const [guests, setGuests] = useState("");
-  const [rooms, setRooms] = useState(contract?.category === "stay" ? "15" : "30");
-  const [nights, setNights] = useState(contract?.category === "stay" ? "2" : "1");
+  const [rooms, setRooms] = useState(contract?.category === "accommodation" ? "15" : "30");
+  const [nights, setNights] = useState(contract?.category === "accommodation" ? "2" : "1");
   const currency = "KRW";
   const [name, setName] = useState(buyerProfile.contactName);
   const [email, setEmail] = useState(buyerProfile.email);

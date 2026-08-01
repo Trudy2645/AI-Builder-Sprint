@@ -74,8 +74,8 @@ cd backend
 
 ## 5. API 규칙
 
-- 일반 API prefix는 `/api/v1`이다.
-- `/public/**`, `/auth/**`, `/health/**`만 인증 없이 접근할 수 있다.
+- 업무 API prefix는 `/api/v1`이다. health check는 `/health/**`, 전자서명 webhook은 `/webhooks/**`, OpenAPI 문서는 `/docs`로 prefix 밖에 둔다.
+- `/api/v1/public/**`, `/api/v1/auth/**`, `/health/**`만 인증 없이 접근할 수 있다. 단, 명세에만 있고 router에 등록되지 않은 endpoint를 구현된 API로 취급하지 않는다.
 - 셀러 조직 API는 `X-Organization-Id`를 사용한다.
 - 개인 바이어 권한은 로그인한 Supabase `auth.uid()`를 기준으로 검사한다.
 - service role은 RLS를 우회하므로 repository 호출 전에 애플리케이션 권한을 반드시 확인한다.
@@ -131,9 +131,23 @@ cd backend
 
 상태 변경은 domain service에서만 수행하고 허용되지 않은 변경은 `INVALID_STATE_TRANSITION`으로 처리한다.
 
+### 바이어·계약 요청 불변 규칙
+
+- MVP 바이어는 항상 개인 사용자다. `contracts.buyer_user_id`에는 인증된 `auth.uid()`를 저장하고 `buyer_organization_id`는 사용하지 않는다.
+- 단체 여행은 별도 조직이나 참가자 계정을 만들지 않는다. 대표 바이어 한 명과 선택적인 `buyer_group_name`, `requested_people`, `signing_capacity=group_representative`로 표현한다.
+- `group_representative`를 선택하면 `group_name`이 필수다. 참가자 전체의 계정이나 다중 서명은 MVP 범위가 아니다.
+- `people`은 여행 인원, `quantity`와 `quantity_unit`은 실제 과금 수량, `nights`는 이용 박수다. 서버가 객실당 인원 같은 숨은 가정을 만들지 않는다.
+- 클라이언트가 보낸 합계 금액을 신뢰하지 않는다. 서버가 기준 단가로 다시 계산하고 사용한 입력·환율·계산식을 `contract_terms.calculation_snapshot`에 보존한다.
+- 계약 요청은 `published` 공고에서만 생성한다. `paused` 공고는 공개 조회할 수 있지만 신규 계약 요청은 거절한다.
+- `initial_request_kind=as_is`는 `seller_review`, `revision`은 `revision_requested`로 시작한다.
+- 계약 생성 트랜잭션에서 당사자, 조건, 계산 근거, 현재 listing version과 clauses를 모두 snapshot한다.
+- 취소는 `draft`, `seller_review`, `revision_requested`에서만 허용하고 열린 수정 요청도 함께 취소한다.
+- `응답 도착`은 알림 읽음 여부이며 계약 상태가 아니다. `finished`도 DB 상태가 아니라 `signed`이고 서비스 종료일이 지난 계약을 조회 시 계산한 버킷이다.
+
 ## 7. 데이터베이스 규칙
 
 - DB 변경은 기존 migration을 수정하지 않고 새 migration으로 추가한다.
+- 현재 적용 대상 migration 번호를 먼저 확인하고 그 다음 번호로만 추가한다. 현재 `main` 기준 migration은 `001`부터 `005`까지다.
 - 깨끗한 DB에서 migration이 순서대로 적용되는지 확인한다.
 - version 테이블의 기존 행은 수정하지 않는다.
 - 계약 당사자 정보는 계약 생성 당시 snapshot으로 보존한다.

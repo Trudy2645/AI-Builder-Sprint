@@ -46,7 +46,7 @@ export function CompletionPage() {
     const content = [
       "BUSAN LINK 최종 전자계약서",
       "",
-      "계약명: 2026 부산 여름 패키지 객실 공급 계약",
+      "계약명: 2026 부산 여름 객실 공급 계약",
       `계약번호: ${contractNo}`,
       `바이어: ${finalContractInfo.buyer}`,
       `셀러: ${finalContractInfo.seller}`,
@@ -105,7 +105,7 @@ export function CompletionPage() {
       <div className="mb-6 rounded-xl border border-border bg-card p-4 sm:p-6">
         <div className="flex items-start gap-2 break-words" style={{ fontWeight: 700, color: "var(--navy)" }}>
           <Building2 className="mt-0.5 size-4 shrink-0" style={{ color: "var(--ocean)" }} />
-          <span>2026 부산 여름 패키지 객실 공급 계약</span>
+          <span>2026 부산 여름 객실 공급 계약</span>
         </div>
         <div className="text-muted-foreground" style={{ fontSize: "13px" }}>
           {finalContractInfo.buyer} · {finalContractInfo.seller}

@@ -38,9 +38,10 @@ export function SellerSignupPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const supplyOptions = [
-    { value: "hotel", label: t("opt.sf.hotel") },
-    { value: "leisure", label: t("opt.sf.leisure") },
-    { value: "sports", label: t("opt.sf.sports") },
+    { value: "vehicle_rental", label: t("cat.vehicleRental") },
+    { value: "activity", label: t("cat.activity") },
+    { value: "tour", label: t("cat.tour") },
+    { value: "accommodation", label: t("cat.accommodation") },
   ];
 
   const validateAccount = () => {

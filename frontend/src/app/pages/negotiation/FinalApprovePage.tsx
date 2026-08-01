@@ -74,7 +74,7 @@ export function FinalApprovePage() {
           <div className="flex min-w-0 items-start gap-3">
             <VersionBadge version="v4" />
             <div className="min-w-0">
-              <div className="break-words" style={{ fontWeight: 700, color: "var(--navy)" }}>2026 부산 여름 패키지 객실 공급 계약</div>
+              <div className="break-words" style={{ fontWeight: 700, color: "var(--navy)" }}>2026 부산 여름 객실 공급 계약</div>
               <div className="text-muted-foreground" style={{ fontSize: "13px" }}>
                 {finalContractInfo.buyer} · {finalContractInfo.seller}
               </div>

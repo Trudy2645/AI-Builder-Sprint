@@ -4,13 +4,6 @@ import { AuthLayout } from "../../components/layout/AuthLayout";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
 import { Plane, Building2 } from "lucide-react";
 import { Separator } from "../../components/ui/separator";
 import { useApp, type Role } from "../../context/AppContext";
@@ -18,16 +11,26 @@ import { useApp, type Role } from "../../context/AppContext";
 export function LoginPage() {
   const { t, login } = useApp();
   const navigate = useNavigate();
-  const [role, setRole] = useState<Role>("buyer");
+  const [email, setEmail] = useState("buyer@globaltrip.jp");
+
+  const inferDemoRole = (value: string): Role => {
+    const normalized = value.toLocaleLowerCase();
+    return normalized.includes("seller") ||
+      normalized.includes("ocean") ||
+      normalized.includes("haeundae")
+      ? "seller"
+      : "buyer";
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    login(role);
+    const role = inferDemoRole(email);
+    login(role, email);
     navigate(`/${role}`);
   };
 
   const demoLogin = (r: Role, company: string) => {
-    login(r, company);
+    login(r, company, true);
     navigate(`/${r}`);
   };
 
@@ -43,23 +46,11 @@ export function LoginPage() {
       <form className="flex flex-col gap-4" onSubmit={submit}>
         <div className="flex flex-col gap-2">
           <Label htmlFor="email">{t("common.email")}</Label>
-          <Input id="email" type="email" defaultValue="buyer@globaltrip.jp" required />
+          <Input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="password">{t("common.password")}</Label>
           <Input id="password" type="password" defaultValue="demo1234" required />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>{t("common.selectRole")}</Label>
-          <Select value={role} onValueChange={(v) => setRole(v as Role)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="buyer">{t("role.buyer")}</SelectItem>
-              <SelectItem value="seller">{t("role.seller")}</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
         <Button type="submit" className="mt-2 w-full" style={{ background: "var(--navy)" }}>

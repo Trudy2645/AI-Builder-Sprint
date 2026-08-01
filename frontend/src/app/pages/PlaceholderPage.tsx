@@ -1,8 +1,15 @@
 import {
   ArrowRight,
+  Building2,
+  FileCheck2,
   GitCompareArrows,
+  IdCard,
+  Mail,
+  MapPin,
   PenLine,
+  Phone,
   ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router";
 import { PageHeader } from "../components/PageHeader";
@@ -13,6 +20,7 @@ import { VersionBadge } from "../components/contract/VersionBadge";
 import { ContractStepper } from "../components/contract/ContractStepper";
 import { useApp } from "../context/AppContext";
 import { useRequests } from "../store/RequestsContext";
+import { useListings } from "../store/ListingsContext";
 import { useNegotiation } from "../store/NegotiationContext";
 import { formatKRW } from "../data/contracts";
 
@@ -37,7 +45,7 @@ function NegotiatingView({ base }: { base: string }) {
               </Badge>
               <VersionBadge version={request?.currentVersion || "v3"} />
             </div>
-            <h2 style={{ color: "var(--navy)" }}>{request?.title || "2026 부산 여름 패키지 객실 공급 계약"}</h2>
+            <h2 style={{ color: "var(--navy)" }}>{request?.title || "2026 부산 여름 객실 공급 계약"}</h2>
             <p className="mt-1 text-sm text-muted-foreground">GlobalTrip Japan ↔ 해운대 오션스테이</p>
           </div>
           <div className="text-right">
@@ -96,7 +104,7 @@ function ContractsView({ base }: { base: string }) {
         <Card className="p-5"><div className="text-sm text-muted-foreground">전자서명 완료율</div><div className="mt-2 text-3xl font-bold" style={{ color: "var(--ocean)" }}>100%</div></Card>
       </div>
       <div className="mt-6 space-y-3 md:hidden">
-        {(rows.length ? rows : [{ id: "completed-demo", seller: "해운대 오션스테이", title: "2026 부산 여름 패키지 객실 공급 계약", createdAt: "2026.07.29", currentVersion: "v4" as const }]).map((request) => (
+        {(rows.length ? rows : [{ id: "completed-demo", seller: "해운대 오션스테이", title: "2026 부산 여름 객실 공급 계약", createdAt: "2026.07.29", currentVersion: "v4" as const }]).map((request) => (
           <Card key={request!.id} className="p-4">
             <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 text-base" style={{ color: "var(--navy)" }}>{request!.title}</h3><p className="mt-1 truncate text-sm text-muted-foreground">{request!.seller}</p></div><VersionBadge version={request!.currentVersion || "v4"} /></div>
             <div className="mt-3 border-y border-border py-3 text-sm"><span className="text-muted-foreground">체결일</span><span className="float-right">{bothSigned ? "2026.07.29" : request!.createdAt}</span></div>
@@ -108,7 +116,7 @@ function ContractsView({ base }: { base: string }) {
         <div className="grid min-w-[760px] grid-cols-[1.3fr_1.8fr_1fr_.8fr_1fr] gap-4 border-b bg-muted/40 px-5 py-3 text-xs font-semibold text-muted-foreground">
           <div>상대 업체</div><div>계약명</div><div>체결일</div><div>최종 버전</div><div>작업</div>
         </div>
-        {(rows.length ? rows : [{ id: "completed-demo", seller: "해운대 오션스테이", title: "2026 부산 여름 패키지 객실 공급 계약", createdAt: "2026.07.29", currentVersion: "v4" as const }]).map((request) => (
+        {(rows.length ? rows : [{ id: "completed-demo", seller: "해운대 오션스테이", title: "2026 부산 여름 객실 공급 계약", createdAt: "2026.07.29", currentVersion: "v4" as const }]).map((request) => (
           <div key={request!.id} className="grid min-w-[760px] grid-cols-[1.3fr_1.8fr_1fr_.8fr_1fr] items-center gap-4 border-b px-5 py-4 last:border-b-0">
             <div className="font-semibold">{request!.seller}</div>
             <div className="truncate">{request!.title}</div>
@@ -125,6 +133,40 @@ function ContractsView({ base }: { base: string }) {
   );
 }
 
+function SellerProfileView() {
+  const { listings, publicCount } = useListings();
+  return (
+    <div>
+      <PageHeader title="셀러 마이페이지" description="사업자 정보와 계약 공고·협상·체결 현황을 확인하고 수정하세요." />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,.75fr)]">
+        <Card className="min-w-0 p-4 sm:p-6">
+          <div className="mb-5 flex min-w-0 items-center gap-4">
+            <div className="flex size-14 items-center justify-center rounded-xl" style={{ background: "var(--info-soft)", color: "var(--ocean)" }}><Building2 className="size-7" /></div>
+            <div className="min-w-0"><h2 className="break-words" style={{ color: "var(--navy)" }}>해운대 오션스테이</h2><div className="mt-1 flex items-center gap-1.5 text-sm" style={{ color: "var(--success)" }}><ShieldCheck className="size-4 shrink-0" />사업자 인증 완료</div></div>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {[
+              [UserRound, "대표자", "김민수"], [IdCard, "사업자등록번호", "617-81-20260"],
+              [Mail, "담당자 이메일", "contract@oceanstay.co.kr"], [Phone, "전화번호", "051-740-2026"],
+              [MapPin, "사업장 주소", "부산광역시 해운대구 해운대해변로 264"], [FileCheck2, "공급 분야", "숙박"],
+            ].map(([Icon, label, value]) => {
+              const RowIcon = Icon as typeof Building2;
+              return <div key={String(label)} className="min-w-0 rounded-lg border border-border p-4"><div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"><RowIcon className="size-3.5 shrink-0" />{String(label)}</div><div className={String(value).includes("@") ? "mt-1 break-all font-semibold" : "mt-1 break-words font-semibold"}>{String(value)}</div></div>;
+            })}
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap"><Button variant="outline">정보 수정</Button><Button variant="outline">비밀번호 변경</Button></div>
+        </Card>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            ["임시저장 공고", listings.filter((item) => item.status === "draft").length],
+            ["공개 중인 공고", publicCount], ["받은 요청", 3], ["협상 중", 2], ["서명 대기", 1], ["체결 완료", 4],
+          ].map(([label, value]) => <Card key={String(label)} className="p-4"><div className="text-xs text-muted-foreground">{String(label)}</div><div className="mt-2 text-2xl font-bold" style={{ color: "var(--navy)" }}>{String(value)}건</div></Card>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PlaceholderPage({ titleKey }: { titleKey: string }) {
   const { t } = useApp();
   const { pathname } = useLocation();
@@ -132,6 +174,7 @@ export function PlaceholderPage({ titleKey }: { titleKey: string }) {
 
   if (pathname.endsWith("/negotiating")) return <NegotiatingView base={base} />;
   if (pathname.endsWith("/contracts")) return <ContractsView base={base} />;
+  if (pathname === "/seller/mypage") return <SellerProfileView />;
 
   return (
     <div>

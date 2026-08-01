@@ -34,7 +34,7 @@ export function Header({
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
 }) {
-  const { lang, setLang, t, companyName, login, logout } = useApp();
+  const { lang, setLang, t, companyName, login, logout, isDemoSession } = useApp();
   const navigate = useNavigate();
   const otherRole: Role = role === "buyer" ? "seller" : "buyer";
   const roleLabel = t(role === "buyer" ? "role.buyer" : "role.seller");
@@ -42,7 +42,8 @@ export function Header({
   const { requests } = useRequests();
   const directCompletion = requests.find((request) => request.type === "asis" && request.status === "completed");
   // 셀러는 수정 요청과 조건 그대로 체결 완료 알림을 확인한다.
-  const sellerNotif = role === "seller";
+  const sellerNotif = role === "seller" && isDemoSession;
+  const displayName = companyName || "계정 정보 없음";
 
   return (
     <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-border bg-card px-2 sm:h-16 sm:px-4 lg:px-6">
@@ -150,7 +151,7 @@ export function Header({
                   <span style={{ fontSize: "13px", lineHeight: 1.5 }}>
                     {t("notif.revision")
                       .replace("{buyer}", "GlobalTrip Japan")
-                      .replace("{title}", "2026 부산 여름 패키지 객실 공급 계약")
+                      .replace("{title}", "2026 부산 여름 객실 공급 계약")
                       .replace("{count}", "3")}
                   </span>
                   <span className="whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 600 }}>
@@ -182,16 +183,16 @@ export function Header({
             <Button variant="ghost" className="gap-1 px-1.5 sm:gap-2">
               <Avatar className="size-7">
                 <AvatarFallback style={{ background: "var(--navy)", color: "#fff", fontSize: "12px" }}>
-                  {companyName.slice(0, 2).toUpperCase()}
+                  {displayName.slice(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <span className="hidden max-w-[140px] truncate whitespace-nowrap md:inline">{companyName}</span>
+              <span className="hidden max-w-[140px] truncate whitespace-nowrap md:inline">{displayName}</span>
               <ChevronDown className="hidden size-3.5 opacity-60 sm:block" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="flex flex-col">
-              <span className="truncate">{companyName}</span>
+              <span className="truncate">{displayName}</span>
               <span className="text-muted-foreground" style={{ fontSize: "12px", fontWeight: 400 }}>
                 {roleLabel}
               </span>
@@ -202,6 +203,7 @@ export function Header({
                 login(
                   otherRole,
                   otherRole === "buyer" ? "GlobalTrip Japan" : "해운대 오션스테이",
+                  true,
                 );
                 // Let the role context commit before the route guard evaluates.
                 window.setTimeout(() => navigate(`/${otherRole}`), 0);

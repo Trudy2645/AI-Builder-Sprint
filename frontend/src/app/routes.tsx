@@ -14,6 +14,13 @@ import { RequestAsIsPage } from "./pages/requests/RequestAsIsPage";
 import { RevisionRequestPage } from "./pages/requests/RevisionRequestPage";
 import { SentRequestsPage } from "./pages/requests/SentRequestsPage";
 import { BuyerMyPage } from "./pages/BuyerMyPage";
+import {
+  BuyerContractCompletePage,
+  BuyerContractsHomePage,
+  BuyerContractStatusPage,
+  BuyerContractUploadPage,
+  BuyerContractWritePage,
+} from "./pages/buyer/BuyerContractFlowPages";
 import { SellerDashboardPage } from "./pages/seller/SellerDashboardPage";
 import { ListingsManagePage } from "./pages/seller/ListingsManagePage";
 import { CreateMethodPage } from "./pages/seller/CreateMethodPage";
@@ -28,6 +35,7 @@ import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { FinalApprovePage } from "./pages/negotiation/FinalApprovePage";
 import { ESignaturePage } from "./pages/negotiation/ESignaturePage";
 import { CompletionPage } from "./pages/negotiation/CompletionPage";
+import { NegotiatingPage } from "./pages/negotiation/NegotiatingPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { buyerNav, sellerNav } from "./config/nav";
 import { useApp, type Role } from "./context/AppContext";
@@ -54,6 +62,18 @@ const buyerExploreRoutes = [
   { path: "explore/:id/revise", element: <RevisionRequestPage /> },
 ];
 
+const buyerContractRoutes = [
+  { path: "contracts", element: <BuyerContractsHomePage /> },
+  { path: "contracts/upload", element: <BuyerContractUploadPage /> },
+  { path: "contracts/write", element: <BuyerContractWritePage /> },
+  { path: "contracts/:id/status", element: <BuyerContractStatusPage /> },
+  { path: "contracts/:id/complete", element: <BuyerContractCompletePage /> },
+];
+
+const buyerNegotiationRoutes = [
+  { path: "negotiating", element: <NegotiatingPage /> },
+];
+
 // Shared final-negotiation → signing → completion flow (buyer & seller).
 // Mounted under both /buyer and /seller; pages detect the role from the URL.
 const signingRoutes = [
@@ -72,7 +92,13 @@ const buyerRealPages: Record<string, ReactNode> = {
 // Build child routes from the nav config so sidebar and routing stay in sync.
 // The "계약 탐색" item is handled by the dedicated explore routes above.
 const buyerChildren = buyerNav
-  .filter((item) => item.path !== "/buyer/explore" && item.path !== "/buyer/signing")
+  .filter(
+    (item) =>
+      item.path !== "/buyer/explore" &&
+      item.path !== "/buyer/negotiating" &&
+      item.path !== "/buyer/signing" &&
+      item.path !== "/buyer/contracts",
+  )
   .map((item) => ({
     path: item.path.replace("/buyer/", ""),
     element: buyerRealPages[item.path] ?? <PlaceholderPage titleKey={item.labelKey} />,
@@ -100,6 +126,7 @@ const sellerChildren = sellerNav
   .filter(
     (item) =>
       item.path !== "/seller/listings" &&
+      item.path !== "/seller/listings/new" &&
       item.path !== "/seller/received" &&
       item.path !== "/seller/signing",
   )
@@ -131,6 +158,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/buyer/explore" replace /> },
       ...buyerExploreRoutes,
+      ...buyerContractRoutes,
+      ...buyerNegotiationRoutes,
       ...signingRoutes,
       ...buyerChildren,
     ],

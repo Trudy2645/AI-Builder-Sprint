@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Inbox,
+  PlusCircle,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "../context/AppContext";
@@ -30,6 +31,7 @@ export const buyerNav: NavItem[] = [
 export const sellerNav: NavItem[] = [
   { labelKey: "nav.seller.dashboard", path: "/seller/dashboard", icon: LayoutDashboard },
   { labelKey: "nav.seller.listings", path: "/seller/listings", icon: Megaphone },
+  { labelKey: "nav.seller.newListing", path: "/seller/listings/new", icon: PlusCircle },
   { labelKey: "nav.seller.received", path: "/seller/received", icon: Inbox },
   { labelKey: "nav.negotiating", path: "/seller/negotiating", icon: MessagesSquare },
   { labelKey: "nav.signing", path: "/seller/signing", icon: PenLine },

@@ -1,23 +1,35 @@
-# ruff: noqa: E501
+from __future__ import annotations
 
-from datetime import UTC, datetime
+import base64
+import json
+from datetime import datetime
+from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from fastapi import status
 
 from app.core.errors import AppError
-from app.repositories.profiles import RepositoryUnavailableError
-from app.repositories.public_listings import PublicListingRecord, PublicListingRepository
-from app.schemas.public_listings import (
+from app.repositories.listings import (
+    ListingCursor,
+    ListingRepositoryUnavailableError,
+    ListingSearchFilters,
+    PublicClauseRecord,
+    PublicFindingRecord,
+    PublicListingRecord,
+    PublicListingRepository,
+)
+from app.schemas.listings import (
     Availability,
-    ContractPreview,
-    PriceEstimateRequest,
-    PriceEstimateResponse,
-    PriceSummary,
+    Money,
+    PublicClause,
+    PublicContractPreview,
+    PublicFinding,
+    PublicListingCard,
     PublicListingDetail,
     PublicListingQuery,
-    PublicListingSummary,
-    SellerPublicSummary,
+    PublicSeller,
+    SupportedLocale,
 )
 
 
@@ -25,187 +37,226 @@ class PublicListingService:
     def __init__(self, repository: PublicListingRepository) -> None:
         self._repository = repository
 
-    async def list(self, query: PublicListingQuery) -> list[PublicListingSummary]:
+    async def list_listings(
+        self, query: PublicListingQuery
+    ) -> tuple[list[PublicListingCard], str | None, bool]:
+        cursor = self._decode_cursor(query.cursor, query.sort.value) if query.cursor else None
+        filters = ListingSearchFilters(
+            q=query.q,
+            contract_available_only=query.contract_available_only,
+            districts=tuple(dict.fromkeys(query.district)),
+            people=query.people,
+            min_price=query.min_price,
+            max_price=query.max_price,
+            currency=query.currency,
+            category=query.category,
+            start_date=query.start_date,
+            end_date=query.end_date,
+            sort=query.sort,
+        )
         try:
-            records = await self._repository.list(query)
-        except RepositoryUnavailableError as exc:
+            records = await self._repository.search_public_listings(
+                filters, cursor, query.limit + 1
+            )
+        except ListingRepositoryUnavailableError as exc:
             self._database_unavailable(exc)
-        return [self._summary(record) for record in records]
 
-    async def get(self, listing_id: UUID) -> PublicListingDetail:
-        record = await self._get_record(listing_id)
+        has_more = len(records) > query.limit
+        page = records[: query.limit]
+        next_cursor = None
+        if has_more and page:
+            last = page[-1]
+            next_cursor = self._encode_cursor(query.sort.value, last.sort_value, last.id)
+        return [self._card(record) for record in page], next_cursor, has_more
+
+    async def get_listing(
+        self, listing_id: UUID, requested_locale: SupportedLocale
+    ) -> PublicListingDetail:
+        try:
+            listing = await self._repository.get_public_listing(listing_id)
+            if listing is None or listing.current_version_id is None:
+                self._not_found()
+            clauses = await self._repository.list_public_clauses(listing.current_version_id)
+            findings = await self._repository.list_public_findings(listing.current_version_id)
+        except ListingRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+
+        content_locale, fallback_locale = self._locale_metadata(listing, requested_locale)
         return PublicListingDetail(
-            **self._summary(record).model_dump(), **self._detail_fields(record)
+            **self._card(listing).model_dump(),
+            supply_quantity=listing.supply_quantity,
+            supply_quantity_description=listing.supply_quantity_description,
+            quantity_unit=listing.quantity_unit,
+            minimum_quantity=listing.minimum_quantity,
+            maximum_quantity=listing.maximum_quantity,
+            people_per_unit=listing.people_per_unit,
+            minimum_people=listing.minimum_people,
+            maximum_people=listing.maximum_people,
+            cancellation_policy=listing.cancellation_policy,
+            no_show_policy=listing.no_show_policy,
+            refund_policy=listing.refund_policy,
+            settlement_policy=listing.settlement_policy,
+            safety_policy=listing.safety_policy,
+            compensation_policy=listing.compensation_policy,
+            liability_policy=listing.liability_policy,
+            termination_policy=listing.termination_policy,
+            special_terms=listing.special_terms,
+            price_display_basis=listing.price_display_basis,
+            contract_availability_note=listing.contract_availability_note,
+            clauses=self._clauses(clauses, findings),
+            requested_locale=requested_locale,
+            content_locale=content_locale,
+            fallback_locale=fallback_locale,
         )
 
-    async def get_preview(self, listing_id: UUID) -> ContractPreview:
+    async def get_contract_preview(
+        self, listing_id: UUID, requested_locale: SupportedLocale
+    ) -> PublicContractPreview:
         try:
-            preview = await self._repository.get_preview(listing_id)
-        except RepositoryUnavailableError as exc:
+            listing = await self._repository.get_public_listing(listing_id)
+            if listing is None or listing.current_version_id is None:
+                self._not_found()
+            version = await self._repository.get_public_version(
+                listing.id, listing.current_version_id
+            )
+            if version is None:
+                self._not_found()
+            clauses = await self._repository.list_public_clauses(version.id)
+            findings = await self._repository.list_public_findings(version.id)
+        except ListingRepositoryUnavailableError as exc:
             self._database_unavailable(exc)
-        if preview is None:
-            raise AppError(
-                status_code=status.HTTP_404_NOT_FOUND,
-                code="LISTING_NOT_FOUND",
-                message="The requested listing or its public contract preview was not found.",
-            )
-        return ContractPreview(
-            listing_id=preview.listing_id,
-            version_no=preview.version_no,
-            title=preview.title,
-            body=preview.body,
-            clauses=preview.clauses,
-        )
 
-    async def estimate_price(
-        self, listing_id: UUID, request: PriceEstimateRequest
-    ) -> PriceEstimateResponse:
-        record = await self._get_record(listing_id)
-        if record.status != "published":
-            raise AppError(
-                status_code=status.HTTP_409_CONFLICT,
-                code="LISTING_NOT_AVAILABLE",
-                message="This listing is paused and cannot accept a new price estimate.",
-                details={"action": "Choose an active listing or ask the seller to resume it."},
-            )
-        if record.base_price_amount_minor is None or record.currency is None:
-            raise AppError(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                code="PRICE_NOT_CONFIGURED",
-                message="The seller has not configured a usable base price for this listing.",
-            )
-        if request.currency != record.currency:
-            raise AppError(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                code="UNSUPPORTED_DISPLAY_CURRENCY",
-                message="Live currency conversion is not available yet. Use the listing's base currency.",
-                details={"supported_currency": record.currency},
-            )
-        if (
-            record.service_start_date
-            and request.start_date < record.service_start_date
-            or (record.service_end_date and request.end_date > record.service_end_date)
-        ):
-            raise AppError(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                code="SERVICE_PERIOD_UNAVAILABLE",
-                message="The requested dates are outside this listing's available service period.",
-                details={
-                    "available_start_date": record.service_start_date,
-                    "available_end_date": record.service_end_date,
-                },
-            )
-        if (
-            record.minimum_people
-            and request.people < record.minimum_people
-            or (record.maximum_people and request.people > record.maximum_people)
-        ):
-            raise AppError(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                code="PEOPLE_OUT_OF_RANGE",
-                message="The requested number of people is outside the seller's allowed range.",
-                details={
-                    "minimum_people": record.minimum_people,
-                    "maximum_people": record.maximum_people,
-                },
-            )
-
-        nights = request.nights or max(1, (request.end_date - request.start_date).days)
-        unit = (record.price_unit or "").lower().replace(" ", "_")
-        if "person" in unit or "인" in unit:
-            billable_quantity = request.people
-        else:
-            if request.quantity is None:
-                raise AppError(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    code="QUANTITY_REQUIRED",
-                    message="This listing is priced per unit. Enter the number of units to estimate.",
-                    details={"price_unit": record.price_unit},
+        content_locale, fallback_locale = self._locale_metadata(listing, requested_locale)
+        return PublicContractPreview(
+            listing_version_id=version.id,
+            body=version.body,
+            clauses=self._clauses(clauses, findings),
+            findings=[
+                PublicFinding(
+                    clause_id=finding.clause_id,
+                    severity=finding.severity,  # type: ignore[arg-type]
+                    explanation=finding.explanation,
+                    suggested_text=finding.suggested_text,
+                    disclaimer=finding.disclaimer,
                 )
-            billable_quantity = request.quantity
-        total = record.base_price_amount_minor * billable_quantity * nights
-        formula = f"{record.base_price_amount_minor} × {billable_quantity} × {nights} night(s)"
-        return PriceEstimateResponse(
-            listing_id=record.id,
-            base_price=PriceSummary(
+                for finding in findings
+            ],
+            requested_locale=requested_locale,
+            content_locale=content_locale,
+            fallback_locale=fallback_locale,
+        )
+
+    @staticmethod
+    def _card(record: PublicListingRecord) -> PublicListingCard:
+        base_price = None
+        if record.base_price_amount_minor is not None and record.currency is not None:
+            base_price = Money(
                 amount_minor=record.base_price_amount_minor,
                 currency=record.currency,
                 unit=record.price_unit,
-            ),
-            billable_quantity=billable_quantity,
-            nights=nights,
-            formula=formula,
-            total_amount_minor=total,
-            base_currency=record.currency,
-            display_currency=request.currency,
-            exchange_rate_as_of=datetime.now(UTC),
-            disclaimer="This is a server-calculated estimate, not a final contract price. The final price is recalculated when you request a contract.",
-        )
-
-    async def _get_record(self, listing_id: UUID) -> PublicListingRecord:
-        try:
-            record = await self._repository.get(listing_id)
-        except RepositoryUnavailableError as exc:
-            self._database_unavailable(exc)
-        if record is None:
-            raise AppError(
-                status_code=status.HTTP_404_NOT_FOUND,
-                code="LISTING_NOT_FOUND",
-                message="The requested listing is not available to the public.",
             )
-        return record
-
-    @staticmethod
-    def _summary(record: PublicListingRecord) -> PublicListingSummary:
-        return PublicListingSummary(
+        return PublicListingCard(
             id=record.id,
-            seller=SellerPublicSummary(
+            seller=PublicSeller(
                 name=record.seller_name,
-                rating=float(record.seller_rating),
-                rating_count=record.seller_rating_count,
-                verified=record.seller_verified,
+                rating=record.rating_average,
+                rating_count=record.rating_count,
+                verified=record.verification_status == "verified",
             ),
-            title=record.display_title or record.title,
+            title=record.title,
             district=record.district,
-            category=record.category,
+            category=record.category,  # type: ignore[arg-type]
+            hero_image_url=None,
+            public_headline=record.public_headline,
             ai_summary=record.ai_summary,
-            base_price=PriceSummary(
-                amount_minor=record.base_price_amount_minor,
-                currency=record.currency,
-                unit=record.price_unit,
-            )
-            if record.base_price_amount_minor is not None and record.currency
-            else None,
+            base_price=base_price,
             availability=Availability(
-                start_date=record.service_start_date, end_date=record.service_end_date
+                start_date=record.service_start_date,
+                end_date=record.service_end_date,
             ),
+            status=record.status,  # type: ignore[arg-type]
             contract_available=record.status == "published",
+            attention_required_count=record.attention_required_count,
         )
 
-    @staticmethod
-    def _detail_fields(record: PublicListingRecord) -> dict[str, object]:
-        return {
-            key: getattr(record, key)
-            for key in (
-                "supply_quantity",
-                "quantity_unit",
-                "minimum_people",
-                "maximum_people",
-                "cancellation_policy",
-                "refund_policy",
-                "settlement_policy",
-                "safety_policy",
-                "compensation_policy",
-                "liability_policy",
-                "price_display_basis",
-                "contract_availability_note",
-            )
+    @classmethod
+    def _clauses(
+        cls,
+        clauses: list[PublicClauseRecord],
+        findings: list[PublicFindingRecord],
+    ) -> list[PublicClause]:
+        finding_severity = {
+            finding.clause_id: finding.severity
+            for finding in reversed(findings)
+            if finding.clause_id is not None
         }
+        return [
+            PublicClause(
+                id=clause.id,
+                clause_key=clause.clause_key,
+                title=clause.title,
+                body=clause.body,
+                highlight=cls._highlight(finding_severity.get(clause.id)),
+            )
+            for clause in clauses
+        ]
+
+    @staticmethod
+    def _highlight(severity: str | None) -> str | None:
+        return {"high": "critical", "medium": "warning", "low": "info"}.get(severity)
+
+    @staticmethod
+    def _locale_metadata(
+        listing: PublicListingRecord, requested_locale: SupportedLocale
+    ) -> tuple[SupportedLocale, SupportedLocale | None]:
+        content_locale = SupportedLocale(listing.language)
+        fallback = None if content_locale == requested_locale else content_locale
+        return content_locale, fallback
+
+    @staticmethod
+    def _encode_cursor(sort: str, value: Decimal | int | datetime, listing_id: UUID) -> str:
+        serialized_value = value.isoformat() if isinstance(value, datetime) else str(value)
+        payload = json.dumps(
+            {"version": 1, "sort": sort, "value": serialized_value, "id": str(listing_id)},
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+        return base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
+
+    @staticmethod
+    def _decode_cursor(cursor: str, expected_sort: str) -> ListingCursor:
+        try:
+            padding = "=" * (-len(cursor) % 4)
+            raw = base64.b64decode(cursor + padding, altchars=b"-_", validate=True)
+            payload: dict[str, Any] = json.loads(raw)
+            if set(payload) != {"version", "sort", "value", "id"}:
+                raise ValueError
+            if payload["version"] != 1 or payload["sort"] != expected_sort:
+                raise ValueError
+            value = payload["value"]
+            if not isinstance(value, str) or not value:
+                raise ValueError
+            listing_id = UUID(payload["id"])
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise AppError(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="INVALID_CURSOR",
+                message="The pagination cursor is invalid for this sort order.",
+            ) from exc
+        return ListingCursor(value=value, listing_id=listing_id)
+
+    @staticmethod
+    def _not_found() -> None:
+        raise AppError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="LISTING_NOT_FOUND",
+            message="Public listing was not found.",
+        )
 
     @staticmethod
     def _database_unavailable(exc: Exception) -> None:
         raise AppError(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             code="DATABASE_UNAVAILABLE",
-            message="The service is temporarily unable to load listings. Please try again shortly.",
+            message="Database connection is unavailable.",
         ) from exc

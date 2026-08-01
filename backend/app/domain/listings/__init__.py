@@ -1,1 +1,1 @@
-"""Listing domain services."""
+"""Public listing domain services."""

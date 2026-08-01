@@ -10,11 +10,12 @@ import {
 import { useEmailVerify } from "../../components/auth/useEmailVerify";
 import { Button } from "../../components/ui/button";
 import { useApp } from "../../context/AppContext";
+import type { Lang } from "../../i18n/translations";
 
 const STEPS = ["signup.step.role", "signup.step.account", "signup.step.company", "signup.step.done"];
 
 export function BuyerSignupPage() {
-  const { t, setCompanyName } = useApp();
+  const { t, setCompanyName, setLang } = useApp();
   const navigate = useNavigate();
   const email = useEmailVerify();
 
@@ -51,6 +52,9 @@ export function BuyerSignupPage() {
     { value: "agency", label: t("opt.bt.agency") },
     { value: "inbound", label: t("opt.bt.inbound") },
     { value: "ota", label: t("opt.bt.ota") },
+    { value: "school", label: t("opt.bt.school") },
+    { value: "company_group", label: t("opt.bt.companyGroup") },
+    { value: "other_group", label: t("opt.bt.otherGroup") },
   ];
   const currencyOptions = [
     { value: "KRW", label: "KRW ₩" },
@@ -92,6 +96,7 @@ export function BuyerSignupPage() {
     ev.preventDefault();
     if (validateCompany()) {
       setCompanyName(company.trim());
+      setLang(language as Lang);
       navigate("/signup/complete?role=buyer");
     }
   };
@@ -175,12 +180,12 @@ export function BuyerSignupPage() {
           </p>
           <TextField
             id="company"
-            label={t("field.companyName")}
+            label={t("field.organizationName")}
             value={company}
             onChange={setCompany}
             required
             error={errors.company}
-            placeholder="GlobalTrip Japan"
+            placeholder={t("field.organizationNamePh")}
           />
           <SelectField
             id="country"
@@ -195,7 +200,10 @@ export function BuyerSignupPage() {
             id="language"
             label={t("field.defaultLanguage")}
             value={language}
-            onChange={setLanguage}
+            onChange={(value) => {
+              setLanguage(value);
+              setLang(value as Lang);
+            }}
             options={langOptions}
             required
             error={errors.language}
