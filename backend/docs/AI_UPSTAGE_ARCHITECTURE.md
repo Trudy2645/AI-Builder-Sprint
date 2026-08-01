@@ -547,6 +547,12 @@ AI가 할 수 있는 일:
 
 한국어로 근거를 확정한 뒤 다른 언어로 번역한다. 번역 결과는 `listing/contract/finding version + locale + prompt_version + source_hash`로 cache하며 금액·날짜·백분율·근거 번호의 보존을 코드로 검증한다.
 
+구현된 `localize_explain`은 Agent 도구가 아니라 고정 Solar task다. 공개된 현재 listing version과
+최신 공개 buyer finding만 입력으로 사용하며, Pydantic schema 통과 후 금액·통화·ISO 날짜·비율·
+수량·조항 순서·finding/evidence 참조와 셀러명·지역명을 Python 코드로 비교한다. locale별 job과
+DB transaction을 분리해 부분 실패가 다른 locale cache에 영향을 주지 않는다. 공개 조회는 저장된
+검증 결과만 반환하고 cache miss에서는 모델을 호출하지 않고 canonical 한국어로 fallback한다.
+
 ## 7. 표준 중간 데이터
 
 고정 task와 계약검토 Agent 사이에 계약 전체 원문을 반복 전달하지 않고 다음 구조화 artifact를 사용한다.

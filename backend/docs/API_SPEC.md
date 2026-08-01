@@ -893,6 +893,29 @@ Agent는 계약을 수정하거나 서명 요청을 만들 수 없다. 최종 �
 
 셀러 검증 상태와 필수 정보를 확인하고 `ready → published`로 바꾼다. AI 기능이 분리된 현재 manual 공고는 공개용 AI 분석을 필수로 강제하지 않는다. Figma의 `계약 가능` switch를 별도 저장하지 않고 ON은 이 API, OFF는 `POST /seller/listings/{id}/pause`에 연결한다. 중지된 공고의 재개도 별도 `/resume` 없이 이 publish API로 `paused → published` 전이한다.
 
+### `[구현] POST /seller/listings/{listing_id}/localizations`
+
+공개가 확정된 현재 listing version의 한국어 공개 결과를 `localize_explain` 고정 task로
+변환한다. `X-Organization-Id`, `Idempotency-Key`, 현재 `base_version_no`가 필수다.
+
+```json
+{
+  "base_version_no": 3,
+  "locales": ["ko-KR", "en-US", "ja-JP", "zh-CN"]
+}
+```
+
+각 locale 결과는 독립적으로 schema와 보존 검사를 통과한 뒤 `localized_contents`에
+`listing_version_id + locale + content_type + prompt_version + source_hash`로 cache한다.
+금액·통화·날짜·비율·수량·조항 번호·근거 번호와 셀러명·지역 고유명사가 바뀌면 해당 locale은
+저장하지 않고 실패한다. 한 locale의 provider/schema/보존 실패는 이미 성공한 다른 locale의
+cache를 삭제하거나 rollback하지 않는다. 동일 source cache는 Solar를 다시 호출하지 않는다.
+
+`GET /public/listings`, 공개 상세, 계약 미리보기는 요청 locale의 검증된 cache가 있으면 별도
+`localized_content` 및 번역된 카드 제목·요약을 반환한다. cache가 없거나 source hash가 현재
+상태와 다르면 한국어 원문을 유지하고 `requested_locale`, `content_locale`, `fallback_locale`로
+fallback을 명시한다. 공개 조회 중에는 Solar를 호출하지 않는다.
+
 ### `[구현] POST /seller/listings/{listing_id}/pause`
 
 `published → paused`로 전환한다. 이미 paused인 요청은 같은 상태를 반환하며 신규 계약 요청은 public contract API에서 차단된다.
@@ -1387,7 +1410,7 @@ backend/app/
 | 6 | `feature/ai-contract-generation` | `feat(ai): generate contracts with fixed tasks` | `POST /seller/listings/{id}/generate` | 고정 prompt/JSON Schema 함수로 직접 입력 조건의 초안을 생성한다. 생성 함수에는 자율 tool 호출 권한을 주지 않는다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): review contracts with a bounded single agent` | `POST /seller/listings/{id}/analyses` | `ContractReviewAgent`가 조항 조회·공식 근거 검색·승인 템플릿 검색 도구만 최대 2회 반복 호출한다. seller/buyer 관점 분석을 분리 저장하고 공개 API는 buyer 분석만 사용한다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): apply reviewed safeguard clauses` | `POST /ai-findings/{id}/apply`<br>`POST /ai-findings/{id}/dismiss` | AI 제안은 자동 반영하지 않는다. 적용 시 immutable 새 version을 만들고 재분석하며, 적용/기각 모두 audit event를 남긴다. |
-| 6 | `feat/ai-contract-review` | `feat(ai): localize contract guidance in four languages` | 공개 상세·finding 응답의 `locale` | ko-KR 원본을 기준으로 en-US/ja-JP/zh-CN 결과를 생성·cache하고 금액·날짜·비율·근거 번호 보존을 검증한다. |
+| 7 | `feature/ai-localization` | `feat(ai): 공개 계약 결과 다국어 설명 추가` | `POST /seller/listings/{id}/localizations`<br>공개 API의 `locale` | ko-KR 원본을 기준으로 en-US/ja-JP/zh-CN 결과를 독립 생성·cache하고 금액·통화·날짜·비율·수량·조항·근거 번호와 고유명사 보존을 검증한다. |
 | 6 | `feat/ai-contract-review` | `test(ai): validate structured output and provider failures` | 위 AI API | JSON Schema/Pydantic 검증, 근거 없는 결과, timeout/429/5xx, 재시도와 실패 상태를 fake provider로 테스트한다. |
 | 6.5 | `feat/rag-knowledge-base` | `feat(rag): add PDF knowledge registry and ingestion` | 운영자용 내부 ingestion command/API | 공식 PDF를 Markdown 변환 없이 Files API와 Vector Store에 적재하고, immutable Storage snapshot, Upstage file/vector id와 active version을 관리한다. 스캔 PDF만 parse/OCR하며 사용자 계약서는 대상에서 제외한다. |
 | 6.5 | `feat/rag-knowledge-base` | `feat(rag): persist retrieval evidence and viewer links` | `GET /ai-findings/{finding_id}/evidence/{evidence_id}` | query/filter/rank와 문서 version, page/section/bbox를 저장하고 근거 번호 클릭 시 내부 viewer로 이동시킨다. |

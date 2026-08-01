@@ -393,6 +393,12 @@ snapshot을 재사용한다.
 | `rag_evidence` | finding별 고정 근거의 rank, score, page, section, excerpt, bbox |
 | `localized_contents` | 공고·계약·finding의 한국어/영어/일본어/중국어 결과 cache |
 
+공개 공고 localization은 `content_type=public_listing`으로 저장한다. unique key에 immutable target,
+locale, prompt version과 source hash를 모두 포함하며 `numeric_validation_passed=true`인 행만 공개
+API가 사용할 수 있다. locale별 AI job과 저장 transaction을 분리하므로 일부 locale 실패 시 다른
+locale 행은 유지된다. `content`에는 번역·쉬운 설명과 함께 보존된 구조화 facts, clause/finding ID,
+조항·근거 번호 및 고유명사 목록을 저장한다.
+
 AI 패널의 근거 번호는 `rag_evidence.id`를 가리킨다. 문서가 개정되어도 체결·분석 당시 사용한 `knowledge_document_versions` snapshot을 유지해 같은 페이지와 인용을 재현한다.
 
 MVP 공식 자료는 PDF를 그대로 Upstage Files/Vector Store에 적재한다. `knowledge_document_versions.metadata`에는 `file_format=pdf`, `is_searchable`, `parse_required`, `original_page_count`를 기록한다. Markdown 정규화 경로는 nullable이며 필수 ingestion 단계가 아니다. 국내여행 표준약관은 `common`에 한 번만 저장하고 `contract_categories={tour}`로 제한한다.
