@@ -28,6 +28,8 @@ type ApiSession = {
   organizationId: string;
 };
 
+let activeSession: ApiSession | null = null;
+
 type UploadedDocumentProcessingResult = {
   listingCandidate: {
     title?: string;
@@ -43,6 +45,7 @@ function requestIdempotencyKey(prefix: string): string {
 }
 
 function getApiSession(): ApiSession {
+  if (activeSession) return activeSession;
   const accessToken = window.localStorage.getItem("busanlink.access_token")
     ?? import.meta.env.VITE_API_ACCESS_TOKEN;
   const organizationId = window.localStorage.getItem("busanlink.organization_id")
@@ -220,6 +223,7 @@ export async function loginWithDemoRole(role: "buyer" | "seller"): Promise<Authe
   window.localStorage.setItem("busanlink.access_token", result.session.access_token);
   window.localStorage.setItem("busanlink.refresh_token", result.session.refresh_token);
   if (organizationId) window.localStorage.setItem("busanlink.organization_id", organizationId);
+  activeSession = { accessToken: result.session.access_token, organizationId: organizationId ?? "" };
   return { accessToken: result.session.access_token, refreshToken: result.session.refresh_token, email: result.email, organizationId };
 }
 
