@@ -47,6 +47,7 @@ class ModusignParticipantField:
     position: dict[str, Any]
     size: dict[str, float] | None = None
     required: bool = True
+    signature_types: list[str] | None = None
 
     def as_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -57,6 +58,8 @@ class ModusignParticipantField:
         }
         if self.size is not None:
             payload["size"] = self.size
+        if self.signature_types is not None:
+            payload["signatureTypes"] = self.signature_types
         return payload
 
 

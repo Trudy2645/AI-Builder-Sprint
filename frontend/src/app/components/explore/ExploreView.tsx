@@ -123,9 +123,8 @@ export function ExploreView({ base }: { base: string }) {
       .catch((error: unknown) => { if (active) setLoadError(friendlyApiError(error)); })
       .finally(() => { if (active) setLoading(false); });
     refresh();
-    const timer = window.setInterval(refresh, 5000);
     window.addEventListener("focus", refresh);
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+    return () => { active = false; window.removeEventListener("focus", refresh); };
   }, []);
 
   const reset = () => {

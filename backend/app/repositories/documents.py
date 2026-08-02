@@ -270,7 +270,10 @@ class SqlAlchemyDocumentRepository:
                     where l.id = :listing_id
                       and l.status = 'published'
                       and d.purpose = 'source_contract'
-                      and d.status = 'ready'
+                      -- The original upload is safe to download as soon as it
+                      -- passes upload verification.  AI processing changes its
+                      -- analysis state, not the validity of the stored PDF.
+                      and d.status in ('uploaded', 'ready')
                       and c.buyer_user_id = :buyer_user_id
                     order by d.created_at desc
                     limit 1

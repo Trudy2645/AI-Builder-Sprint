@@ -9,7 +9,7 @@ import { ProductFields, SupplyFields, TermsFields } from "../../components/listi
 import { RiskReviewStep } from "../../components/listings/RiskReviewStep";
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
-import { createEmptyDraft, type ListingDraft } from "../../store/ListingsContext";
+import { createEmptyDraft, type ListingDraft, useListings } from "../../store/ListingsContext";
 import { friendlyApiError, registerPublishedSellerListing, uploadAndProcessSourceContract, type ContractProcessingStage } from "../../lib/api";
 
 const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
@@ -50,6 +50,7 @@ function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDr
 export function UploadOcrPage() {
   const { t } = useApp();
   const navigate = useNavigate();
+  const { refreshListings } = useListings();
 
   const [step, setStep] = useState(0);
   const [file, setFile] = useState<File | null>(null);
@@ -147,6 +148,7 @@ export function UploadOcrPage() {
     setPublishing(true);
     try {
       await registerPublishedSellerListing({ ...draft, listingId: processedListing.id, baseVersionNo: processedListing.versionNo, sourceDocumentId: processedListing.documentId } as Required<ListingDraft>);
+      await refreshListings();
       toast.success(t("pub.published"));
       navigate("/seller/listings");
     } catch (error) { toast.error(friendlyApiError(error)); } finally { setPublishing(false); }

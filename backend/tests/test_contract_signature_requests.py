@@ -131,7 +131,9 @@ class FakeModusignClient:
         if self.unavailable:
             raise ModusignUnavailableError
         assert template_id == "template-1"
-        assert len(participants) == 2
+        assert len(participants) == 1
+        assert participants[0].role == "바이어"
+        assert participants[0].email == "buyer@example.test"
         return {"id": "modusign-doc-1", "status": "ON_PROCESSING"}
 
     async def get_document(self, document_id: str) -> dict[str, object]:
