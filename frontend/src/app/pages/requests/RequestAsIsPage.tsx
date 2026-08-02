@@ -180,8 +180,8 @@ export function RequestAsIsPage() {
           <Label htmlFor="nights">숙박 일수</Label>
           <Input id="nights" type="number" min={1} value={nights} onChange={(e) => setNights(e.target.value)} />
         </div>
-        <div className="flex flex-col gap-1.5"><Label htmlFor="startDate">이용 시작일 *</Label><Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div>
-        <div className="flex flex-col gap-1.5"><Label htmlFor="endDate">이용 종료일 *</Label><Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div>
+        <div className="flex flex-col gap-1.5"><Label htmlFor="startDate">이용 시작일 *</Label><Input id="startDate" type="date" min={contract.start !== "미정" ? contract.start : undefined} max={contract.end !== "미정" ? contract.end : undefined} value={startDate} onChange={(e) => setStartDate(e.target.value)} /><span className="text-xs text-muted-foreground">공고 가능 기간 안에서 선택하세요.</span></div>
+        <div className="flex flex-col gap-1.5"><Label htmlFor="endDate">이용 종료일 *</Label><Input id="endDate" type="date" min={contract.start !== "미정" ? contract.start : undefined} max={contract.end !== "미정" ? contract.end : undefined} value={endDate} onChange={(e) => setEndDate(e.target.value)} /><span className="text-xs text-muted-foreground">공고 종료일과 같을 필요는 없습니다.</span></div>
         <div className="flex flex-col gap-1.5">
           <Label>{t("asis.currency")}</Label>
           <div className="flex h-9 items-center rounded-md px-3 text-sm" style={{ background: "var(--muted)" }}>

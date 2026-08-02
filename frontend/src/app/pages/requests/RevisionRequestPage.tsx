@@ -154,7 +154,7 @@ export function RevisionRequestPage() {
         <div className="whitespace-nowrap text-muted-foreground" style={{ fontSize: "13px" }}>{t("asis.contract")}</div>
         <div style={{ color: "var(--navy)", fontWeight: 600 }}>{contract.seller} · {contract.title}</div>
       </div>
-      <div className="mb-4 grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2"><div><label className="text-sm">이용 시작일 *</label><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div><div><label className="text-sm">이용 종료일 *</label><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div></div>
+      <div className="mb-4 grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2"><div><label className="text-sm">이용 시작일 *</label><Input type="date" min={contract.start !== "미정" ? contract.start : undefined} max={contract.end !== "미정" ? contract.end : undefined} value={startDate} onChange={(e) => setStartDate(e.target.value)} /><span className="text-xs text-muted-foreground">공고 가능 기간 안에서 선택하세요.</span></div><div><label className="text-sm">이용 종료일 *</label><Input type="date" min={contract.start !== "미정" ? contract.start : undefined} max={contract.end !== "미정" ? contract.end : undefined} value={endDate} onChange={(e) => setEndDate(e.target.value)} /><span className="text-xs text-muted-foreground">공고 종료일과 같을 필요는 없습니다.</span></div></div>
 
       <div className="flex flex-col gap-4">
         {drafts.map((d, i) => (
