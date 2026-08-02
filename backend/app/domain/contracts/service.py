@@ -11,7 +11,9 @@ from fastapi import status
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from app.ai.schemas import DocumentParseResult
 from app.core.errors import AppError
+from app.domain.contracts.signature_fields import signature_field_candidates
 from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.modusign import (
@@ -443,6 +445,7 @@ class ContractService:
         template_id: str | None,
         source_pdf: bytes | None = None,
         source_page_count: int | None = None,
+        source_field_candidates: list[dict[str, Any]] | None = None,
     ) -> SignatureRequestCreated:
         if source_pdf is None and not template_id:
             self._raise(
@@ -509,16 +512,9 @@ class ContractService:
                     buyer=ModusignParticipant(
                         role="바이어", name=payload.buyer.name, email=payload.buyer.email
                     ),
-                    buyer_fields=[
-                        ModusignParticipantField(
-                            field_type="SIGNATURE",
-                            data_label="buyer_signature",
-                            position={"page": source_page_count or 1, "x": 0.56, "y": 0.76},
-                            size={"width": 0.30, "height": 0.06},
-                            required=True,
-                            signature_types=["SIGN"],
-                        ),
-                    ],
+                    buyer_fields=self._source_pdf_fields(
+                        source_field_candidates, source_page_count
+                    ),
                 )
             else:
                 provider_document = await client.create_signature_request(
@@ -558,6 +554,42 @@ class ContractService:
         except (ContractStateConflictError, ContractRepositoryUnavailableError) as exc:
             self._database_unavailable(exc)
         return self._signature_response(signature_request)
+
+    @staticmethod
+    def _source_pdf_fields(
+        candidates: list[dict[str, Any]] | None, page_count: int | None
+    ) -> list[ModusignParticipantField]:
+        fields: list[ModusignParticipantField] = []
+        for candidate in candidates or []:
+            if not isinstance(candidate.get("position"), dict):
+                continue
+            fields.append(
+                ModusignParticipantField(
+                    field_type=str(candidate.get("field_type", "TEXT")),
+                    data_label=str(candidate.get("data_label")),
+                    position=candidate["position"],
+                    size=candidate.get("size"),
+                    required=bool(candidate.get("required", False)),
+                    signature_types=["SIGN"]
+                    if candidate.get("field_type") == "SIGNATURE"
+                    else None,
+                    text_style={"size": 12, "font": "NOTO_SANS", "align": "LEFT"}
+                    if candidate.get("field_type") == "TEXT"
+                    else None,
+                )
+            )
+        if any(field.field_type == "SIGNATURE" for field in fields):
+            return fields
+        fields.append(
+            ModusignParticipantField(
+                field_type="SIGNATURE",
+                data_label="buyer_signature",
+                position={"page": page_count or 1, "x": 0.56, "y": 0.76},
+                size={"width": 0.30, "height": 0.06},
+                signature_types=["SIGN"],
+            )
+        )
+        return fields
 
     async def dispatch_signature_request_from_snapshots(
         self,
@@ -617,6 +649,22 @@ class ContractService:
                 "SOURCE_CONTRACT_UNAVAILABLE",
                 "The original PDF could not be prepared for signing.",
             )
+        candidates = source.extracted_data.get("signature_field_candidates")
+        if not candidates and source.parsed_storage_bucket and source.parsed_storage_object_path:
+            try:
+                parsed_bytes = b"".join(
+                    [
+                        chunk
+                        async for chunk in storage.iter_object(
+                            source.parsed_storage_bucket, source.parsed_storage_object_path
+                        )
+                    ]
+                )
+                candidates = self._signature_field_candidates(
+                    DocumentParseResult.model_validate_json(parsed_bytes)
+                )
+            except (StorageProviderError, ValueError):
+                candidates = []
         try:
             source_page_count = len(PdfReader(BytesIO(source_pdf), strict=False).pages)
         except (PdfReadError, ValueError):
@@ -639,7 +687,12 @@ class ContractService:
             template_id,
             source_pdf,
             source_page_count,
+            candidates if isinstance(candidates, list) else [],
         )
+
+    @staticmethod
+    def _signature_field_candidates(parsed: DocumentParseResult) -> list[dict[str, Any]]:
+        return signature_field_candidates(parsed)
 
     async def _mark_signature_failed(self, signature_request_id: UUID) -> None:
         try:
