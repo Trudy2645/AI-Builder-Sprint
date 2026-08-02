@@ -197,6 +197,32 @@ export function getPublicListings(): Promise<PublicListing[]> {
   return apiFetch<PublicListing[]>("/public/listings");
 }
 
+export type AuthenticatedDemoSession = {
+  accessToken: string;
+  refreshToken: string;
+  email: string;
+  organizationId?: string;
+};
+
+export async function loginWithDemoRole(role: "buyer" | "seller"): Promise<AuthenticatedDemoSession> {
+  const result = await apiFetch<{
+    email: string;
+    session: { access_token: string; refresh_token: string };
+  }>("/auth/demo-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  const me = await apiFetch<{ organizations: Array<{ id: string }> }>("/me", {
+    headers: { Authorization: `Bearer ${result.session.access_token}` },
+  });
+  const organizationId = me.organizations[0]?.id;
+  window.localStorage.setItem("busanlink.access_token", result.session.access_token);
+  window.localStorage.setItem("busanlink.refresh_token", result.session.refresh_token);
+  if (organizationId) window.localStorage.setItem("busanlink.organization_id", organizationId);
+  return { accessToken: result.session.access_token, refreshToken: result.session.refresh_token, email: result.email, organizationId };
+}
+
 export type BuyerSigningField = {
   field_type: "TEXT" | "SIGNATURE" | "CHECKBOX";
   data_label: string;
