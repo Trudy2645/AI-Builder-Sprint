@@ -105,8 +105,14 @@ export async function apiFetch<Data>(path: string, init: RequestInit = {}): Prom
  * Creates a draft listing, uploads a contract, waits for the backend's AI workflow,
  * and returns only the structured candidate intended for seller confirmation.
  */
-export async function uploadAndProcessSourceContract(file: File): Promise<UploadedDocumentProcessingResult> {
+export type ContractProcessingStage = "uploading" | "ocr" | "extracting" | "matching" | "finalizing";
+
+export async function uploadAndProcessSourceContract(
+  file: File,
+  onStage?: (stage: ContractProcessingStage) => void,
+): Promise<UploadedDocumentProcessingResult> {
   const session = getApiSession();
+  onStage?.("uploading");
   const sha256 = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
   const contentSha256 = Array.from(new Uint8Array(sha256))
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -162,6 +168,7 @@ export async function uploadAndProcessSourceContract(file: File): Promise<Upload
       ["Idempotency-Key", requestIdempotencyKey("document-process")],
     ]),
   });
+  onStage?.("ocr");
 
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const result = await apiFetch<{
@@ -175,6 +182,7 @@ export async function uploadAndProcessSourceContract(file: File): Promise<Upload
       headers: authenticatedHeaders(session),
     });
     if (result.status === "ready") {
+      onStage?.("finalizing");
       return {
         listingCandidate: result.listing_candidate,
         confirmationRequired: result.confirmation_required,
@@ -182,6 +190,7 @@ export async function uploadAndProcessSourceContract(file: File): Promise<Upload
         extraction: result.extraction,
       };
     }
+    onStage?.(attempt < 8 ? "extracting" : "matching");
     if (result.status === "failed") throw new Error(`AI 계약서 분석에 실패했습니다${result.failure_code ? ` (${result.failure_code})` : ""}.`);
     await new Promise((resolve) => window.setTimeout(resolve, 1000));
   }

@@ -10,7 +10,7 @@ import { RiskReviewStep, analyzeDraft } from "../../components/listings/RiskRevi
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
 import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
-import { friendlyApiError, uploadAndProcessSourceContract } from "../../lib/api";
+import { friendlyApiError, uploadAndProcessSourceContract, type ContractProcessingStage } from "../../lib/api";
 
 const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
 
@@ -56,6 +56,7 @@ export function UploadOcrPage() {
   const [applied, setApplied] = useState<Record<string, boolean>>({});
   const [analysisNotes, setAnalysisNotes] = useState<string[]>([]);
   const [extractedValues, setExtractedValues] = useState<Record<string, unknown> | null>(null);
+  const [analysisStage, setAnalysisStage] = useState<ContractProcessingStage>("uploading");
 
   const patch = (p: Partial<ListingDraft>) => setDraft((d) => ({ ...d, ...p }));
 
@@ -64,7 +65,7 @@ export function UploadOcrPage() {
     setAnalyzing(true);
     setAnalyzed(false);
     try {
-      const result = await uploadAndProcessSourceContract(file);
+      const result = await uploadAndProcessSourceContract(file, setAnalysisStage);
       setDraft((d) => ({ ...d, ...candidateToDraft(result.listingCandidate) }));
       setAnalysisNotes([...result.confirmationRequired, ...result.validationWarnings]);
       setExtractedValues(result.extraction);
@@ -184,7 +185,13 @@ export function UploadOcrPage() {
             {analyzing ? (
               <>
                 <Loader2 className="size-10 animate-spin" style={{ color: "var(--ocean)" }} />
-                <p style={{ color: "var(--navy)", fontWeight: 600 }}>{t("ocr.analyzing")}</p>
+                <p style={{ color: "var(--navy)", fontWeight: 600 }}>{stageLabel(analysisStage)}</p>
+                <div className="w-full max-w-md">
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${stageProgress(analysisStage)}%`, background: "var(--ocean)" }} />
+                  </div>
+                  <div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>업로드</span><span>OCR</span><span>추출</span><span>매칭</span><span>완료</span></div>
+                </div>
               </>
             ) : analyzed ? (
               <>
@@ -303,4 +310,12 @@ export function UploadOcrPage() {
       </div>
     </div>
   );
+}
+
+function stageLabel(stage: ContractProcessingStage): string {
+  return { uploading: "계약서 업로드 준비 중...", ocr: "문서 OCR 분석 중...", extracting: "계약 조건 추출 중...", matching: "Solar가 공고 필드에 매칭 중...", finalizing: "결과 정리 중..." }[stage];
+}
+
+function stageProgress(stage: ContractProcessingStage): number {
+  return { uploading: 15, ocr: 35, extracting: 58, matching: 82, finalizing: 95 }[stage];
 }
