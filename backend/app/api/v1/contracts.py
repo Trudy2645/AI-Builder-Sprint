@@ -204,6 +204,7 @@ async def dispatch_contract_signature_request(
     actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
     service: Annotated[ContractService, Depends(get_contract_service)],
     client: Annotated[ModusignClient, Depends(get_modusign_client)],
+    storage: Annotated[StorageProvider, Depends(get_storage_provider)],
     settings: Annotated[Settings, Depends(get_settings)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
     organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
@@ -216,6 +217,7 @@ async def dispatch_contract_signature_request(
         idempotency_key,
         client,
         settings.modusign_template_id,
+        storage,
     )
     return typed_envelope(request, result)
 

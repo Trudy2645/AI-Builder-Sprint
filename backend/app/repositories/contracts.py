@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -10,6 +11,8 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +180,12 @@ class SignatureContactRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class SignatureSourceDocumentRecord:
+    storage_bucket: str
+    storage_object_path: str
+
+
+@dataclass(frozen=True, slots=True)
 class SellerListingRequestCountRecord:
     listing_id: UUID
     listing_title: str
@@ -279,6 +288,10 @@ class ContractRepository(Protocol):
     async def get_signature_contacts(
         self, contract_id: UUID, contract_version_id: UUID
     ) -> SignatureContactRecord | None: ...
+
+    async def get_signature_source_document(
+        self, contract_id: UUID, contract_version_id: UUID
+    ) -> SignatureSourceDocumentRecord | None: ...
 
     async def mark_signature_request_dispatched(
         self, signature_request_id: UUID, provider_document_id: str, provider_status: str
@@ -398,6 +411,32 @@ class SqlAlchemyContractRepository:
             raise ContractRepositoryUnavailableError from exc
         row = result.mappings().one_or_none()
         return SignatureContactRecord(**row) if row is not None else None
+
+    async def get_signature_source_document(
+        self, contract_id: UUID, contract_version_id: UUID
+    ) -> SignatureSourceDocumentRecord | None:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select d.storage_bucket, d.storage_object_path
+                    from public.contracts c
+                    join public.documents d
+                      on d.listing_id = c.listing_id
+                     and d.purpose = 'source_contract'
+                     and d.status in ('uploaded', 'ready')
+                    where c.id = :contract_id and c.current_version_id = :contract_version_id
+                    order by d.created_at desc
+                    limit 1
+                    """
+                ),
+                {"contract_id": contract_id, "contract_version_id": contract_version_id},
+            )
+        except SQLAlchemyError as exc:
+            logger.exception("signature source document lookup failed")
+            raise ContractRepositoryUnavailableError from exc
+        row = result.mappings().one_or_none()
+        return SignatureSourceDocumentRecord(**row) if row is not None else None
 
     async def _claim_idempotency(
         self, actor_user_id: UUID, operation: str, key: str, request_hash: str
@@ -1033,13 +1072,20 @@ class SqlAlchemyContractRepository:
                     contract_status = "signing"
                 if not already_approved:
                     if not all_approved:
-                        await self._notify_contract_approval_counterparty(
-                            contract_id=contract_id,
-                            contract_version_id=contract_version_id,
-                            buyer_user_id=context.buyer_user_id,
-                            seller_organization_id=context.seller_organization_id,
-                            approved_role=party_role,
-                        )
+                        # A notification is auxiliary.  Older deployments can
+                        # temporarily lack its deduplication migration; that
+                        # must never roll back the legally relevant approval.
+                        try:
+                            async with self._session.begin_nested():
+                                await self._notify_contract_approval_counterparty(
+                                    contract_id=contract_id,
+                                    contract_version_id=contract_version_id,
+                                    buyer_user_id=context.buyer_user_id,
+                                    seller_organization_id=context.seller_organization_id,
+                                    approved_role=party_role,
+                                )
+                        except SQLAlchemyError:
+                            pass
                     await self._session.execute(
                         text(
                             """
@@ -1047,10 +1093,10 @@ class SqlAlchemyContractRepository:
                                 contract_id, actor_user_id, actor_role, event_type,
                                 target_type, target_id, event_data
                             ) values (
-                                :contract_id, :actor_user_id, :party_role,
+                                :contract_id, :actor_user_id, cast(:party_role as text),
                                 'contract_version_approved', 'contract_version',
                                 :contract_version_id,
-                                jsonb_build_object('party_role', :party_role)
+                                jsonb_build_object('party_role', cast(:party_role as text))
                             )
                             """
                         ),
@@ -1076,6 +1122,7 @@ class SqlAlchemyContractRepository:
         ):
             raise
         except SQLAlchemyError as exc:
+            logger.exception("contract version approval persistence failed")
             raise ContractRepositoryUnavailableError from exc
 
     async def begin_signature_request(

@@ -9,7 +9,7 @@ import { ProductFields, SupplyFields, TermsFields } from "../../components/listi
 import { RiskReviewStep } from "../../components/listings/RiskReviewStep";
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
-import { createEmptyDraft, type ListingDraft } from "../../store/ListingsContext";
+import { createEmptyDraft, type ListingDraft, useListings } from "../../store/ListingsContext";
 import { friendlyApiError, registerPublishedSellerListing } from "../../lib/api";
 import { formatKRW } from "../../data/contracts";
 
@@ -18,6 +18,7 @@ const STEPS = ["wz.product", "wz.supply", "wz.terms", "wz.generate", "wz.risk", 
 export function WriteContractPage() {
   const { t } = useApp();
   const navigate = useNavigate();
+  const { refreshListings } = useListings();
 
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<ListingDraft>(() => createEmptyDraft("write"));
@@ -98,6 +99,7 @@ export function WriteContractPage() {
     setPublishing(true);
     try {
       await registerPublishedSellerListing(draft as Required<ListingDraft>);
+      await refreshListings();
       toast.success(t("pub.published"));
       navigate("/seller/listings");
     } catch (error) {

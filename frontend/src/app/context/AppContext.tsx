@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { translate, type Lang } from "../i18n/translations";
 import { setAccessToken } from "../lib/api";
+import { getAccessToken } from "../lib/api";
 
 export type Role = "buyer" | "seller";
 
@@ -40,9 +41,12 @@ function readStoredSession(): StoredSession | null {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const storedSession = readStoredSession();
+  // A remembered UI role alone is not authentication.  Do not render protected
+  // pages as logged in after the API token has been removed or expired.
+  const authenticatedSession = storedSession && getAccessToken() ? storedSession : null;
   const [lang, setLang] = useState<Lang>("ko");
-  const [companyName, setCompanyName] = useState<string>(storedSession?.companyName ?? "");
-  const [currentRole, setCurrentRole] = useState<Role | null>(storedSession?.role ?? null);
+  const [companyName, setCompanyName] = useState<string>(authenticatedSession?.companyName ?? "");
+  const [currentRole, setCurrentRole] = useState<Role | null>(authenticatedSession?.role ?? null);
   const [isDemoSession, setIsDemoSession] = useState(false);
 
   const login = (role: Role, company?: string, isDemo = false) => {

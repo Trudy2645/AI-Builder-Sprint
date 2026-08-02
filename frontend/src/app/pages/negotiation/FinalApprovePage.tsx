@@ -16,6 +16,8 @@ import {
   friendlyApiError,
   getContractApprovals,
   getContractDetail,
+  getMyContracts,
+  getSellerReceivedContracts,
   type ApprovalStatus,
   type ContractDetail,
 } from "../../lib/api";
@@ -74,6 +76,7 @@ export function FinalApprovePage() {
   const [approval, setApproval] = useState<ApprovalStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingContracts, setPendingContracts] = useState<Array<{ id: string; title: string; status: string }>>([]);
   const { buyerApproved, sellerApproved, bothApproved, approve: approveDemo } = useNegotiation();
 
   useEffect(() => {
@@ -96,6 +99,16 @@ export function FinalApprovePage() {
       .catch((error) => toast.error(friendlyApiError(error)))
       .finally(() => setLoading(false));
   }, [contractId, versionId]);
+
+  useEffect(() => {
+    if (contractId || versionId) return;
+    const load = role === "buyer"
+      ? getMyContracts().then((items) => items.map((item) => ({ id: item.id, title: item.listing_title, status: item.status })))
+      : getSellerReceivedContracts().then((items) => items.map((item) => ({ id: item.contract_id, title: item.listing_title, status: item.status })));
+    void load
+      .then((items) => setPendingContracts(items.filter((item) => ["seller_review", "revision_requested", "signing"].includes(item.status))))
+      .catch((error) => toast.error(friendlyApiError(error)));
+  }, [contractId, versionId, role]);
 
   const approveApi = async () => {
     if (!contractId || !versionId) return;
@@ -155,6 +168,22 @@ export function FinalApprovePage() {
       </div>
     );
   }
+
+  return (
+    <div className="mx-auto max-w-[860px]">
+      <PageHeader title="최종안 승인" description="계약을 선택한 뒤 현재 버전과 양측 승인 상태를 확인하세요." />
+      <div className="rounded-xl border border-border bg-card p-5">
+        {pendingContracts.length === 0 ? <p className="py-8 text-center text-muted-foreground">최종안 확인이 필요한 계약이 없습니다.</p> : (
+          <div className="space-y-3">{pendingContracts.map((contract) => (
+            <div key={contract.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4">
+              <div><p className="font-semibold" style={{ color: "var(--navy)" }}>{contract.title}</p><p className="mt-1 text-sm text-muted-foreground">{contract.status === "signing" ? "모두싸인 서명 대기" : "최종안 승인 대기"}</p></div>
+              <Button onClick={() => void getContractDetail(contract.id).then((detail) => navigate(`${base}/signing?contractId=${contract.id}&versionId=${detail.current_version.id}`)).catch((error) => toast.error(friendlyApiError(error)))}>최종안 확인</Button>
+            </div>
+          ))}</div>
+        )}
+      </div>
+    </div>
+  );
 
   const myApproved = role === "buyer" ? buyerApproved : sellerApproved;
   const requestMore = () => {

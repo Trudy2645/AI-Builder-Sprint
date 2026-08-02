@@ -14,6 +14,7 @@ import { getContract, formatKRW, type Contract } from "../../data/contracts";
 import { createPublicContractRequest, friendlyApiError, getPublicListingAsContract } from "../../lib/api";
 import { buyerProfile } from "../../data/profile";
 import { FieldError } from "../../components/auth/AuthFields";
+import { useRequests } from "../../store/RequestsContext";
 
 function ReadonlyRow({ label, value }: { label: string; value: string }) {
   return (
@@ -26,6 +27,7 @@ function ReadonlyRow({ label, value }: { label: string; value: string }) {
 
 export function RequestAsIsPage() {
   const { t } = useApp();
+  const { refreshRequests } = useRequests();
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -88,13 +90,14 @@ export function RequestAsIsPage() {
       return;
     }
     try {
-      const created = await createPublicContractRequest(contract.id, {
+      await createPublicContractRequest(contract.id, {
         people: parseInt(guests, 10) || 1, quantity: roomsNum, quantity_unit: quantityUnit,
         nights: nightsNum, start_date: startDate, end_date: endDate, currency,
         request_message: message, initial_request_kind: "as_is",
       });
       toast.success("계약 요청이 서버에 저장되었습니다. 셀러 검토가 끝난 뒤 전자서명을 진행할 수 있습니다.");
-      navigate(`/buyer/contracts/${created.contract_id}/status`);
+      await refreshRequests();
+      navigate("/buyer/sent");
     } catch (error) { toast.error(friendlyApiError(error)); }
   };
 

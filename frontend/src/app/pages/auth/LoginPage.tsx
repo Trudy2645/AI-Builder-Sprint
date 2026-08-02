@@ -11,7 +11,7 @@ import { friendlyApiError, loginWithDemoRole, loginWithPassword } from "../../li
 import { toast } from "sonner";
 
 export function LoginPage() {
-  const { t, loginWithSession } = useApp();
+  const { t, login, loginWithSession } = useApp();
   const navigate = useNavigate();
   const [email, setEmail] = useState("buyer@globaltrip.jp");
   const [password, setPassword] = useState("demo-password");
@@ -27,6 +27,15 @@ export function LoginPage() {
       : "buyer";
   };
 
+  const demoCompany = (role: Role) => role === "seller" ? "해운대 오션스테이" : "GlobalTrip Japan";
+  const isDemoEmail = (value: string) => {
+    const normalized = value.toLocaleLowerCase();
+    return normalized.includes("buyer@globaltrip") ||
+      normalized.includes("seller") ||
+      normalized.includes("ocean") ||
+      normalized.includes("haeundae");
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -38,19 +47,28 @@ export function LoginPage() {
       loginWithSession(role, email, result.session.access_token, result.organization_id);
       navigate(`/${role}`);
     } catch (error) {
+      if (error instanceof TypeError && isDemoEmail(email)) {
+        const role = inferDemoRole(email);
+        login(role, demoCompany(role), true);
+        navigate(`/${role}`);
+        return;
+      }
       setErrorMessage(friendlyApiError(error));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const demoLogin = async (r: Role) => {
+  const demoLogin = async (r: Role, company: string) => {
+    setErrorMessage(null);
     try {
       const session = await loginWithDemoRole(r);
-      loginWithSession(r, session.email, session.accessToken, session.organizationId);
+      loginWithSession(r, company, session.accessToken, session.organizationId);
       navigate(`/${r}`);
     } catch (error) {
-      toast.error(friendlyApiError(error));
+      const message = `데모 로그인에 실패했습니다: ${friendlyApiError(error)}`;
+      setErrorMessage(message);
+      toast.error(message);
     }
   };
 
@@ -92,7 +110,7 @@ export function LoginPage() {
           type="button"
           variant="outline"
           className="w-full justify-start gap-2 whitespace-nowrap"
-          onClick={() => void demoLogin("buyer")}
+          onClick={() => demoLogin("buyer", "GlobalTrip Japan")}
         >
           <Plane className="size-4 shrink-0" style={{ color: "var(--ocean)" }} />
           바이어 · rlawldbs1237@gmail.com
@@ -101,7 +119,7 @@ export function LoginPage() {
           type="button"
           variant="outline"
           className="w-full justify-start gap-2 whitespace-nowrap"
-          onClick={() => void demoLogin("seller")}
+          onClick={() => demoLogin("seller", "해운대 오션스테이")}
         >
           <Building2 className="size-4 shrink-0" style={{ color: "var(--teal)" }} />
           셀러 · kimjiyoun2645@naver.com

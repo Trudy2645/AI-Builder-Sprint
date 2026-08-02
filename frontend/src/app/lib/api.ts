@@ -115,6 +115,7 @@ export function friendlyApiError(error: unknown): string {
   if (error instanceof TypeError) {
     return "서버에 연결하지 못했습니다. 인터넷 연결과 서버 실행 상태를 확인해 주세요.";
   }
+  if (error instanceof Error) return error.message;
   return "처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
@@ -236,9 +237,9 @@ export async function uploadAndProcessSourceContract(
     }
     onStage?.(attempt < 8 ? "extracting" : "matching");
     if (result.status === "failed") throw new Error(`AI 계약서 분석에 실패했습니다${result.failure_code ? ` (${result.failure_code})` : ""}.`);
-    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    await new Promise((resolve) => window.setTimeout(resolve, 4000));
   }
-  throw new Error("AI 분석 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
+  throw new Error("AI 계약서 분석이 2분 안에 끝나지 않았습니다. 잠시 후 재시도하거나 직접 입력해 주세요.");
 }
 
 export type SellerListingDraftInput = {
@@ -477,8 +478,7 @@ export type ContractListItem = {
 };
 
 export async function getMyContracts(): Promise<ContractListItem[]> {
-  const contracts = await apiFetch<ContractListItem[]>("/me/contracts");
-  return contracts.filter((contract) => !isHiddenTestRecord(contract));
+  return apiFetch<ContractListItem[]>("/me/contracts");
 }
 
 export type SellerContractListItem = {
@@ -504,7 +504,7 @@ export async function getReceivedContracts(): Promise<SellerContractListItem[]> 
   const contracts = await apiFetch<SellerContractListItem[]>("/seller/contracts/received", {
     headers: authenticatedHeaders(session),
   });
-  return contracts.filter((contract) => !isHiddenTestRecord(contract));
+  return contracts;
 }
 
 export const getSellerReceivedContracts = getReceivedContracts;
@@ -619,8 +619,7 @@ export type ContractVersionCompare = {
 };
 
 export async function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
-  const versions = await apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
-  return versions.filter((version) => !isHiddenTestRecord(version));
+  return apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
 }
 
 export function compareContractVersions(
@@ -716,11 +715,7 @@ export function createRevisionRequest(
 }
 
 export async function getRevisionRequest(revisionRequestId: string): Promise<RevisionRequestResponse> {
-  const revision = await apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
-  if (isHiddenTestRecord(revision)) {
-    throw new ApiError({ code: "REVISION_REQUEST_NOT_FOUND", message: "수정 요청을 찾을 수 없습니다." });
-  }
-  return revision;
+  return apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
 }
 
 export function sendRevisionRequest(revisionRequestId: string): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
@@ -745,8 +740,7 @@ export type SellerRevisionRequestListItem = {
 };
 
 export async function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
-  const revisions = await apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
-  return revisions.filter((revision) => !isHiddenTestRecord(revision));
+  return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
 }
 
 export function decideRevisionRequest(
@@ -868,11 +862,7 @@ export type ApprovalStatus = {
 };
 
 export async function getContractDetail(contractId: string): Promise<ContractDetail> {
-  const contract = await apiFetch<ContractDetail>(`/contracts/${contractId}`);
-  if (isHiddenTestRecord(contract)) {
-    throw new ApiError({ code: "CONTRACT_NOT_FOUND", message: "계약을 찾을 수 없습니다." });
-  }
-  return contract;
+  return apiFetch<ContractDetail>(`/contracts/${contractId}`);
 }
 
 export function getContractApprovals(contractId: string, versionId: string): Promise<ApprovalStatus> {
@@ -955,18 +945,6 @@ export type PublicListing = {
   attention_required_count: number;
 };
 
-const demoSeedListingIds = new Set([
-  "11111111-1111-4111-8111-111111111111",
-  "22222222-2222-4222-8222-222222222222",
-  "33333333-3333-4333-8333-333333333333",
-]);
-
-function isHiddenTestListing(listing: PublicListing): boolean {
-  if (import.meta.env.VITE_SHOW_TEST_DATA === "true") return false;
-  const marker = `${listing.title} ${listing.seller.name}`.toLocaleLowerCase();
-  return demoSeedListingIds.has(listing.id) || marker.includes("e2e");
-}
-
 export type SellerListingSummary = {
   id: string;
   title: string;
@@ -1045,8 +1023,7 @@ export function getSellerListing(listingId: string): Promise<SellerListingDetail
 }
 
 export async function getPublicListings(): Promise<PublicListing[]> {
-  const listings = await apiFetch<PublicListing[]>("/public/listings");
-  return listings.filter((listing) => !isHiddenTestListing(listing));
+  return apiFetch<PublicListing[]>("/public/listings?contract_available_only=true");
 }
 
 export type PublicListingClause = {
@@ -1087,12 +1064,7 @@ export function getPublicListing(
 ): Promise<PublicListingDetail> {
   return apiFetch<PublicListingDetail>(
     `/public/listings/${encodeURIComponent(listingId)}?locale=${encodeURIComponent(locale)}`,
-  ).then((listing) => {
-    if (isHiddenTestListing(listing)) {
-      throw new ApiError({ code: "LISTING_NOT_FOUND", message: "요청한 공고를 찾을 수 없습니다." });
-    }
-    return listing;
-  });
+  );
 }
 
 export function getPublicSourceDocumentUrl(listingId: string): Promise<{ document_id: string; download_url: string; expires_at: string }> {
