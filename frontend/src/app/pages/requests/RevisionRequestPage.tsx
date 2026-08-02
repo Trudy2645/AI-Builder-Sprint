@@ -9,7 +9,7 @@ import { ContractStepper } from "../../components/contract/ContractStepper";
 import { RevisionCard, type RevisionDraft } from "../../components/requests/RevisionCard";
 import { useApp } from "../../context/AppContext";
 import { getContract, type Contract } from "../../data/contracts";
-import { createPublicContractRequest, createRevisionRequest, friendlyApiError, getPublicListingAsContract, sendRevisionRequest } from "../../lib/api";
+import { createPublicContractRequest, createRevisionRequest, friendlyApiError, getContractDetail, getPublicListingAsContract, sendRevisionRequest } from "../../lib/api";
 import { useRequests } from "../../store/RequestsContext";
 
 let counter = 0;
@@ -85,14 +85,20 @@ export function RevisionRequestPage() {
         start_date: startDate, end_date: endDate, currency: "KRW", initial_request_kind: "revision",
         request_message: valid.map((d) => `${d.clauseNo}: ${d.requested}${d.reason ? ` (사유: ${d.reason})` : ""}`).join("\n"),
       });
+      // 계약 생성 시 공고 조항은 새 계약 조항으로 snapshot된다. 서버가 반환한
+      // 계약 조항 ID를 사용해야 수정요청이 다른 계약의 조항으로 오인되지 않는다.
+      const createdContract = await getContractDetail(created.contract_id);
+      const contractClauses = createdContract.current_version.clauses;
       const revision = await createRevisionRequest(created.contract_id, {
         base_version_no: created.version_no,
         message: valid.map((d) => d.reason).filter(Boolean).join("\n") || "바이어가 계약 조항 수정을 요청했습니다.",
         items: valid.map((d) => {
           const clause = contract.clauses.find((c) => c.no === d.clauseNo);
+          const contractClause = contractClauses.find((c) => c.title === clause?.title && c.body === clause?.text)
+            ?? contractClauses[Number.parseInt(d.clauseNo.replace(/\D/g, ""), 10) - 1];
           return {
             request_type: d.changeType === "delete" ? "delete" : d.changeType === "add" ? "add" : "modify",
-            clause_id: d.changeType === "add" ? undefined : clause?.id,
+            clause_id: d.changeType === "add" ? undefined : contractClause?.id,
             reason: d.reason.trim() || "계약 조건 수정을 요청합니다.",
             requested_text: d.changeType === "delete" ? undefined : d.requested.trim(),
           };

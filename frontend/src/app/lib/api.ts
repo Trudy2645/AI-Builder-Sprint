@@ -121,7 +121,9 @@ export function friendlyApiError(error: unknown): string {
       EXCHANGE_RATE_UNAVAILABLE: "환율 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
       IDEMPOTENCY_CONFLICT: "같은 요청이 이미 처리 중이거나 처리되었습니다. 잠시 후 목록을 새로고침해 주세요.",
       IDEMPOTENCY_KEY_REUSED: "이미 사용한 요청 키입니다. 화면을 새로고침한 뒤 다시 시도해 주세요.",
-      CONTRACT_ACCESS_DENIED: "이 계약을 볼 권한이 없습니다.",
+      CONTRACT_ACCESS_DENIED: error.message.includes("referenced clause")
+        ? "선택한 조항이 현재 계약과 일치하지 않습니다. 계약서를 새로고침한 뒤 조항을 다시 선택해 주세요."
+        : "이 계약을 볼 권한이 없습니다.",
       INVALID_STATE_TRANSITION: "현재 계약 상태에서는 이 작업을 진행할 수 없습니다.",
       ORGANIZATION_HEADER_REQUIRED: "셀러 조직 정보가 없어 요청할 수 없습니다. 다시 로그인해 주세요.",
       UNSUPPORTED_DISPLAY_CURRENCY: "현재는 상품 기준 통화로만 예상 금액을 계산할 수 있습니다.",
@@ -479,7 +481,7 @@ export type ContractDetail = {
   listing_title: string;
   status: string;
   parties: Array<{ role: "buyer" | "seller"; name: string }>;
-  current_version: { id: string; version_no: number; title: string; body: string };
+  current_version: { id: string; version_no: number; title: string; body: string; clauses: Array<{ id: string; clause_order: number; title: string; body: string }> };
 };
 
 export type ApprovalStatus = {
