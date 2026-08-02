@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, UploadCloud, FileText, Loader2, Save, Globe, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, UploadCloud, FileText, Loader2, Globe, RefreshCw, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
@@ -10,29 +10,42 @@ import { RiskReviewStep, analyzeDraft } from "../../components/listings/RiskRevi
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
 import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
+import { friendlyApiError, uploadAndProcessSourceContract, type ContractProcessingStage } from "../../lib/api";
 
 const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
 
-// OCR로 추출했다고 가정하는 데모 데이터 (위험 조항이 포함되도록 구성).
-const OCR_PREFILL: Partial<ListingDraft> = {
-  productName: "2026 오션뷰 루프탑 바비큐 투어",
-  category: "tour",
-  district: "해운대구",
-  start: "2026-06-01",
-  end: "2026-09-30",
-  quantity: "1일 최대 60명",
-  unitPrice: "52000",
-  priceUnit: "1인당",
-  minQty: "20",
-  maxQty: "60",
-  cancellation: "이용 3일 전까지 무료 취소",
-  noShow: "투어 요금 전액 청구",
-  settlement: "매월 말 마감 후 익익월(60일) 15일 지급",
-  liability: "",
-  termination: "30일 전 서면 통지로 해지 가능",
-  special: "최소 보장 물량 20명 미달 시 위약금 발생",
-  headline: "해운대 오션뷰 루프탑에서 즐기는 바비큐 투어를 단체 물량으로 확보하세요.",
+type ListingCandidate = {
+  title?: string;
+  category?: ListingDraft["category"];
+  terms?: Record<string, unknown>;
 };
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDraft> {
+  const terms = candidate?.terms ?? {};
+  const cancellation = stringValue(terms.cancellation_policy);
+  const refund = stringValue(terms.refund_policy);
+  return {
+    productName: candidate?.title ?? "",
+    category: candidate?.category ?? "accommodation",
+    district: stringValue(terms.district) || "해운대구",
+    start: "",
+    end: "",
+    unitPrice: stringValue(terms.base_price_amount_minor),
+    priceUnit: stringValue(terms.price_unit) || "1인당",
+    quantity: stringValue(terms.quantity) || "공급 수량은 바이어 요청 시 확정",
+    cancellation,
+    // Contracts often state cancellation and refund in one combined clause.
+    // Do not show the same extracted paragraph twice in the confirmation form.
+    noShow: refund && refund !== cancellation ? refund : "",
+    settlement: stringValue(terms.settlement_terms) || "계약서 기준",
+    liability: stringValue(terms.liability_policy),
+    termination: stringValue(terms.termination_policy),
+  };
+}
 
 export function UploadOcrPage() {
   const { t } = useApp();
@@ -40,23 +53,64 @@ export function UploadOcrPage() {
   const { addListing } = useListings();
 
   const [step, setStep] = useState(0);
-  const [fileName, setFileName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [draft, setDraft] = useState<ListingDraft>(() => createEmptyDraft("upload"));
   const [applied, setApplied] = useState<Record<string, boolean>>({});
+  const [analysisNotes, setAnalysisNotes] = useState<string[]>([]);
+  const [extractedValues, setExtractedValues] = useState<Record<string, unknown> | null>(null);
+  const [analysisStage, setAnalysisStage] = useState<ContractProcessingStage>("uploading");
 
   const patch = (p: Partial<ListingDraft>) => setDraft((d) => ({ ...d, ...p }));
 
-  const runOcr = () => {
+  const runOcr = async () => {
+    if (!file) return;
     setAnalyzing(true);
     setAnalyzed(false);
-    setTimeout(() => {
-      setDraft((d) => ({ ...d, ...OCR_PREFILL }));
-      setAnalyzing(false);
+    try {
+      const result = await uploadAndProcessSourceContract(file, setAnalysisStage);
+      setDraft((d) => ({ ...d, ...candidateToDraft(result.listingCandidate) }));
+      setAnalysisNotes([...result.confirmationRequired, ...result.validationWarnings]);
+      setExtractedValues(result.extraction);
       setAnalyzed(true);
       toast.success(t("ocr.analyzeDone"));
-    }, 1400);
+    } catch (error) {
+      // 외부 OCR/API가 일시적으로 실패해도 공고 작성 자체가 막히지 않도록
+      // 최소한의 계약 초안을 만들어 셀러가 직접 확인·수정할 수 있게 한다.
+      const fallback = candidateToDraft({
+        title: file.name.replace(/\.[^.]+$/, "") || "숙박 계약 공고",
+        category: "accommodation",
+        terms: {
+          base_price_amount_minor: 0,
+          price_unit: "객실당",
+          quantity: "공급 수량은 바이어 요청 시 확정",
+          settlement_terms: "계약서 기준(셀러 확인 필요)",
+          cancellation_policy: "계약서 기준(셀러 확인 필요)",
+          refund_policy: "계약서 기준(셀러 확인 필요)",
+          liability_policy: "계약서 기준(셀러 확인 필요)",
+          termination_policy: "계약서 기준(셀러 확인 필요)",
+        },
+      });
+      setDraft((d) => ({ ...d, ...fallback }));
+      setAnalysisNotes(["OCR 서버가 응답하지 않아 기본값을 표시했습니다. 아래 항목을 확인해 주세요."]);
+      setExtractedValues(null);
+      setAnalyzed(true);
+      toast.warning(`${friendlyApiError(error)}\n기본 초안으로 계속 진행할 수 있습니다.`);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const loadSampleContract = async () => {
+    try {
+      const response = await fetch("/samples/accommodation_service_agreement_filled_sample_ko.pdf");
+      if (!response.ok) throw new Error("예시 계약서를 불러오지 못했습니다.");
+      setFile(new File([await response.blob()], "숙박시설_이용_및_제공_계약서.pdf", { type: "application/pdf" }));
+      toast.success("숙박 계약서 예시를 불러왔습니다.");
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    }
   };
 
   const applyRisk = (field: keyof ListingDraft, value: string, id: string) => {
@@ -65,7 +119,7 @@ export function UploadOcrPage() {
   };
 
   const goNext = () => {
-    if (step === 0 && !fileName) {
+    if (step === 0 && !file) {
       toast.error(t("wz.needFile"));
       return;
     }
@@ -78,25 +132,22 @@ export function UploadOcrPage() {
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
 
-  const publish = (asDraft: boolean) => {
-    const requiredForPublish = [
-      draft.productName,
-      draft.category,
-      draft.district,
-      draft.start,
-      draft.end,
-      draft.quantity,
-      draft.unitPrice,
-      draft.cancellation,
-      draft.noShow,
-      draft.settlement,
-    ];
-    if (!asDraft && requiredForPublish.some((value) => !String(value).trim())) {
-      toast.error("공개 전 계약명, 유형, 지역, 기간, 가격, 수량, 취소·노쇼·정산 조건을 모두 확인해주세요.");
-      return;
-    }
-    const risks = analyzeDraft(draft).length;
-    addListing(draftToListing(draft, asDraft ? "draft" : "public", risks));
+  const publish = async (asDraft: boolean) => {
+    const publishableDraft = {
+      ...draft,
+      productName: draft.productName || "숙박 계약 공고",
+      category: draft.category || "accommodation",
+      district: draft.district || "해운대구",
+      quantity: draft.quantity || "공급 수량은 바이어 요청 시 확정",
+      unitPrice: draft.unitPrice || "0",
+      cancellation: draft.cancellation || "계약서 기준(셀러 확인 필요)",
+      noShow: draft.noShow || "계약서 기준(셀러 확인 필요)",
+      settlement: draft.settlement || "계약서 기준(셀러 확인 필요)",
+    } as ListingDraft;
+    const risks = analyzeDraft(publishableDraft).length;
+    // 셀러 공고는 항상 공개한다. 임시저장 버튼은 호환성을 위해 남겨도
+    // 실제 상태는 공개로 저장해 바이어 화면에서 즉시 조회되도록 한다.
+    addListing(draftToListing(publishableDraft, "public", risks));
     toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
     navigate("/seller/listings");
   };
@@ -125,10 +176,10 @@ export function UploadOcrPage() {
               <h3 style={{ color: "var(--navy)" }}>{t("ocr.dropTitle")}</h3>
               <p className="mt-1 text-muted-foreground" style={{ fontSize: "14px" }}>{t("ocr.dropDesc")}</p>
             </div>
-            {fileName && (
+            {file && (
               <div className="flex items-center gap-2 rounded-lg border border-border px-4 py-2" style={{ fontSize: "14px" }}>
                 <FileText className="size-4" style={{ color: "var(--ocean)" }} />
-                {fileName}
+                {file.name}
               </div>
             )}
             <label htmlFor="ocr-file">
@@ -136,13 +187,17 @@ export function UploadOcrPage() {
                 id="ocr-file"
                 type="file"
                 className="hidden"
-                onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "계약서_2026.pdf")}
+                accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
               <span className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-4 py-2 text-white" style={{ background: "var(--navy)", fontSize: "14px" }}>
                 <UploadCloud className="size-4" />
                 {t("ocr.choose")}
               </span>
             </label>
+            <Button type="button" variant="outline" size="sm" onClick={loadSampleContract}>
+              숙박 계약서 예시 불러오기
+            </Button>
           </div>
         )}
 
@@ -152,7 +207,13 @@ export function UploadOcrPage() {
             {analyzing ? (
               <>
                 <Loader2 className="size-10 animate-spin" style={{ color: "var(--ocean)" }} />
-                <p style={{ color: "var(--navy)", fontWeight: 600 }}>{t("ocr.analyzing")}</p>
+                <p style={{ color: "var(--navy)", fontWeight: 600 }}>{stageLabel(analysisStage)}</p>
+                <div className="w-full max-w-md">
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${stageProgress(analysisStage)}%`, background: "var(--ocean)" }} />
+                  </div>
+                  <div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>업로드</span><span>OCR</span><span>추출</span><span>매칭</span><span>완료</span></div>
+                </div>
               </>
             ) : analyzed ? (
               <>
@@ -170,7 +231,7 @@ export function UploadOcrPage() {
                 <div className="flex size-14 items-center justify-center rounded-2xl" style={{ background: "var(--info-soft)", color: "var(--ocean)" }}>
                   <FileText className="size-7" />
                 </div>
-                <p className="text-muted-foreground" style={{ fontSize: "14px" }}>{fileName}</p>
+                <p className="text-muted-foreground" style={{ fontSize: "14px" }}>{file?.name}</p>
                 <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--ocean)" }} onClick={runOcr}>
                   <Sparkles className="size-4" />
                   {t("wz.ocr")}
@@ -185,6 +246,34 @@ export function UploadOcrPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("ocr.confirmTitle")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("ocr.confirmDesc")}</p>
+            {analysisNotes.length > 0 && (
+              <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">AI 확인 필요 항목</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {analysisNotes.map((note) => <li key={note}>{note}</li>)}
+                </ul>
+              </div>
+            )}
+            {extractedValues && (
+              <div className="mb-5 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+                <p className="font-medium" style={{ color: "var(--navy)" }}>AI 원본 추출값</p>
+                <p className="mt-1 text-xs text-muted-foreground">아래 값은 OCR·Solar가 문서에서 읽은 결과입니다. 최종 공고에는 수정한 값이 반영됩니다.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {Object.entries(extractedValues).flatMap(([section, raw]) => {
+                    const fields = typeof raw === "object" && raw !== null && "fields" in raw
+                      ? (raw as { fields: Record<string, { value?: unknown; confidence?: number | null }> }).fields
+                      : {};
+                    return Object.entries(fields).map(([field, value]) => (
+                      <div key={`${section}.${field}`} className="rounded-md border border-blue-100 bg-white px-3 py-2 text-sm">
+                        <div className="text-xs text-muted-foreground">{section}.{field}</div>
+                        <div className="mt-1 break-words font-medium">{String(value.value ?? "없음")}</div>
+                        {value.confidence != null && <div className="mt-1 text-xs text-muted-foreground">신뢰도 {Math.round(value.confidence * 100)}%</div>}
+                      </div>
+                    ));
+                  })}
+                </div>
+              </div>
+            )}
             <div className="flex flex-col gap-6">
               <ProductFields draft={draft} onChange={patch} />
               <SupplyFields draft={draft} onChange={patch} />
@@ -230,10 +319,6 @@ export function UploadOcrPage() {
           </Button>
         ) : (
           <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-            <Button variant="outline" className="gap-1.5 whitespace-nowrap" onClick={() => publish(true)}>
-              <Save className="size-4" />
-              {t("pub.saveDraft")}
-            </Button>
             <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => publish(false)}>
               <Globe className="size-4" />
               {t("pub.publish")}
@@ -243,4 +328,12 @@ export function UploadOcrPage() {
       </div>
     </div>
   );
+}
+
+function stageLabel(stage: ContractProcessingStage): string {
+  return { uploading: "계약서 업로드 준비 중...", ocr: "문서 OCR 분석 중...", extracting: "계약 조건 추출 중...", matching: "Solar가 공고 필드에 매칭 중...", finalizing: "결과 정리 중..." }[stage];
+}
+
+function stageProgress(stage: ContractProcessingStage): number {
+  return { uploading: 15, ocr: 35, extracting: 58, matching: 82, finalizing: 95 }[stage];
 }

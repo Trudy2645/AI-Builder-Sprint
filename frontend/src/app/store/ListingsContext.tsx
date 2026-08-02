@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useApp } from "../context/AppContext";
 import type { Category } from "../data/contracts";
 
 // 계약 공고 상태: 임시저장 / AI 검토 필요 / 공개 중 / 공개 중지 / 기간 만료
@@ -35,6 +36,8 @@ export interface ListingDraft {
   category: Category | "";
   district: string;
   // 공급 조건
+  availabilityStart: string;
+  availabilityEnd: string;
   start: string;
   end: string;
   quantity: string; // 공급 수량 라벨 (예: 주말 객실 최대 30실)
@@ -62,6 +65,8 @@ export function createEmptyDraft(method: CreateMethod): ListingDraft {
     productName: "",
     category: "",
     district: "",
+    availabilityStart: "",
+    availabilityEnd: "",
     start: "",
     end: "",
     quantity: "",
@@ -92,8 +97,8 @@ export function draftToListing(
     productName: draft.productName || "제목 없는 공고",
     category: (draft.category || "accommodation") as Category,
     district: draft.district || "해운대구",
-    start: draft.start,
-    end: draft.end,
+    start: draft.availabilityStart,
+    end: draft.availabilityEnd,
     unitPrice: parseInt(draft.unitPrice, 10) || 0,
     priceUnit: draft.priceUnit,
     quantityLabel: draft.quantity || "미정",
@@ -115,12 +120,26 @@ interface ListingsContextValue {
 const ListingsContext = createContext<ListingsContextValue | null>(null);
 
 export function ListingsProvider({ children }: { children: ReactNode }) {
+  const { isDemoSession } = useApp();
   const [listings, setListings] = useState<Listing[]>([]);
 
+  useEffect(() => {
+    if (!isDemoSession) { setListings([]); return; }
+    try {
+      const saved = window.localStorage.getItem("busanlink.seller.listings");
+      setListings(saved ? JSON.parse(saved) as Listing[] : []);
+    } catch {
+      setListings([]);
+    }
+  }, [isDemoSession]);
   const addListing: ListingsContextValue["addListing"] = (l) => {
     const now = new Date();
     const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-    setListings((prev) => [{ ...l, id: `lst-${Date.now()}`, updatedAt }, ...prev]);
+    setListings((prev) => {
+      const next = [{ ...l, id: `lst-${Date.now()}`, updatedAt }, ...prev];
+      window.localStorage.setItem("busanlink.seller.listings", JSON.stringify(next));
+      return next;
+    });
   };
 
   const updateListingStatus: ListingsContextValue["updateListingStatus"] = (id, status) => {

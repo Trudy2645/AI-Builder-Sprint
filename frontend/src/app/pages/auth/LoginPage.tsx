@@ -7,6 +7,8 @@ import { Label } from "../../components/ui/label";
 import { Plane, Building2 } from "lucide-react";
 import { Separator } from "../../components/ui/separator";
 import { useApp, type Role } from "../../context/AppContext";
+import { friendlyApiError, loginWithDemoRole } from "../../lib/api";
+import { toast } from "sonner";
 import { friendlyApiError, loginWithPassword } from "../../lib/api";
 
 export function LoginPage() {
@@ -58,9 +60,14 @@ export function LoginPage() {
     }
   };
 
-  const demoLogin = (r: Role, company: string) => {
-    login(r, company, true);
-    navigate(`/${r}`);
+  const demoLogin = async (r: Role, company: string) => {
+    try {
+      await loginWithDemoRole(r);
+      login(r, company, true);
+      navigate(`/${r}`);
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    }
   };
 
   return (
@@ -104,7 +111,7 @@ export function LoginPage() {
           onClick={() => demoLogin("buyer", "GlobalTrip Japan")}
         >
           <Plane className="size-4 shrink-0" style={{ color: "var(--ocean)" }} />
-          {t("login.demoBuyer")}
+          바이어 · rlawldbs1237@gmail.com
         </Button>
         <Button
           type="button"
@@ -113,7 +120,7 @@ export function LoginPage() {
           onClick={() => demoLogin("seller", "해운대 오션스테이")}
         >
           <Building2 className="size-4 shrink-0" style={{ color: "var(--teal)" }} />
-          {t("login.demoSeller")}
+          셀러 · kimjiyoun2645@naver.com
         </Button>
       </div>
 

@@ -1,11 +1,12 @@
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Request, Response, status
 
-from app.api.dependencies import get_modusign_client
+from app.api.dependencies import get_modusign_client, get_modusign_service
 from app.core.auth import get_current_user
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
+from app.domain.modusign.service import ModusignService
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.modusign import (
     ModusignClient,
@@ -19,6 +20,7 @@ from app.schemas.modusign import (
     DocumentFile,
     DocumentStatusResponse,
     SignatureRequestCreate,
+    SignatureRequestFromDocumentCreate,
     SignatureRequestResponse,
 )
 
@@ -86,10 +88,7 @@ async def create_signature_request(
             participants=[
                 ModusignParticipant(
                     role=payload.buyer.role, name=payload.buyer.name, email=payload.buyer.email
-                ),
-                ModusignParticipant(
-                    role=payload.seller.role, name=payload.seller.name, email=payload.seller.email
-                ),
+                )
             ],
         )
     except (ModusignNotFoundError, ModusignRequestError, ModusignUnavailableError) as exc:
@@ -100,6 +99,21 @@ async def create_signature_request(
         title=raw.get("title", payload.title),
         status=raw.get("status", "ON_PROCESSING"),
     )
+    return typed_envelope(request, result)
+
+
+@router.post("/requests/from-document", response_model=SuccessEnvelope[SignatureRequestResponse])
+async def create_signature_request_from_document(
+    request: Request,
+    payload: SignatureRequestFromDocumentCreate,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ModusignService, Depends(get_modusign_service)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[SignatureRequestResponse]:
+    try:
+        result = await service.create_from_document(payload, actor, organization_id)
+    except (ModusignNotFoundError, ModusignRequestError, ModusignUnavailableError) as exc:
+        raise _handle_modusign_error(exc) from exc
     return typed_envelope(request, result)
 
 

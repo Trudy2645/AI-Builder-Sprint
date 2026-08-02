@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from app.ai.jobs import AIJobIdentity
 from app.ai.providers.base import (
+    AIProviderError,
     AIProviderInvalidResponseError,
     AIProviderPermanentError,
     AIProviderRateLimitError,
@@ -25,6 +26,8 @@ from app.ai.schemas import (
     DocumentInput,
     DocumentParseResult,
     ExtractedSection,
+    LanguageModelRequest,
+    ListingMapping,
 )
 from app.core.errors import AppError
 from app.integrations.auth import AuthenticatedUser
@@ -59,6 +62,7 @@ _SECTIONS = (
     "safety",
     "compensation",
     "liability",
+    "termination",
 )
 
 
@@ -255,7 +259,8 @@ class DocumentProcessingService:
                 parsed,
             )
             confirmation_required, warnings = self._validate_extraction(extraction, parsed)
-            candidate = self._build_listing_candidate(document, extraction, parsed)
+            mapping = await self._map_listing_with_solar(extraction, parsed)
+            candidate = self._build_listing_candidate(document, extraction, parsed, mapping)
             extracted_data = {
                 "schema_version": "ai-document-processing-v1",
                 "extraction": extraction.model_dump(mode="json"),
@@ -433,6 +438,7 @@ class DocumentProcessingService:
         document: ProcessingDocumentRecord,
         extraction: ContractExtraction,
         parsed: DocumentParseResult,
+        mapping: ListingMapping | None = None,
     ) -> dict[str, Any]:
         clauses = self._clause_candidates(parsed)
         body = parsed.markdown or "\n\n".join(clause["body"] for clause in clauses)
@@ -453,10 +459,22 @@ class DocumentProcessingService:
             "safety_policy": self._section_text(extraction.safety),
             "compensation_policy": self._section_text(extraction.compensation),
             "liability_policy": self._section_text(extraction.liability),
+            "termination_policy": self._section_text(extraction.termination),
         }
+        if mapping is not None:
+            terms.update(
+                {
+                    "price_unit": mapping.price_unit or terms["price_unit"],
+                    "cancellation_policy": mapping.cancellation_policy
+                    or terms["cancellation_policy"],
+                    "refund_policy": mapping.refund_policy or terms["refund_policy"],
+                    "quantity": mapping.quantity,
+                    "settlement_terms": mapping.settlement_terms,
+                }
+            )
         return {
             "listing_id": str(document.listing_id),
-            "title": document.listing_title,
+            "title": mapping.title if mapping and mapping.title else document.listing_title,
             "category": document.listing_category,
             "language": document.listing_language,
             "terms": terms,
@@ -469,6 +487,35 @@ class DocumentProcessingService:
             "clauses": clauses,
             "confirmation_status": "seller_confirmation_required",
         }
+
+    async def _map_listing_with_solar(
+        self, extraction: ContractExtraction, parsed: DocumentParseResult
+    ) -> ListingMapping | None:
+        if self._provider_name != "upstage" or not hasattr(
+            self._extract_provider, "generate_structured"
+        ):
+            return None
+        try:
+            return await self._extract_provider.generate_structured(  # type: ignore[attr-defined]
+                LanguageModelRequest(
+                    task_type="listing_mapping",
+                    system_prompt=(
+                        "You normalize an accommodation contract into seller listing fields. "
+                        "Use only supplied extracted values and source text; never invent values. "
+                        "Keep prices and dates unchanged. Separate cancellation from refund only "
+                        "when the source clearly distinguishes them. Return null when absent."
+                    ),
+                    input_data={
+                        "extracted": extraction.model_dump(mode="json"),
+                        "source_text": parsed.markdown or "",
+                    },
+                    prompt_version="listing-mapping-v1",
+                    reasoning_effort="low",
+                ),
+                ListingMapping,
+            )
+        except AIProviderError:
+            return None
 
     @staticmethod
     def _clause_candidates(parsed: DocumentParseResult) -> list[dict[str, Any]]:

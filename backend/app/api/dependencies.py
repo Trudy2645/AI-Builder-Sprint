@@ -19,6 +19,7 @@ from app.domain.documents.service import DocumentService
 from app.domain.evidence.service import EvidenceService
 from app.domain.listings.service import PublicListingService
 from app.domain.localizations.service import LocalizationService
+from app.domain.modusign.service import ModusignService
 from app.domain.notifications.service import NotificationService
 from app.domain.pricing.service import PriceCalculator, PriceEstimateService
 from app.domain.profiles.service import ProfileService
@@ -418,3 +419,13 @@ def get_modusign_client(
         max_retries=settings.modusign_max_retries,
         retry_base_seconds=settings.modusign_retry_base_seconds,
     )
+
+
+def get_modusign_service(
+    repository: Annotated[
+        DocumentProcessingRepository, Depends(get_document_processing_repository)
+    ],
+    storage: Annotated[StorageProvider, Depends(get_storage_provider)],
+    client: Annotated[ModusignClient, Depends(get_modusign_client)],
+) -> ModusignService:
+    return ModusignService(repository, storage, client)
