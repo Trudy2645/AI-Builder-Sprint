@@ -113,8 +113,6 @@ export function UploadOcrPage() {
       draft.productName,
       draft.category,
       draft.district,
-      draft.start,
-      draft.end,
       draft.quantity,
       draft.unitPrice,
       draft.cancellation,
@@ -122,7 +120,7 @@ export function UploadOcrPage() {
       draft.settlement,
     ];
     if (!asDraft && requiredForPublish.some((value) => !String(value).trim())) {
-      toast.error("공개 전 계약명, 유형, 지역, 기간, 가격, 수량, 취소·노쇼·정산 조건을 모두 확인해주세요.");
+      toast.error("공개 전 계약명, 유형, 지역, 가격, 수량, 취소·노쇼·정산 조건을 모두 확인해주세요.");
       return;
     }
     const risks = analyzeDraft(draft).length;
