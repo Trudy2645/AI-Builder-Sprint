@@ -26,6 +26,8 @@ function stringValue(value: unknown): string {
 
 function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDraft> {
   const terms = candidate?.terms ?? {};
+  const cancellation = stringValue(terms.cancellation_policy);
+  const refund = stringValue(terms.refund_policy);
   return {
     productName: candidate?.title ?? "",
     category: candidate?.category ?? "accommodation",
@@ -33,8 +35,10 @@ function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDr
     end: stringValue(terms.service_end_date),
     unitPrice: stringValue(terms.base_price_amount_minor),
     priceUnit: stringValue(terms.price_unit) || "1인당",
-    cancellation: stringValue(terms.cancellation_policy),
-    noShow: stringValue(terms.refund_policy),
+    cancellation,
+    // Contracts often state cancellation and refund in one combined clause.
+    // Do not show the same extracted paragraph twice in the confirmation form.
+    noShow: refund && refund !== cancellation ? refund : "",
     liability: stringValue(terms.liability_policy),
   };
 }
