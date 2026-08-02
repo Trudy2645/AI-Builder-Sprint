@@ -219,13 +219,23 @@ export function ListingsProvider({ children }: { children: ReactNode }) {
   const [listings, setListings] = useState<Listing[]>([]);
 
   useEffect(() => {
-    setListings(isDemoSession ? seed : []);
+    if (!isDemoSession) { setListings([]); return; }
+    try {
+      const saved = window.localStorage.getItem("busanlink.seller.listings");
+      setListings(saved ? JSON.parse(saved) as Listing[] : seed);
+    } catch {
+      setListings(seed);
+    }
   }, [isDemoSession]);
 
   const addListing: ListingsContextValue["addListing"] = (l) => {
     const now = new Date();
     const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-    setListings((prev) => [{ ...l, id: `lst-${Date.now()}`, updatedAt }, ...prev]);
+    setListings((prev) => {
+      const next = [{ ...l, id: `lst-${Date.now()}`, updatedAt }, ...prev];
+      window.localStorage.setItem("busanlink.seller.listings", JSON.stringify(next));
+      return next;
+    });
   };
 
   const value = useMemo<ListingsContextValue>(
