@@ -13,7 +13,7 @@ export function LoginPage() {
   const { t, login, loginWithSession } = useApp();
   const navigate = useNavigate();
   const [email, setEmail] = useState("buyer@globaltrip.jp");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState("demo-password");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -24,6 +24,15 @@ export function LoginPage() {
       normalized.includes("haeundae")
       ? "seller"
       : "buyer";
+  };
+
+  const demoCompany = (role: Role) => role === "seller" ? "해운대 오션스테이" : "GlobalTrip Japan";
+  const isDemoEmail = (value: string) => {
+    const normalized = value.toLocaleLowerCase();
+    return normalized.includes("buyer@globaltrip") ||
+      normalized.includes("seller") ||
+      normalized.includes("ocean") ||
+      normalized.includes("haeundae");
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -37,6 +46,12 @@ export function LoginPage() {
       loginWithSession(role, email, result.session.access_token);
       navigate(`/${role}`);
     } catch (error) {
+      if (error instanceof TypeError && isDemoEmail(email)) {
+        const role = inferDemoRole(email);
+        login(role, demoCompany(role), true);
+        navigate(`/${role}`);
+        return;
+      }
       setErrorMessage(friendlyApiError(error));
     } finally {
       setSubmitting(false);
