@@ -447,9 +447,8 @@ export type ContractListItem = {
   created_at: string;
 };
 
-export async function getMyContracts(): Promise<ContractListItem[]> {
-  const contracts = await apiFetch<ContractListItem[]>("/me/contracts");
-  return contracts.filter((contract) => !isHiddenTestRecord(contract));
+export function getMyContracts(): Promise<ContractListItem[]> {
+  return apiFetch<ContractListItem[]>("/me/contracts");
 }
 
 export type SellerContractListItem = {
@@ -470,12 +469,11 @@ export type SellerContractListItem = {
   requested_at: string;
 };
 
-export async function getReceivedContracts(): Promise<SellerContractListItem[]> {
+export function getReceivedContracts(): Promise<SellerContractListItem[]> {
   const session = getApiSession();
-  const contracts = await apiFetch<SellerContractListItem[]>("/seller/contracts/received", {
+  return apiFetch<SellerContractListItem[]>("/seller/contracts/received", {
     headers: authenticatedHeaders(session),
   });
-  return contracts.filter((contract) => !isHiddenTestRecord(contract));
 }
 
 export type SellerDashboard = {
@@ -587,9 +585,8 @@ export type ContractVersionCompare = {
   };
 };
 
-export async function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
-  const versions = await apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
-  return versions.filter((version) => !isHiddenTestRecord(version));
+export function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
+  return apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
 }
 
 export function compareContractVersions(
@@ -682,12 +679,8 @@ export function createRevisionRequest(
   });
 }
 
-export async function getRevisionRequest(revisionRequestId: string): Promise<RevisionRequestResponse> {
-  const revision = await apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
-  if (isHiddenTestRecord(revision)) {
-    throw new ApiError({ code: "REVISION_REQUEST_NOT_FOUND", message: "수정 요청을 찾을 수 없습니다." });
-  }
-  return revision;
+export function getRevisionRequest(revisionRequestId: string): Promise<RevisionRequestResponse> {
+  return apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
 }
 
 export function sendRevisionRequest(revisionRequestId: string): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
@@ -711,9 +704,8 @@ export type SellerRevisionRequestListItem = {
   updated_at: string;
 };
 
-export async function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
-  const revisions = await apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
-  return revisions.filter((revision) => !isHiddenTestRecord(revision));
+export function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
+  return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
 }
 
 export function decideRevisionRequest(
@@ -832,12 +824,8 @@ export type ApprovalStatus = {
   contract_status?: string;
 };
 
-export async function getContractDetail(contractId: string): Promise<ContractDetail> {
-  const contract = await apiFetch<ContractDetail>(`/contracts/${contractId}`);
-  if (isHiddenTestRecord(contract)) {
-    throw new ApiError({ code: "CONTRACT_NOT_FOUND", message: "계약을 찾을 수 없습니다." });
-  }
-  return contract;
+export function getContractDetail(contractId: string): Promise<ContractDetail> {
+  return apiFetch<ContractDetail>(`/contracts/${contractId}`);
 }
 
 export function getContractApprovals(contractId: string, versionId: string): Promise<ApprovalStatus> {
@@ -912,18 +900,6 @@ export type PublicListing = {
   contract_available: boolean;
   attention_required_count: number;
 };
-
-const demoSeedListingIds = new Set([
-  "11111111-1111-4111-8111-111111111111",
-  "22222222-2222-4222-8222-222222222222",
-  "33333333-3333-4333-8333-333333333333",
-]);
-
-function isHiddenTestListing(listing: PublicListing): boolean {
-  if (import.meta.env.VITE_SHOW_TEST_DATA === "true") return false;
-  const marker = `${listing.title} ${listing.seller.name}`.toLocaleLowerCase();
-  return demoSeedListingIds.has(listing.id) || marker.includes("e2e");
-}
 
 export type SellerListingSummary = {
   id: string;
@@ -1002,9 +978,8 @@ export function getSellerListing(listingId: string): Promise<SellerListingDetail
   });
 }
 
-export async function getPublicListings(): Promise<PublicListing[]> {
-  const listings = await apiFetch<PublicListing[]>("/public/listings");
-  return listings.filter((listing) => !isHiddenTestListing(listing));
+export function getPublicListings(): Promise<PublicListing[]> {
+  return apiFetch<PublicListing[]>("/public/listings");
 }
 
 export type PublicListingClause = {
@@ -1045,12 +1020,64 @@ export function getPublicListing(
 ): Promise<PublicListingDetail> {
   return apiFetch<PublicListingDetail>(
     `/public/listings/${encodeURIComponent(listingId)}?locale=${encodeURIComponent(locale)}`,
-  ).then((listing) => {
-    if (isHiddenTestListing(listing)) {
-      throw new ApiError({ code: "LISTING_NOT_FOUND", message: "요청한 공고를 찾을 수 없습니다." });
-    }
-    return listing;
+  );
+}
+
+export function generateChangeSummary(
+  changes: Array<{ title: string; before?: string; after?: string }>,
+): Promise<{ lines: string[] }> {
+  return apiFetch<{ lines: string[] }>("/ai-guidance/change-summary", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("public-summary"),
+    },
+    body: JSON.stringify({ changes }),
   });
+}
+
+export function generatePublicListingSummary(
+  listing: PublicListingDetail,
+): Promise<{ lines: string[] }> {
+  const period = [listing.availability.start_date, listing.availability.end_date]
+    .filter(Boolean)
+    .join(" ~ ");
+  const price = listing.base_price
+    ? `${listing.base_price.amount_minor.toLocaleString("ko-KR")} ${listing.base_price.currency}${listing.base_price.unit ? ` · ${listing.base_price.unit}` : ""}`
+    : "정보 없음";
+  const clauses = listing.clauses
+    .slice(0, 12)
+    .map((clause, index) => `제${index + 1}조 ${clause.title}: ${clause.body}`)
+    .join("\n");
+
+  return generateChangeSummary([
+    {
+      title: "상품 및 공급 조건",
+      after: [
+        `상품: ${listing.title}`,
+        `판매자: ${listing.seller.name}`,
+        `지역: ${listing.district}`,
+        `공급 기간: ${period || "정보 없음"}`,
+        `공급 수량: ${listing.supply_quantity_description ?? "정보 없음"}`,
+      ].join("\n"),
+    },
+    {
+      title: "가격 및 정산 조건",
+      after: [
+        `기준 가격: ${price}`,
+        `정산: ${listing.settlement_policy ?? "정보 없음"}`,
+        `최소 기준: ${listing.minimum_quantity ?? listing.minimum_people ?? "정보 없음"}`,
+      ].join("\n"),
+    },
+    {
+      title: "취소·노쇼·주요 조항",
+      after: [
+        `취소: ${listing.cancellation_policy ?? "정보 없음"}`,
+        `노쇼: ${listing.no_show_policy ?? "정보 없음"}`,
+        clauses || "주요 조항 정보 없음",
+      ].join("\n"),
+    },
+  ]);
 }
 
 export type AuthenticatedDemoSession = {

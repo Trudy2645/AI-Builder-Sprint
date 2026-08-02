@@ -28,7 +28,12 @@ import {
 import { useApp } from "../../context/AppContext";
 import { useExploreCtx } from "../../hooks/useExploreCtx";
 import { CATEGORIES } from "../../lib/catalog";
-import { friendlyApiError, getPublicListing, type PublicListingDetail } from "../../lib/api";
+import {
+  friendlyApiError,
+  generatePublicListingSummary,
+  getPublicListing,
+  type PublicListingDetail,
+} from "../../lib/api";
 
 function DetailRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
@@ -42,6 +47,13 @@ function DetailRow({ icon, label, value }: { icon: ReactNode; label: string; val
   );
 }
 
+function parseSummaryLines(summary: string | null | undefined): string[] {
+  return summary
+    ?.split(/\r?\n/)
+    .map((line) => line.replace(/^[-*•]\s*/, "").trim())
+    .filter(Boolean) ?? [];
+}
+
 export function ContractSummaryPage() {
   const { t } = useApp();
   const { base } = useExploreCtx();
@@ -50,6 +62,8 @@ export function ContractSummaryPage() {
   const [listing, setListing] = useState<PublicListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [summaryLines, setSummaryLines] = useState<string[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -60,19 +74,35 @@ export function ContractSummaryPage() {
     let active = true;
     setLoading(true);
     setLoadError(null);
+    setSummaryLines([]);
+    setSummaryLoading(false);
     getPublicListing(id)
-      .then((result) => {
-        if (active) setListing(result);
+      .then(async (result) => {
+        if (!active) return;
+        setListing(result);
+        setLoading(false);
+        const storedSummary = parseSummaryLines(result.ai_summary);
+        setSummaryLines(storedSummary);
+        if (storedSummary.length > 0) return;
+
+        setSummaryLoading(true);
+        try {
+          const generated = await generatePublicListingSummary(result);
+          if (active) setSummaryLines(generated.lines.map((line) => line.trim()).filter(Boolean));
+        } catch {
+          // The listing remains usable when the optional AI guidance call is unavailable.
+          if (active) setSummaryLines([]);
+        } finally {
+          if (active) setSummaryLoading(false);
+        }
       })
       .catch((error: unknown) => {
         if (active) {
           setListing(null);
           setLoadError(friendlyApiError(error));
+          setLoading(false);
         }
       })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
     return () => {
       active = false;
     };
@@ -108,11 +138,6 @@ export function ContractSummaryPage() {
   const rating = Number(listing.seller.rating);
   const hasRating = Number.isFinite(rating) && Number(listing.seller.rating_count) > 0;
   const ratingLabel = hasRating ? rating.toFixed(1) : null;
-  const summaryLines = listing.ai_summary
-    ?.split(/\r?\n/)
-    .map((line) => line.replace(/^[-*•]\s*/, "").trim())
-    .filter(Boolean) ?? [];
-
   const formatDate = (value: string | null) => value ? value.replace(/-/g, ".") : "정보 없음";
   const period = `${formatDate(listing.availability.start_date)} ~ ${formatDate(listing.availability.end_date)}`;
   const quantityUnit = listing.quantity_unit ?? "";
@@ -192,7 +217,9 @@ export function ContractSummaryPage() {
               {t("summary.aiSummary")}
             </div>
             <ul className="mt-3 flex flex-col gap-2">
-              {summaryLines.length > 0 ? summaryLines.map((line, i) => (
+              {summaryLoading ? (
+                <li className="text-sm text-muted-foreground">AI 요약을 생성 중입니다…</li>
+              ) : summaryLines.length > 0 ? summaryLines.map((line, i) => (
                 <li key={i} className="flex gap-2 text-foreground" style={{ fontSize: "14px", lineHeight: 1.5 }}>
                   <span style={{ color: "var(--ocean)", fontWeight: 700 }}>{i + 1}</span>
                   <span>{line}</span>

@@ -28,6 +28,7 @@ from app.ai.schemas.providers import (
     VectorStoreFileRecord,
     VectorStoreRecord,
 )
+from app.ai.schemas.public_summary import PublicSummaryOutput
 
 __all__ = [
     "BoundingBox",
@@ -53,6 +54,7 @@ __all__ = [
     "LocalizedClause",
     "LocalizedFinding",
     "LocalizedPublicContent",
+    "PublicSummaryOutput",
     "ParsedBlock",
     "ParsedPage",
 ]

@@ -36,7 +36,7 @@ import {
 import { friendlyApiError, getPublicListings, type PublicListing } from "../../lib/api";
 
 type Sort = "recommended" | "latest" | "popular" | "priceLow" | "priceHigh";
-const PRICE_MAX = 250000;
+const PRICE_MAX = 10_000_000;
 
 const categoryByApiCategory: Record<PublicListing["category"], Category> = {
   accommodation: "accommodation",
