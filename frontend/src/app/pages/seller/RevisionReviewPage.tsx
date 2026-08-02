@@ -153,7 +153,7 @@ export function RevisionReviewPage() {
 
   // 셀러 응답 문구: 수락=바이어 요청, 대안=셀러 제안, 거절=기존 유지
   const responseText = (rid: string, original: string, requested: string) => {
-    const d = decisions[rid];
+    const d = decisions[rid] ?? emptyDecision();
     if (d.kind === "accept") return requested;
     if (d.kind === "counter") return d.counterText || t("rvw.pending");
     if (d.kind === "reject") return original;
@@ -278,7 +278,7 @@ export function RevisionReviewPage() {
               </TableHeader>
               <TableBody>
                 {request.revisions.map((r) => {
-                  const d = decisions[r.id];
+                  const d = decisions[r.id] ?? emptyDecision();
                   const kindColor =
                     d.kind === "accept" ? "var(--success)" : d.kind === "reject" ? "var(--coral)" : "var(--ocean)";
                   const kindLabel =
