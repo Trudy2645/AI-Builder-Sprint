@@ -79,6 +79,35 @@ function authenticatedHeaders(session: ApiSession, headers: HeadersInit = {}): H
 
 export function friendlyApiError(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.code === "VALIDATION_ERROR" || error.code === "REQUEST_VALIDATION_FAILED") {
+      const errors = Array.isArray(error.details.errors) ? error.details.errors : [];
+      const fieldLabels: Record<string, string> = {
+        people: "여행 인원",
+        quantity: "수량",
+        quantity_unit: "수량 단위",
+        nights: "숙박 일수",
+        start_date: "이용 시작일",
+        end_date: "이용 종료일",
+        currency: "통화",
+        request_message: "요청 내용",
+        group_name: "그룹명",
+      };
+      const translated = errors.map((entry) => {
+        const item = entry as { location?: string; message?: string };
+        const location = item.location?.split(".").pop() ?? "입력값";
+        const label = fieldLabels[location] ?? location;
+        const message = item.message ?? "값을 확인해 주세요.";
+        if (message.includes("end_date must be later than start_date")) return "이용 종료일은 시작일보다 늦어야 합니다.";
+        if (message.includes("nights must equal")) return "숙박 일수는 시작일과 종료일 사이의 실제 일수와 같아야 합니다.";
+        if (message.includes("group_name is required")) return "단체 대표 서명은 그룹명을 입력해야 합니다.";
+        if (message.includes("Field required")) return `${label}을(를) 입력해 주세요.`;
+        if (message.includes("greater than 0")) return `${label}은(는) 1 이상이어야 합니다.`;
+        if (message.includes("valid date")) return `${label}을(를) 올바른 날짜로 입력해 주세요.`;
+        return `${label}: ${message}`;
+      });
+      if (translated.length > 0) return `입력값을 확인해 주세요.\n${translated.join("\n")}`;
+      return "입력값을 확인해 주세요. 필수 항목과 날짜·수량을 다시 확인한 뒤 재시도해 주세요.";
+    }
     const messages: Record<string, string> = {
       AUTH_REQUIRED: "로그인이 필요합니다. 로그인한 뒤 다시 시도해 주세요.",
       LISTING_NOT_FOUND: "요청한 공고를 찾을 수 없거나 더 이상 공개되지 않았습니다.",
@@ -86,6 +115,15 @@ export function friendlyApiError(error: unknown): string {
       SERVICE_PERIOD_UNAVAILABLE: "선택한 이용 기간에는 이 상품을 이용할 수 없습니다.",
       PEOPLE_OUT_OF_RANGE: "입력한 인원이 상품의 허용 인원 범위를 벗어났습니다.",
       QUANTITY_REQUIRED: "객실·차량 등 필요한 수량을 입력해 주세요.",
+      UNSUPPORTED_QUANTITY_UNIT: "이 공고의 과금 단위와 맞지 않습니다. 공고 상세의 단위를 확인해 주세요.",
+      INVALID_BILLING_QUANTITY: "인원수와 과금 수량이 일치해야 합니다.",
+      LISTING_EXPIRED: "이 공고의 계약 가능 기간이 끝났습니다. 다른 공고를 선택해 주세요.",
+      EXCHANGE_RATE_UNAVAILABLE: "환율 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      IDEMPOTENCY_CONFLICT: "같은 요청이 이미 처리 중이거나 처리되었습니다. 잠시 후 목록을 새로고침해 주세요.",
+      IDEMPOTENCY_KEY_REUSED: "이미 사용한 요청 키입니다. 화면을 새로고침한 뒤 다시 시도해 주세요.",
+      CONTRACT_ACCESS_DENIED: "이 계약을 볼 권한이 없습니다.",
+      INVALID_STATE_TRANSITION: "현재 계약 상태에서는 이 작업을 진행할 수 없습니다.",
+      ORGANIZATION_HEADER_REQUIRED: "셀러 조직 정보가 없어 요청할 수 없습니다. 다시 로그인해 주세요.",
       UNSUPPORTED_DISPLAY_CURRENCY: "현재는 상품 기준 통화로만 예상 금액을 계산할 수 있습니다.",
       DATABASE_UNAVAILABLE: "서비스 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     };

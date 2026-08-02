@@ -67,9 +67,11 @@ export function RevisionRequestPage() {
       return;
     }
     if (!startDate || !endDate || endDate <= startDate) { toast.error("이용 시작일과 종료일을 올바르게 입력해 주세요."); return; }
+    const nights = Math.round((Date.parse(`${endDate}T00:00:00`) - Date.parse(`${startDate}T00:00:00`)) / 86_400_000);
+    if (nights <= 0) { toast.error("이용 기간은 하루 이상이어야 합니다."); return; }
     try {
       const created = await createPublicContractRequest(contract.id, {
-        people: 1, quantity: 1, quantity_unit: contract.category === "accommodation" ? "room" : "person", nights: 1,
+        people: 1, quantity: 1, quantity_unit: contract.category === "accommodation" ? "room" : "person", nights,
         start_date: startDate, end_date: endDate, currency: "KRW", initial_request_kind: "revision",
         request_message: valid.map((d) => `${d.clauseNo}: ${d.requested}${d.reason ? ` (사유: ${d.reason})` : ""}`).join("\n"),
       });

@@ -89,6 +89,11 @@ export function RequestAsIsPage() {
       toast.error("이용 시작일과 종료일을 올바르게 입력해 주세요.");
       return;
     }
+    const requiredNights = Math.round((Date.parse(`${endDate}T00:00:00`) - Date.parse(`${startDate}T00:00:00`)) / 86_400_000);
+    if (nightsNum !== requiredNights) {
+      toast.error(`숙박 일수(${nightsNum}박)가 이용 기간(${requiredNights}박)과 다릅니다. 날짜 또는 숙박 일수를 맞춰 주세요.`);
+      return;
+    }
     try {
       const created = await createPublicContractRequest(contract.id, {
         people: parseInt(guests, 10) || 1, quantity: roomsNum, quantity_unit: contract.category === "accommodation" ? "room" : "person",
