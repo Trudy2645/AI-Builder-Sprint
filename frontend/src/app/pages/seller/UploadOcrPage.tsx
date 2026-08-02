@@ -10,7 +10,7 @@ import { RiskReviewStep, analyzeDraft } from "../../components/listings/RiskRevi
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
 import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
-import { friendlyApiError, uploadAndProcessSourceContract, type ContractProcessingStage } from "../../lib/api";
+import { friendlyApiError, publishSellerListing, uploadAndProcessSourceContract, type ContractProcessingStage } from "../../lib/api";
 
 const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
 
@@ -58,6 +58,7 @@ export function UploadOcrPage() {
   const [analysisNotes, setAnalysisNotes] = useState<string[]>([]);
   const [extractedValues, setExtractedValues] = useState<Record<string, unknown> | null>(null);
   const [analysisStage, setAnalysisStage] = useState<ContractProcessingStage>("uploading");
+  const [backendListingId, setBackendListingId] = useState<string | null>(null);
 
   const patch = (p: Partial<ListingDraft>) => setDraft((d) => ({ ...d, ...p }));
 
@@ -67,6 +68,7 @@ export function UploadOcrPage() {
     setAnalyzed(false);
     try {
       const result = await uploadAndProcessSourceContract(file, setAnalysisStage);
+      setBackendListingId(result.listingId);
       setDraft((d) => ({ ...d, ...candidateToDraft(result.listingCandidate) }));
       setAnalysisNotes([...result.confirmationRequired, ...result.validationWarnings]);
       setExtractedValues(result.extraction);
@@ -110,7 +112,7 @@ export function UploadOcrPage() {
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
 
-  const publish = (asDraft: boolean) => {
+  const publish = async (asDraft: boolean) => {
     const requiredForPublish = [
       draft.productName,
       draft.category,
@@ -124,6 +126,14 @@ export function UploadOcrPage() {
     if (!asDraft && requiredForPublish.some((value) => !String(value).trim())) {
       toast.error("공개 전 계약명, 유형, 지역, 가격, 수량, 취소·노쇼·정산 조건을 모두 확인해주세요.");
       return;
+    }
+    if (!asDraft && backendListingId) {
+      try {
+        await publishSellerListing(backendListingId);
+      } catch (error) {
+        toast.error(friendlyApiError(error));
+        return;
+      }
     }
     const risks = analyzeDraft(draft).length;
     addListing(draftToListing(draft, asDraft ? "draft" : "public", risks));

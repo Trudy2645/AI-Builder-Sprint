@@ -31,6 +31,7 @@ type ApiSession = {
 let activeSession: ApiSession | null = null;
 
 type UploadedDocumentProcessingResult = {
+  listingId: string;
   listingCandidate: {
     title?: string;
     category?: "vehicle_rental" | "activity" | "tour" | "accommodation";
@@ -184,6 +185,7 @@ export async function uploadAndProcessSourceContract(
     if (result.status === "ready") {
       onStage?.("finalizing");
       return {
+        listingId: listing.listing_id,
         listingCandidate: result.listing_candidate,
         confirmationRequired: result.confirmation_required,
         validationWarnings: result.validation_warnings,
@@ -195,6 +197,12 @@ export async function uploadAndProcessSourceContract(
     await new Promise((resolve) => window.setTimeout(resolve, 1000));
   }
   throw new Error("AI 분석 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
+}
+
+export async function publishSellerListing(listingId: string): Promise<void> {
+  const session = getApiSession();
+  await apiFetch(`/seller/listings/${listingId}/complete`, { method: "POST", headers: authenticatedHeaders(session) });
+  await apiFetch(`/seller/listings/${listingId}/publish`, { method: "POST", headers: authenticatedHeaders(session) });
 }
 
 export type PublicListing = {
