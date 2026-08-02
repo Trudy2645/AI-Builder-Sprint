@@ -70,6 +70,7 @@ export function RequestAsIsPage() {
   const roomsNum = parseInt(rooms, 10) || 0;
   const nightsNum = parseInt(nights, 10) || 1;
   const total = contract.unitPrice * roomsNum * nightsNum;
+  const quantityUnit = contract.quantityUnit ?? (contract.category === "accommodation" ? "room" : contract.category === "vehicle_rental" ? "vehicle" : "person");
 
   const saveDraft = () => {
     addRequest({
@@ -105,7 +106,7 @@ export function RequestAsIsPage() {
     }
     try {
       const created = await createPublicContractRequest(contract.id, {
-        people: parseInt(guests, 10) || 1, quantity: roomsNum, quantity_unit: contract.category === "accommodation" ? "room" : "person",
+        people: parseInt(guests, 10) || 1, quantity: roomsNum, quantity_unit: quantityUnit,
         nights: nightsNum, start_date: startDate, end_date: endDate, currency,
         request_message: message, initial_request_kind: "as_is",
       });

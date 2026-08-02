@@ -68,6 +68,7 @@ export function RevisionRequestPage() {
   const update = (d: RevisionDraft) => setDrafts((prev) => prev.map((x) => (x.id === d.id ? d : x)));
   const remove = (rid: string) => setDrafts((prev) => (prev.length > 1 ? prev.filter((x) => x.id !== rid) : prev));
   const add = () => setDrafts((prev) => [...prev, newDraft()]);
+  const quantityUnit = contract?.quantityUnit ?? (contract?.category === "accommodation" ? "room" : contract?.category === "vehicle_rental" ? "vehicle" : "person");
 
   const send = async () => {
     const valid = drafts.filter((d) => d.clauseNo && d.requested.trim());
@@ -80,7 +81,7 @@ export function RevisionRequestPage() {
     if (nights <= 0) { toast.error("이용 기간은 하루 이상이어야 합니다."); return; }
     try {
       const created = await createPublicContractRequest(contract.id, {
-        people: 1, quantity: 1, quantity_unit: contract.category === "accommodation" ? "room" : "person", nights,
+        people: 1, quantity: 1, quantity_unit: quantityUnit, nights,
         start_date: startDate, end_date: endDate, currency: "KRW", initial_request_kind: "revision",
         request_message: valid.map((d) => `${d.clauseNo}: ${d.requested}${d.reason ? ` (사유: ${d.reason})` : ""}`).join("\n"),
       });

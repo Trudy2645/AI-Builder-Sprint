@@ -555,6 +555,7 @@ export type PublicListingDetail = PublicListing & {
   cancellation_policy: string | null;
   no_show_policy: string | null;
   settlement_policy: string | null;
+  quantity_unit: string | null;
   clauses: Array<{ clause_order: number; title: string; body: string }>;
 };
 
@@ -567,7 +568,7 @@ export async function getPublicListingAsContract(listingId: string): Promise<imp
   return {
     id: listing.id, seller: listing.seller.name, title: listing.title, category: listing.category,
     district: listing.district, start: listing.availability.start_date ?? "미정", end: listing.availability.end_date ?? "미정",
-    unitPrice: listing.base_price?.amount_minor ?? 0, priceUnit: listing.base_price?.unit ?? "기준 단가",
+    unitPrice: listing.base_price?.amount_minor ?? 0, priceUnit: listing.base_price?.unit ?? "기준 단가", quantityUnit: listing.quantity_unit ?? undefined,
     quantityLabel: listing.supply_quantity_description ?? "미정", capacity: Number.MAX_SAFE_INTEGER,
     available: listing.contract_available, popularity: 0, createdOrder: 0, recommendScore: 0,
     image: listing.hero_image_url ?? "", aiSummary: listing.ai_summary?.split("\n") ?? ["AI 요약이 아직 준비되지 않았습니다."],
@@ -577,7 +578,7 @@ export async function getPublicListingAsContract(listingId: string): Promise<imp
       unitPrice: `${(listing.base_price?.amount_minor ?? 0).toLocaleString("ko-KR")} ${listing.base_price?.currency ?? "KRW"}`,
       cancellation: listing.cancellation_policy ?? "미정", noShow: listing.no_show_policy ?? "미정", settlement: listing.settlement_policy ?? "미정",
     },
-    clauses: listing.clauses.map((clause) => ({ no: `제${clause.clause_order}조`, title: clause.title, text: clause.body })),
+    clauses: listing.clauses.map((clause, index) => ({ no: `제${index + 1}조`, title: clause.title, text: clause.body })),
   };
 }
 

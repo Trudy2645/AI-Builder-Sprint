@@ -22,6 +22,8 @@ export interface Contract {
   end: string;
   unitPrice: number;
   priceUnit: string;
+  /** Server-side billing unit (person, room, room_night, seat, vehicle). */
+  quantityUnit?: string;
   quantityLabel: string;
   capacity: number;
   available: boolean;
