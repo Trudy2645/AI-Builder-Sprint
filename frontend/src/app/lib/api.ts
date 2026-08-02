@@ -185,8 +185,14 @@ export async function uploadAndProcessSourceContract(
     });
     if (result.status === "ready") {
       onStage?.("finalizing");
-      await updateSellerListingTerms(listing.listing_id, result.listing_candidate?.terms);
-      await publishSellerListing(listing.listing_id);
+      // OCR 결과 확인은 외부 저장/게시와 분리한다. 모두싸인·DB가 잠시
+      // 불안정해도 셀러가 추출값을 확인하고 공고를 계속 만들 수 있어야 한다.
+      try {
+        await updateSellerListingTerms(listing.listing_id, result.listing_candidate?.terms);
+        await publishSellerListing(listing.listing_id);
+      } catch {
+        // 프론트의 데모 저장은 아래 결과로 계속 진행한다.
+      }
       return {
         listingId: listing.listing_id,
         listingVersionNo: listing.version_no,

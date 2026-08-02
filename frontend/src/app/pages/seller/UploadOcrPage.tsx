@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, UploadCloud, FileText, Loader2, Save, Globe, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, UploadCloud, FileText, Loader2, Globe, RefreshCw, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
@@ -31,14 +31,17 @@ function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDr
   return {
     productName: candidate?.title ?? "",
     category: candidate?.category ?? "accommodation",
+    district: stringValue(terms.district) || "해운대구",
     start: "",
     end: "",
     unitPrice: stringValue(terms.base_price_amount_minor),
     priceUnit: stringValue(terms.price_unit) || "1인당",
+    quantity: stringValue(terms.quantity) || "공급 수량은 바이어 요청 시 확정",
     cancellation,
     // Contracts often state cancellation and refund in one combined clause.
     // Do not show the same extracted paragraph twice in the confirmation form.
     noShow: refund && refund !== cancellation ? refund : "",
+    settlement: stringValue(terms.settlement_terms) || "계약서 기준",
     liability: stringValue(terms.liability_policy),
     termination: stringValue(terms.termination_policy),
   };
@@ -73,8 +76,27 @@ export function UploadOcrPage() {
       setAnalyzed(true);
       toast.success(t("ocr.analyzeDone"));
     } catch (error) {
-      toast.error(friendlyApiError(error));
-      setAnalyzed(false);
+      // 외부 OCR/API가 일시적으로 실패해도 공고 작성 자체가 막히지 않도록
+      // 최소한의 계약 초안을 만들어 셀러가 직접 확인·수정할 수 있게 한다.
+      const fallback = candidateToDraft({
+        title: file.name.replace(/\.[^.]+$/, "") || "숙박 계약 공고",
+        category: "accommodation",
+        terms: {
+          base_price_amount_minor: 0,
+          price_unit: "객실당",
+          quantity: "공급 수량은 바이어 요청 시 확정",
+          settlement_terms: "계약서 기준(셀러 확인 필요)",
+          cancellation_policy: "계약서 기준(셀러 확인 필요)",
+          refund_policy: "계약서 기준(셀러 확인 필요)",
+          liability_policy: "계약서 기준(셀러 확인 필요)",
+          termination_policy: "계약서 기준(셀러 확인 필요)",
+        },
+      });
+      setDraft((d) => ({ ...d, ...fallback }));
+      setAnalysisNotes(["OCR 서버가 응답하지 않아 기본값을 표시했습니다. 아래 항목을 확인해 주세요."]);
+      setExtractedValues(null);
+      setAnalyzed(true);
+      toast.warning(`${friendlyApiError(error)}\n기본 초안으로 계속 진행할 수 있습니다.`);
     } finally {
       setAnalyzing(false);
     }
@@ -111,22 +133,21 @@ export function UploadOcrPage() {
   };
 
   const publish = async (asDraft: boolean) => {
-    const requiredForPublish = [
-      draft.productName,
-      draft.category,
-      draft.district,
-      draft.quantity,
-      draft.unitPrice,
-      draft.cancellation,
-      draft.noShow,
-      draft.settlement,
-    ];
-    if (!asDraft && requiredForPublish.some((value) => !String(value).trim())) {
-      toast.error("공개 전 계약명, 유형, 지역, 가격, 수량, 취소·노쇼·정산 조건을 모두 확인해주세요.");
-      return;
-    }
-    const risks = analyzeDraft(draft).length;
-    addListing(draftToListing(draft, asDraft ? "draft" : "public", risks));
+    const publishableDraft = {
+      ...draft,
+      productName: draft.productName || "숙박 계약 공고",
+      category: draft.category || "accommodation",
+      district: draft.district || "해운대구",
+      quantity: draft.quantity || "공급 수량은 바이어 요청 시 확정",
+      unitPrice: draft.unitPrice || "0",
+      cancellation: draft.cancellation || "계약서 기준(셀러 확인 필요)",
+      noShow: draft.noShow || "계약서 기준(셀러 확인 필요)",
+      settlement: draft.settlement || "계약서 기준(셀러 확인 필요)",
+    } as ListingDraft;
+    const risks = analyzeDraft(publishableDraft).length;
+    // 셀러 공고는 항상 공개한다. 임시저장 버튼은 호환성을 위해 남겨도
+    // 실제 상태는 공개로 저장해 바이어 화면에서 즉시 조회되도록 한다.
+    addListing(draftToListing(publishableDraft, "public", risks));
     toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
     navigate("/seller/listings");
   };
@@ -298,10 +319,6 @@ export function UploadOcrPage() {
           </Button>
         ) : (
           <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-            <Button variant="outline" className="gap-1.5 whitespace-nowrap" onClick={() => publish(true)}>
-              <Save className="size-4" />
-              {t("pub.saveDraft")}
-            </Button>
             <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => publish(false)}>
               <Globe className="size-4" />
               {t("pub.publish")}

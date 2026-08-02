@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { Switch } from "../ui/switch";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { useApp } from "../../context/AppContext";
@@ -20,28 +19,6 @@ import type { ListingDraft } from "../../store/ListingsContext";
 
 const catKey = (c: ListingDraft["category"]) =>
   CATEGORIES.find((x) => x.value === c)?.labelKey ?? "cat.all";
-
-function ToggleRow({
-  label,
-  desc,
-  checked,
-  onChange,
-}: {
-  label: string;
-  desc: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-border py-4 last:border-b-0">
-      <div className="min-w-0">
-        <div style={{ fontSize: "14px", fontWeight: 600 }}>{label}</div>
-        <p className="mt-0.5 text-muted-foreground" style={{ fontSize: "12px" }}>{desc}</p>
-      </div>
-      <Switch checked={checked} onCheckedChange={onChange} className="mt-0.5 shrink-0" />
-    </div>
-  );
-}
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
@@ -177,19 +154,8 @@ export function PublishSettingsStep({ draft, onChange }: PublishSettingsStepProp
           />
         </div>
 
-        <div className="mt-4">
-          <ToggleRow
-            label={t("pub.available")}
-            desc={t("pub.availableDesc")}
-            checked={draft.available}
-            onChange={(v) => onChange({ available: v })}
-          />
-          <ToggleRow
-            label={t("pub.showRisk")}
-            desc={t("pub.showRiskDesc")}
-            checked={draft.showRisk}
-            onChange={(v) => onChange({ showRisk: v })}
-          />
+        <div className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          공고는 저장과 동시에 바이어에게 공개됩니다. 공개 여부를 따로 설정하지 않습니다.
         </div>
       </div>
 
