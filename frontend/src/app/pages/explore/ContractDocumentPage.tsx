@@ -232,6 +232,24 @@ export function ContractDocumentPage() {
     toast.success(`${copy.download} 계약서 다운로드를 시작했습니다.`);
   };
 
+  const downloadSourcePdf = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    if (!sourcePdfUrl) return;
+    try {
+      const response = await fetch(sourcePdfUrl);
+      if (!response.ok) throw new Error("PDF download failed");
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${contract.title}-원문.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast.success("계약서 원문 다운로드를 시작했습니다.");
+    } catch {
+      toast.error("계약서 원문을 다운로드하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  };
+
   return (
     <div>
       <Button variant="ghost" size="sm" className="mb-4 gap-1.5 whitespace-nowrap" onClick={() => navigate(`${base}/${contract.id}`)}>
@@ -261,7 +279,7 @@ export function ContractDocumentPage() {
               <h3 style={{ color: "var(--navy)" }}>계약서 원문 PDF</h3>
               <p className="mt-1 text-xs text-muted-foreground">셀러가 등록한 원본 PDF입니다. 화면에서 직접 확인할 수 있습니다.</p>
             </div>
-            <a className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted" href={sourcePdfUrl} target="_blank" rel="noreferrer" download>
+            <a className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted" href={sourcePdfUrl} onClick={(event) => void downloadSourcePdf(event)}>
               <Download className="size-4" /> PDF 다운로드
             </a>
           </div>
