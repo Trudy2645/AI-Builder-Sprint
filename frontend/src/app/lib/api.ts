@@ -184,6 +184,7 @@ export async function uploadAndProcessSourceContract(
     });
     if (result.status === "ready") {
       onStage?.("finalizing");
+      await publishSellerListing(listing.listing_id);
       return {
         listingId: listing.listing_id,
         listingCandidate: result.listing_candidate,
