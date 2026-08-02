@@ -84,9 +84,11 @@ export function friendlyApiError(error: unknown): string {
 }
 
 export async function apiFetch<Data>(path: string, init: RequestInit = {}): Promise<Data> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
-    headers: { Accept: "application/json", ...init.headers },
+    headers,
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok || payload?.error) {
