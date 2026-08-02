@@ -109,13 +109,13 @@ export function friendlyApiError(error: unknown): string {
       QUANTITY_REQUIRED: "객실·차량 등 필요한 수량을 입력해 주세요.",
       UNSUPPORTED_DISPLAY_CURRENCY: "현재는 상품 기준 통화로만 예상 금액을 계산할 수 있습니다.",
       DATABASE_UNAVAILABLE: "서비스 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      INVALID_STATE_TRANSITION: "이미 처리되었거나 현재 상태에서는 변경할 수 없는 요청입니다.",
     };
     return messages[error.code] ?? error.message;
   }
   if (error instanceof TypeError) {
     return "서버에 연결하지 못했습니다. 인터넷 연결과 서버 실행 상태를 확인해 주세요.";
   }
-  if (error instanceof Error) return error.message;
   return "처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.";
 }
 
@@ -162,7 +162,7 @@ export async function uploadAndProcessSourceContract(
     .join("");
   const headers = authenticatedHeaders(session, { "Content-Type": "application/json" });
 
-  const listing = await apiFetch<{ listing_id: string }>("/seller/listings", {
+  const listing = await apiFetch<{ listing_id: string; version_no: number }>("/seller/listings", {
     method: "POST",
     headers: new Headers([
       ...headers.entries(),
@@ -237,9 +237,9 @@ export async function uploadAndProcessSourceContract(
     }
     onStage?.(attempt < 8 ? "extracting" : "matching");
     if (result.status === "failed") throw new Error(`AI 계약서 분석에 실패했습니다${result.failure_code ? ` (${result.failure_code})` : ""}.`);
-    await new Promise((resolve) => window.setTimeout(resolve, 4000));
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
   }
-  throw new Error("AI 계약서 분석이 2분 안에 끝나지 않았습니다. 잠시 후 재시도하거나 직접 입력해 주세요.");
+  throw new Error("AI 분석 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
 }
 
 export type SellerListingDraftInput = {
@@ -468,6 +468,7 @@ export type ContractListItem = {
   listing_id: string | null;
   listing_title: string;
   seller_name: string;
+  initial_request_kind: "as_is" | "revision";
   status: "draft" | "seller_review" | "revision_requested" | "signing" | "signed" | "cancelled";
   service_start_date: string;
   service_end_date: string;
@@ -477,7 +478,7 @@ export type ContractListItem = {
   created_at: string;
 };
 
-export async function getMyContracts(): Promise<ContractListItem[]> {
+export function getMyContracts(): Promise<ContractListItem[]> {
   return apiFetch<ContractListItem[]>("/me/contracts");
 }
 
@@ -499,12 +500,11 @@ export type SellerContractListItem = {
   requested_at: string;
 };
 
-export async function getReceivedContracts(): Promise<SellerContractListItem[]> {
+export function getReceivedContracts(): Promise<SellerContractListItem[]> {
   const session = getApiSession();
-  const contracts = await apiFetch<SellerContractListItem[]>("/seller/contracts/received", {
+  return apiFetch<SellerContractListItem[]>("/seller/contracts/received", {
     headers: authenticatedHeaders(session),
   });
-  return contracts;
 }
 
 export const getSellerReceivedContracts = getReceivedContracts;
@@ -618,7 +618,7 @@ export type ContractVersionCompare = {
   };
 };
 
-export async function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
+export function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
   return apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
 }
 
@@ -672,6 +672,47 @@ export type RevisionItemPayload = {
   document_ids?: string[];
 };
 
+export function generateRevisionSuggestion(payload: {
+  request_type: "modify" | "add";
+  clause_id?: string;
+  clause_title?: string;
+  original_text?: string;
+  reason: string;
+}): Promise<{ suggestion: string }> {
+  return apiFetch<{ suggestion: string }>("/ai-guidance/revision-suggestion", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("revision-suggestion"),
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export type RevisionGuidanceItem = {
+  id: string;
+  impact: string;
+  recommendation: string;
+  rejection_reason: string;
+};
+
+export function generateRevisionGuidance(items: Array<{
+  id: string;
+  clause_title: string;
+  original_text: string;
+  requested_text: string;
+  reason: string;
+}>): Promise<{ items: RevisionGuidanceItem[] }> {
+  return apiFetch<{ items: RevisionGuidanceItem[] }>("/ai-guidance/revision-impact", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("revision-impact"),
+    },
+    body: JSON.stringify({ items }),
+  });
+}
+
 export type RevisionRequestResponse = {
   id: string;
   contract_id: string;
@@ -714,7 +755,7 @@ export function createRevisionRequest(
   });
 }
 
-export async function getRevisionRequest(revisionRequestId: string): Promise<RevisionRequestResponse> {
+export function getRevisionRequest(revisionRequestId: string): Promise<RevisionRequestResponse> {
   return apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
 }
 
@@ -739,7 +780,7 @@ export type SellerRevisionRequestListItem = {
   updated_at: string;
 };
 
-export async function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
+export function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
   return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
 }
 
@@ -750,6 +791,7 @@ export function decideRevisionRequest(
   return apiFetch(`/revision-requests/${revisionRequestId}/decide`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-decide") },
+    body: JSON.stringify(payload),
   });
 }
 
@@ -861,7 +903,7 @@ export type ApprovalStatus = {
   contract_status?: string;
 };
 
-export async function getContractDetail(contractId: string): Promise<ContractDetail> {
+export function getContractDetail(contractId: string): Promise<ContractDetail> {
   return apiFetch<ContractDetail>(`/contracts/${contractId}`);
 }
 
@@ -1022,8 +1064,8 @@ export function getSellerListing(listingId: string): Promise<SellerListingDetail
   });
 }
 
-export async function getPublicListings(): Promise<PublicListing[]> {
-  return apiFetch<PublicListing[]>("/public/listings?contract_available_only=true");
+export function getPublicListings(): Promise<PublicListing[]> {
+  return apiFetch<PublicListing[]>("/public/listings");
 }
 
 export type PublicListingClause = {
@@ -1067,6 +1109,110 @@ export function getPublicListing(
   );
 }
 
+export type ContractTranslationLocale = "en-US" | "ja-JP" | "zh-CN";
+
+export type ContractTranslation = {
+  locale: ContractTranslationLocale;
+  title: string;
+  clauses: Array<{ id: string; title: string; body: string }>;
+};
+
+export function translatePublicContract(
+  listing: PublicListingDetail,
+  targetLocale: ContractTranslationLocale,
+): Promise<ContractTranslation> {
+  return apiFetch<ContractTranslation>("/ai-guidance/contract-translation", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey(`contract-translation-${targetLocale}`),
+    },
+    body: JSON.stringify({
+      target_locale: targetLocale,
+      title: listing.title,
+      clauses: listing.clauses.map(({ id, title, body }) => ({ id, title, body })),
+    }),
+  });
+}
+
+export type ContractAssistantFinding = {
+  clause_id: string;
+  severity: "high" | "medium" | "low";
+  explanation: string;
+  suggested_text: string | null;
+};
+
+export function analyzePublicContract(
+  listing: PublicListingDetail,
+): Promise<{ findings: ContractAssistantFinding[] }> {
+  return apiFetch<{ findings: ContractAssistantFinding[] }>("/ai-guidance/contract-assistant", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("buyer-contract-assistant"),
+    },
+    body: JSON.stringify({
+      title: listing.title,
+      clauses: listing.clauses.map(({ id, title, body }) => ({ id, title, body })),
+    }),
+  });
+}
+
+export function generateChangeSummary(
+  changes: Array<{ title: string; before?: string; after?: string }>,
+): Promise<{ lines: string[] }> {
+  return apiFetch<{ lines: string[] }>("/ai-guidance/change-summary", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("public-summary"),
+    },
+    body: JSON.stringify({ changes }),
+  });
+}
+
+export function generatePublicListingSummary(
+  listing: PublicListingDetail,
+): Promise<{ lines: string[] }> {
+  const period = [listing.availability.start_date, listing.availability.end_date]
+    .filter(Boolean)
+    .join(" ~ ");
+  const price = listing.base_price
+    ? `${listing.base_price.amount_minor.toLocaleString("ko-KR")} ${listing.base_price.currency}${listing.base_price.unit ? ` · ${listing.base_price.unit}` : ""}`
+    : "정보 없음";
+  const clauses = listing.clauses
+    .slice(0, 12)
+    .map((clause, index) => `제${index + 1}조 ${clause.title}: ${clause.body}`)
+    .join("\n");
+
+  return generateChangeSummary([
+    {
+      title: "상품 및 공급 조건",
+      after: [
+        `상품: ${listing.title}`,
+        `판매자: ${listing.seller.name}`,
+        `지역: ${listing.district}`,
+        `공급 기간: ${period || "정보 없음"}`,
+        `공급 수량: ${listing.supply_quantity_description ?? "정보 없음"}`,
+      ].join("\n"),
+    },
+    {
+      title: "가격 및 정산 조건",
+      after: [
+        `기준 가격: ${price}`,
+        `정산: ${listing.settlement_policy ?? "정보 없음"}`,
+        `최소 기준: ${listing.minimum_quantity ?? listing.minimum_people ?? "정보 없음"}`,
+      ].join("\n"),
+    },
+    {
+      title: "취소·노쇼·주요 조항",
+      after: [
+        `취소: ${listing.cancellation_policy ?? "정보 없음"}`,
+        `노쇼: ${listing.no_show_policy ?? "정보 없음"}`,
+        clauses || "주요 조항 정보 없음",
+      ].join("\n"),
+    },
+  ]);
 export function getPublicSourceDocumentUrl(listingId: string): Promise<{ document_id: string; download_url: string; expires_at: string }> {
   const token = getAccessToken();
   if (!token) throw new ApiError({ code: "AUTH_REQUIRED", message: "Login required." });

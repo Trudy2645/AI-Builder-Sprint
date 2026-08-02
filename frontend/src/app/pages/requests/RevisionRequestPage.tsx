@@ -1,205 +1,513 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, Save, Send, Plus } from "lucide-react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Plus, Save, Send } from "lucide-react";
+import {
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { ContractStepper } from "../../components/contract/ContractStepper";
-import { RevisionCard, type RevisionDraft } from "../../components/requests/RevisionCard";
+import {
+  RevisionCard,
+  type RevisionDraft,
+} from "../../components/requests/RevisionCard";
 import { useApp } from "../../context/AppContext";
-import { getContract, type Contract } from "../../data/contracts";
-import { createPublicContractRequest, createRevisionRequest, friendlyApiError, getContractDetail, getPublicListingAsContract, sendRevisionRequest } from "../../lib/api";
-import { useRequests } from "../../store/RequestsContext";
+import {
+  createContractRequest,
+  createRevisionRequest,
+  friendlyApiError,
+  getContractDetail,
+  getPublicListing,
+  sendRevisionRequest,
+  type PublicListingDetail,
+} from "../../lib/api";
+import type { Contract } from "../../lib/catalog";
 
-let counter = 0;
-const newDraft = (): RevisionDraft => ({
-  id: `d-${Date.now()}-${counter++}`,
-  clauseNo: "",
-  changeType: "edit",
-  requested: "",
-  reason: "",
-  attachment: "",
-});
+let draftSequence = 0;
 
-const changeTypeLabel: Record<string, string> = {
-  edit: "opt.ct.edit",
-  delete: "opt.ct.delete",
-  add: "opt.ct.add",
-};
+function newDraft(clauseId = ""): RevisionDraft {
+  draftSequence += 1;
+
+  return {
+    id: `revision-${draftSequence}`,
+    clauseNo: clauseId,
+    changeType: "edit",
+    requested: "",
+    reason: "",
+    attachment: "",
+  };
+}
+
+function toContract(listing: PublicListingDetail): Contract {
+  return {
+    id: listing.id,
+    seller: listing.seller.name,
+    title: listing.title,
+    category: listing.category,
+    district: listing.district,
+    start: listing.availability.start_date ?? "",
+    end: listing.availability.end_date ?? "",
+    unitPrice: listing.base_price?.amount_minor ?? 0,
+    priceUnit: listing.base_price?.unit ?? "기준 단가",
+    quantityLabel: listing.supply_quantity_description ?? "",
+    capacity: listing.maximum_people ?? Number.MAX_SAFE_INTEGER,
+    available: listing.contract_available,
+    popularity: 0,
+    createdOrder: 0,
+    recommendScore: 0,
+    image: listing.hero_image_url ?? "",
+    aiSummary: listing.ai_summary?.split(/\r?\n/) ?? [],
+    details: {
+      period: `${listing.availability.start_date ?? ""} ~ ${
+        listing.availability.end_date ?? ""
+      }`,
+      supplyQuantity: listing.supply_quantity_description ?? "",
+      unitPrice: `${listing.base_price?.amount_minor ?? 0}`,
+      cancellation: listing.cancellation_policy ?? "",
+      noShow: listing.no_show_policy ?? "",
+      settlement: listing.settlement_policy ?? "",
+    },
+    clauses: listing.clauses.map((clause, index) => ({
+      id: clause.id,
+      no: String(index + 1),
+      title: clause.title,
+      text: clause.body,
+    })),
+  };
+}
+
+function calculateNights(
+  startDate: string,
+  endDate: string,
+): number {
+  const start = Date.parse(`${startDate}T00:00:00`);
+  const end = Date.parse(`${endDate}T00:00:00`);
+
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 0;
+  }
+
+  return Math.round((end - start) / 86_400_000);
+}
 
 export function RevisionRequestPage() {
   const { t } = useApp();
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
   const initialFrom = searchParams.get("from") ?? "";
   const initialTo = searchParams.get("to") ?? "";
-  const demoContract = getContract(id);
-  const [serverContract, setServerContract] = useState<Contract | null>(null);
+
+  const [listing, setListing] =
+    useState<PublicListingDetail | null>(null);
+  const [drafts, setDrafts] = useState<RevisionDraft[]>([
+    newDraft(),
+  ]);
+  const [startDate, setStartDate] = useState(initialFrom);
+  const [endDate, setEndDate] = useState(initialTo);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  useEffect(() => {
-    if (demoContract || !id) return;
-    void getPublicListingAsContract(id).then(setServerContract).catch((error: unknown) => setLoadError(friendlyApiError(error)));
-  }, [demoContract, id]);
-  const contract = demoContract ?? serverContract;
-  const { addRequest } = useRequests();
-  const [startDate, setStartDate] = useState(initialFrom || (contract?.start !== "미정" ? contract?.start ?? "" : ""));
-  const [endDate, setEndDate] = useState(initialTo || (contract?.end !== "미정" ? contract?.end ?? "" : ""));
+
+  const contract = useMemo(
+    () => (listing ? toContract(listing) : null),
+    [listing],
+  );
 
   useEffect(() => {
-    if (!contract) return;
-    if (!initialFrom && contract.start !== "미정") setStartDate(contract.start);
-    if (!initialTo && contract.end !== "미정") setEndDate(contract.end);
-  }, [contract, initialFrom, initialTo]);
+    if (!id) {
+      setLoading(false);
+      setLoadError("공고 식별자가 없습니다.");
+      return;
+    }
 
-  // Pre-seed with one card targeting the first risky clause if any.
-  const [drafts, setDrafts] = useState<RevisionDraft[]>(() => {
-    const first = newDraft();
-    const risky = contract?.clauses.find((c) => c.risk);
-    if (risky) first.clauseNo = risky.no;
-    return [first];
-  });
+    let active = true;
 
-  if (!contract) {
-    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">{loadError ?? "계약 조건을 불러오는 중입니다…"}</div>;
+    setLoading(true);
+    setLoadError(null);
+
+    void getPublicListing(id)
+      .then((nextListing) => {
+        if (!active) return;
+
+        setListing(nextListing);
+        setDrafts([
+          newDraft(nextListing.clauses[0]?.id ?? ""),
+        ]);
+      })
+      .catch((error: unknown) => {
+        if (active) setLoadError(friendlyApiError(error));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (!listing) return;
+
+    if (!initialFrom) {
+      setStartDate(listing.availability.start_date ?? "");
+    }
+
+    if (!initialTo) {
+      setEndDate(listing.availability.end_date ?? "");
+    }
+  }, [initialFrom, initialTo, listing]);
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">
+        공고를 불러오는 중입니다…
+      </div>
+    );
   }
 
-  const update = (d: RevisionDraft) => setDrafts((prev) => prev.map((x) => (x.id === d.id ? d : x)));
-  const remove = (rid: string) => setDrafts((prev) => (prev.length > 1 ? prev.filter((x) => x.id !== rid) : prev));
-  const add = () => setDrafts((prev) => [...prev, newDraft()]);
-  const quantityUnit = contract?.quantityUnit ?? (contract?.category === "accommodation" ? "room" : contract?.category === "vehicle_rental" ? "vehicle" : "person");
+  if (!listing || !contract) {
+    return (
+      <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">
+        {loadError ?? "공고를 찾을 수 없습니다."}
+      </div>
+    );
+  }
 
-  const send = async () => {
-    const valid = drafts.filter((d) => d.clauseNo && d.requested.trim());
-    if (valid.length === 0) {
+  const updateDraft = (draft: RevisionDraft) => {
+    setDrafts((previous) =>
+      previous.map((item) =>
+        item.id === draft.id ? draft : item,
+      ),
+    );
+  };
+
+  const removeDraft = (draftId: string) => {
+    setDrafts((previous) =>
+      previous.length > 1
+        ? previous.filter((item) => item.id !== draftId)
+        : previous,
+    );
+  };
+
+  const addDraft = () => {
+    setDrafts((previous) => [
+      ...previous,
+      newDraft(),
+    ]);
+  };
+
+  const createServerRevision = async (send: boolean) => {
+    const validDrafts = drafts.filter((draft) => {
+      if (!draft.reason.trim()) return false;
+
+      if (draft.changeType === "add") {
+        return Boolean(draft.requested.trim());
+      }
+
+      if (!draft.clauseNo) return false;
+
+      return (
+        draft.changeType === "delete" ||
+        Boolean(draft.requested.trim())
+      );
+    });
+
+    if (validDrafts.length === 0) {
       toast.error(t("rev.needOne"));
       return;
     }
-    if (!startDate || !endDate || endDate <= startDate) { toast.error("이용 시작일과 종료일을 올바르게 입력해 주세요."); return; }
-    const nights = Math.round((Date.parse(`${endDate}T00:00:00`) - Date.parse(`${startDate}T00:00:00`)) / 86_400_000);
-    if (nights <= 0) { toast.error("이용 기간은 하루 이상이어야 합니다."); return; }
+
+    if (!startDate || !endDate || endDate <= startDate) {
+      toast.error(
+        "이용 시작일과 종료일을 올바르게 입력해 주세요.",
+      );
+      return;
+    }
+
+    const availableStart =
+      listing.availability.start_date;
+    const availableEnd =
+      listing.availability.end_date;
+
+    if (
+      (availableStart && startDate < availableStart) ||
+      (availableEnd && endDate > availableEnd)
+    ) {
+      toast.error(
+        "공고에 등록된 이용 가능 기간 안에서 선택해 주세요.",
+      );
+      return;
+    }
+
+    const nights = calculateNights(startDate, endDate);
+
+    if (nights <= 0) {
+      toast.error("이용 기간은 하루 이상이어야 합니다.");
+      return;
+    }
+
+    setSubmitting(true);
+
     try {
-      const created = await createPublicContractRequest(contract.id, {
-        people: 1, quantity: 1, quantity_unit: quantityUnit, nights,
-        start_date: startDate, end_date: endDate, currency: "KRW", initial_request_kind: "revision",
-        request_message: valid.map((d) => `${d.clauseNo}: ${d.requested}${d.reason ? ` (사유: ${d.reason})` : ""}`).join("\n"),
-      });
-      // 계약 생성 시 공고 조항은 새 계약 조항으로 snapshot된다. 서버가 반환한
-      // 계약 조항 ID를 사용해야 수정요청이 다른 계약의 조항으로 오인되지 않는다.
-      const createdContract = await getContractDetail(created.contract_id);
-      const contractClauses = createdContract.current_version.clauses;
-      const revision = await createRevisionRequest(created.contract_id, {
-        base_version_no: created.version_no,
-        message: valid.map((d) => d.reason).filter(Boolean).join("\n") || "바이어가 계약 조항 수정을 요청했습니다.",
-        items: valid.map((d) => {
-          const clause = contract.clauses.find((c) => c.no === d.clauseNo);
-          const contractClause = contractClauses.find((c) => c.title === clause?.title && c.body === clause?.text)
-            ?? contractClauses[Number.parseInt(d.clauseNo.replace(/\D/g, ""), 10) - 1];
+      const requestMessage = validDrafts
+        .map(
+          (draft) =>
+            `${draft.reason.trim()}${
+              draft.requested.trim()
+                ? `\n요청 문구: ${draft.requested.trim()}`
+                : ""
+            }`,
+        )
+        .join("\n\n");
+
+      const created = await createContractRequest(
+        listing.id,
+        {
+          people: listing.minimum_people ?? 1,
+          quantity: listing.minimum_quantity ?? 1,
+          quantity_unit: listing.quantity_unit ?? "unit",
+          nights,
+          start_date: startDate,
+          end_date: endDate,
+          currency: listing.base_price?.currency ?? "KRW",
+          request_message: requestMessage,
+          initial_request_kind: "revision",
+        },
+      );
+
+      /*
+       * 계약 생성 후 공고 조항이 계약 버전에 복사된다.
+       * 따라서 수정 요청에는 공고 조항 UUID가 아니라
+       * 새 계약 버전의 실제 조항 UUID를 사용한다.
+       */
+      const createdContract = await getContractDetail(
+        created.contract_id,
+      );
+      const contractClauses =
+        createdContract.current_version.clauses;
+
+      const revisionItems = validDrafts.map((draft) => {
+        if (draft.changeType === "add") {
           return {
-            request_type: d.changeType === "delete" ? "delete" : d.changeType === "add" ? "add" : "modify",
-            clause_id: d.changeType === "add" ? undefined : contractClause?.id,
-            reason: d.reason.trim() || "계약 조건 수정을 요청합니다.",
-            requested_text: d.changeType === "delete" ? undefined : d.requested.trim(),
+            request_type: "add" as const,
+            clause_id: undefined,
+            reason: draft.reason.trim(),
+            requested_text: draft.requested.trim(),
+            document_ids: [],
           };
-        }),
-      });
-      await sendRevisionRequest(revision.revision_request_id);
-      addRequest({
-      contractId: contract.id,
-      seller: contract.seller,
-      title: contract.title,
-      type: "revision",
-      status: "reviewing",
-      revisions: valid.map((d) => {
-        const clause = contract.clauses.find((c) => c.no === d.clauseNo)!;
+        }
+
+        const sourceClause = contract.clauses.find(
+          (clause) => clause.id === draft.clauseNo,
+        );
+
+        const sourceIndex = contract.clauses.findIndex(
+          (clause) => clause.id === draft.clauseNo,
+        );
+
+        const contractClause =
+          contractClauses.find(
+            (clause) =>
+              clause.title === sourceClause?.title &&
+              clause.body === sourceClause?.text,
+          ) ??
+          (sourceIndex >= 0
+            ? contractClauses[sourceIndex]
+            : undefined);
+
         return {
-          id: d.id,
-          clauseNo: d.clauseNo,
-          clauseTitle: clause.title,
-          original: clause.text,
-          changeType: t(changeTypeLabel[d.changeType] ?? "opt.ct.edit"),
-          requested: d.requested,
-          reason: d.reason,
-          attachment: d.attachment || undefined,
+          request_type:
+            draft.changeType === "delete"
+              ? ("delete" as const)
+              : ("modify" as const),
+          clause_id: contractClause?.id,
+          reason: draft.reason.trim(),
+          requested_text:
+            draft.changeType === "delete"
+              ? undefined
+              : draft.requested.trim(),
+          document_ids: [],
         };
-      }),
-    });
-      toast.success(t("rev.sent"));
-      navigate(`/buyer/contracts/${created.contract_id}/status`);
-    } catch (error) { toast.error(friendlyApiError(error)); }
+      });
+
+      const unresolvedClause = revisionItems.find(
+        (item) =>
+          item.request_type !== "add" &&
+          !item.clause_id,
+      );
+
+      if (unresolvedClause) {
+        toast.error(
+          "선택한 조항을 계약서에서 찾지 못했습니다. 다시 선택해 주세요.",
+        );
+        return;
+      }
+
+      const revision = await createRevisionRequest(
+        created.contract_id,
+        {
+          base_version_no:
+            createdContract.current_version.version_no,
+          message:
+            requestMessage ||
+            "바이어가 계약 조항 수정을 요청했습니다.",
+          items: revisionItems,
+        },
+      );
+
+      if (send) {
+        await sendRevisionRequest(
+          revision.revision_request_id,
+        );
+      }
+
+      toast.success(
+        send
+          ? "수정 요청을 보냈습니다."
+          : "수정 요청 초안을 저장했습니다.",
+      );
+
+      navigate("/buyer/sent");
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const saveDraft = () => {
-    addRequest({
-      contractId: contract.id,
-      seller: contract.seller,
-      title: contract.title,
-      type: "revision",
-      status: "draft",
-      currentVersion: "v1",
-      revisions: drafts
-        .filter((d) => d.clauseNo)
-        .map((d) => {
-          const clause = contract.clauses.find((c) => c.no === d.clauseNo)!;
-          return {
-            id: d.id,
-            clauseNo: d.clauseNo,
-            clauseTitle: clause.title,
-            original: clause.text,
-            changeType: t(changeTypeLabel[d.changeType] ?? "opt.ct.edit"),
-            requested: d.requested,
-            reason: d.reason,
-            attachment: d.attachment || undefined,
-          };
-        }),
-    });
-    toast.success(t("req.draftSaved"));
-    navigate("/buyer/sent");
-  };
+  const exitPath = `/buyer/explore/${listing.id}/document${
+    searchParams.toString()
+      ? `?${searchParams.toString()}`
+      : ""
+  }`;
 
   return (
     <div className="mx-auto max-w-[760px]">
-      <Button variant="ghost" size="sm" className="mb-4 gap-1.5 whitespace-nowrap" onClick={() => navigate(`/buyer/explore/${contract.id}/document`)}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mb-4 gap-1.5 whitespace-nowrap"
+        onClick={() => navigate(exitPath)}
+      >
         <ArrowLeft className="size-4" />
         {t("req.exit")}
       </Button>
 
-      <PageHeader title={t("rev.title")} description={t("rev.intro")} />
+      <PageHeader
+        title={t("rev.title")}
+        description={t("rev.intro")}
+      />
 
       <div className="mb-6 rounded-xl border border-border bg-card p-5">
         <ContractStepper current={3} />
       </div>
 
       <div className="mb-4 rounded-xl border border-border bg-card p-4">
-        <div className="whitespace-nowrap text-muted-foreground" style={{ fontSize: "13px" }}>{t("asis.contract")}</div>
-        <div style={{ color: "var(--navy)", fontWeight: 600 }}>{contract.seller} · {contract.title}</div>
+        <div className="text-xs text-muted-foreground">
+          {t("asis.contract")}
+        </div>
+        <div
+          className="font-semibold"
+          style={{ color: "var(--navy)" }}
+        >
+          {listing.seller.name} · {listing.title}
+        </div>
       </div>
-      <div className="mb-4 grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2"><div><label className="text-sm">이용 시작일 *</label><Input type="date" min={contract.start !== "미정" ? contract.start : undefined} max={contract.end !== "미정" ? contract.end : undefined} value={startDate} onChange={(e) => setStartDate(e.target.value)} /><span className="text-xs text-muted-foreground">공고 가능 기간 안에서 선택하세요.</span></div><div><label className="text-sm">이용 종료일 *</label><Input type="date" min={contract.start !== "미정" ? contract.start : undefined} max={contract.end !== "미정" ? contract.end : undefined} value={endDate} onChange={(e) => setEndDate(e.target.value)} /><span className="text-xs text-muted-foreground">공고 종료일과 같을 필요는 없습니다.</span></div></div>
+
+      <div className="mb-4 grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2">
+        <div>
+          <label
+            htmlFor="start-date"
+            className="text-sm"
+          >
+            이용 시작일 *
+          </label>
+          <Input
+            id="start-date"
+            type="date"
+            min={listing.availability.start_date ?? undefined}
+            max={listing.availability.end_date ?? undefined}
+            value={startDate}
+            onChange={(event) =>
+              setStartDate(event.target.value)
+            }
+          />
+          <span className="text-xs text-muted-foreground">
+            공고 가능 기간 안에서 선택하세요.
+          </span>
+        </div>
+
+        <div>
+          <label
+            htmlFor="end-date"
+            className="text-sm"
+          >
+            이용 종료일 *
+          </label>
+          <Input
+            id="end-date"
+            type="date"
+            min={listing.availability.start_date ?? undefined}
+            max={listing.availability.end_date ?? undefined}
+            value={endDate}
+            onChange={(event) =>
+              setEndDate(event.target.value)
+            }
+          />
+          <span className="text-xs text-muted-foreground">
+            공고 종료일과 같을 필요는 없습니다.
+          </span>
+        </div>
+      </div>
 
       <div className="flex flex-col gap-4">
-        {drafts.map((d, i) => (
-          <RevisionCard key={d.id} index={i} contract={contract} draft={d} onChange={update} onRemove={() => remove(d.id)} />
+        {drafts.map((draft, index) => (
+          <RevisionCard
+            key={draft.id}
+            index={index}
+            contract={contract}
+            draft={draft}
+            onChange={updateDraft}
+            onRemove={() => removeDraft(draft.id)}
+          />
         ))}
       </div>
 
-      <Button variant="outline" className="mt-4 w-full gap-1.5 whitespace-nowrap border-dashed" style={{ borderColor: "var(--ocean)", color: "var(--ocean)" }} onClick={add}>
+      <Button
+        variant="outline"
+        className="mt-4 w-full gap-1.5 border-dashed"
+        onClick={addDraft}
+      >
         <Plus className="size-4" />
         {t("rev.addCard")}
       </Button>
 
-      {/* Actions */}
-      <div className="mt-6 flex flex-col gap-2 rounded-xl border border-border bg-card p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end [&_button]:w-full sm:[&_button]:w-auto">
-        <Button variant="ghost" className="gap-1.5 whitespace-nowrap" onClick={() => navigate(`/buyer/explore/${contract.id}/document`)}>
-          <ArrowLeft className="size-4" />
-          {t("req.exit")}
-        </Button>
-        <Button variant="outline" className="gap-1.5 whitespace-nowrap" onClick={saveDraft}>
-          <Save className="size-4" />
+      <div className="mt-6 flex flex-col justify-end gap-2 rounded-xl border border-border bg-card p-4 sm:flex-row">
+        <Button
+          variant="outline"
+          disabled={submitting}
+          onClick={() =>
+            void createServerRevision(false)
+          }
+        >
+          <Save className="mr-1 size-4" />
           {t("req.saveDraft")}
         </Button>
-        <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={send}>
-          <Send className="size-4" />
+
+        <Button
+          disabled={submitting}
+          style={{ background: "var(--navy)" }}
+          onClick={() =>
+            void createServerRevision(true)
+          }
+        >
+          <Send className="mr-1 size-4" />
           {t("rev.send")}
         </Button>
       </div>

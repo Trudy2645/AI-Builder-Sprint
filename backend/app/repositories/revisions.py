@@ -537,8 +537,14 @@ class SqlAlchemyRevisionRepository:
                     raise RevisionReferenceError
                 if row["status"] != "draft":
                     raise RevisionStateConflictError
-                clause_id = await self._validate_item_references(
-                    revision_id, row["contract_id"], item["clause_id"], item["document_ids"]
+                normalized_clause_id = await self._resolve_clause_id(
+                    revision_id, item["clause_id"]
+                )
+                await self._validate_item_references(
+                    revision_id,
+                    row["contract_id"],
+                    normalized_clause_id,
+                    item["document_ids"],
                 )
                 updated = await self._session.execute(
                     text(
@@ -555,8 +561,8 @@ class SqlAlchemyRevisionRepository:
                     {
                         "item_id": item_id,
                         "revision_id": revision_id,
-                        "clause_id": clause_id,
-                        **{key: item[key] for key in ("request_type", "reason", "requested_text")},
+                        **item,
+                        "clause_id": normalized_clause_id,
                     },
                 )
                 if updated.scalar_one_or_none() is None:
@@ -1066,8 +1072,11 @@ class SqlAlchemyRevisionRepository:
     async def _insert_item(
         self, revision_id: UUID, contract_id: UUID, item_order: int, item: dict[str, Any]
     ) -> UUID:
-        clause_id = await self._validate_item_references(
-            revision_id, contract_id, item["clause_id"], item["document_ids"]
+        normalized_clause_id = await self._resolve_clause_id(
+            revision_id, item["clause_id"]
+        )
+        await self._validate_item_references(
+            revision_id, contract_id, normalized_clause_id, item["document_ids"]
         )
         item_id = uuid4()
         await self._session.execute(
@@ -1086,12 +1095,39 @@ class SqlAlchemyRevisionRepository:
                 "id": item_id,
                 "revision_id": revision_id,
                 "item_order": item_order,
-                "clause_id": clause_id,
-                **{key: item[key] for key in ("request_type", "reason", "requested_text")},
+                **{
+                    key: item[key]
+                    for key in ("clause_id", "request_type", "reason", "requested_text")
+                },
+                "clause_id": normalized_clause_id,
             },
         )
         await self._replace_documents(item_id, contract_id, item["document_ids"])
         return item_id
+
+    async def _resolve_clause_id(
+        self, revision_id: UUID, clause_id: UUID | None
+    ) -> UUID | None:
+        if clause_id is None:
+            return None
+        result = await self._session.execute(
+            text(
+                """
+                select cc.id
+                from public.contract_clauses cc
+                join public.revision_requests rr
+                  on rr.contract_version_id = cc.contract_version_id
+                where rr.id = :revision_id
+                  and (cc.id = :clause_id or cc.source_listing_clause_id = :clause_id)
+                limit 1
+                """
+            ),
+            {"revision_id": revision_id, "clause_id": clause_id},
+        )
+        resolved = result.scalar_one_or_none()
+        if resolved is None:
+            raise RevisionReferenceError
+        return resolved
 
     async def _replace_documents(
         self, item_id: UUID, contract_id: UUID, document_ids: list[UUID]
