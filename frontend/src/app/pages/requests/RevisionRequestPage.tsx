@@ -9,7 +9,7 @@ import { ContractStepper } from "../../components/contract/ContractStepper";
 import { RevisionCard, type RevisionDraft } from "../../components/requests/RevisionCard";
 import { useApp } from "../../context/AppContext";
 import { getContract, type Contract } from "../../data/contracts";
-import { createPublicContractRequest, friendlyApiError, getPublicListingAsContract } from "../../lib/api";
+import { createPublicContractRequest, createRevisionRequest, friendlyApiError, getPublicListingAsContract } from "../../lib/api";
 import { useRequests } from "../../store/RequestsContext";
 
 let counter = 0;
@@ -84,6 +84,19 @@ export function RevisionRequestPage() {
         people: 1, quantity: 1, quantity_unit: quantityUnit, nights,
         start_date: startDate, end_date: endDate, currency: "KRW", initial_request_kind: "revision",
         request_message: valid.map((d) => `${d.clauseNo}: ${d.requested}${d.reason ? ` (사유: ${d.reason})` : ""}`).join("\n"),
+      });
+      await createRevisionRequest(created.contract_id, {
+        base_version_no: created.version_no,
+        message: valid.map((d) => d.reason).filter(Boolean).join("\n") || "바이어가 계약 조항 수정을 요청했습니다.",
+        items: valid.map((d) => {
+          const clause = contract.clauses.find((c) => c.no === d.clauseNo);
+          return {
+            request_type: d.changeType === "delete" ? "delete" : d.changeType === "add" ? "add" : "modify",
+            clause_id: d.changeType === "add" ? undefined : clause?.id,
+            reason: d.reason.trim() || "계약 조건 수정을 요청합니다.",
+            requested_text: d.changeType === "delete" ? undefined : d.requested.trim(),
+          };
+        }),
       });
       addRequest({
       contractId: contract.id,

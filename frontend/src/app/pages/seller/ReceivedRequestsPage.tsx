@@ -41,8 +41,10 @@ export function ReceivedRequestsPage() {
   const [serverRows, setServerRows] = useState<ReceivedRequest[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
-    void Promise.all([getSellerReceivedContracts(), getSellerRevisionRequests()]).then(([items, revisions]) => setServerRows([
-      ...items.map((item) => ({
+    void Promise.all([getSellerReceivedContracts(), getSellerRevisionRequests()]).then(([items, revisions]) => {
+      const revisionContractIds = new Set(revisions.map((item) => item.contract_id));
+      setServerRows([
+      ...items.filter((item) => !revisionContractIds.has(item.contract_id)).map((item) => ({
       id: item.contract_id, buyer: item.buyer_name, contractId: item.contract_id, contractTitle: item.listing_title,
       status: item.status === "signed" ? "signed" : item.status === "signing" ? "signing" : item.status === "revision_requested" ? "negotiating" : "new",
       createdAt: item.requested_at.slice(0, 10).replaceAll("-", "."), period: `${item.service_start_date} ~ ${item.service_end_date}`,
@@ -54,7 +56,8 @@ export function ReceivedRequestsPage() {
         status: "negotiating" as const, createdAt: (item.sent_at ?? item.updated_at).slice(0, 10).replaceAll("-", "."),
         period: "계약 조건에서 확인", estimatedAmount: "계약 조건에서 확인", currentVersion: "v1", revisions: [],
       })),
-    ])).catch((error: unknown) => setLoadError(friendlyApiError(error)));
+      ]);
+    }).catch((error: unknown) => setLoadError(friendlyApiError(error)));
   }, []);
   const sourceRows = serverRows.length ? serverRows : receivedRequests;
   const rows = tab === "all" ? sourceRows : sourceRows.filter((r) => r.status === tab);

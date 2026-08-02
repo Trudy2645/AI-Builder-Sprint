@@ -446,6 +446,10 @@ export function getRevisionRequest(id: string): Promise<RevisionDetail> {
   const session = getApiSession();
   return apiFetch<RevisionDetail>(`/revision-requests/${id}`, { headers: authenticatedHeaders(session) });
 }
+export function createRevisionRequest(contractId: string, payload: { base_version_no: number; message?: string; items: Array<{ request_type: "modify" | "delete" | "add"; clause_id?: string; reason: string; requested_text?: string }> }): Promise<{ revision_request_id: string; status: string }> {
+  const session = getApiSession();
+  return apiFetch(`/contracts/${contractId}/revision-requests`, { method: "POST", headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("revision-request")]]), body: JSON.stringify(payload) });
+}
 export function decideRevisionItem(revisionId: string, itemId: string, payload: { decision: "accepted" | "rejected" | "countered"; seller_reason?: string; counter_text?: string }): Promise<RevisionDetail> {
   const session = getApiSession();
   return apiFetch<RevisionDetail>(`/revision-requests/${revisionId}/items/${itemId}`, { method: "PATCH", headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("revision-item-decide")]]), body: JSON.stringify(payload) });
@@ -556,7 +560,7 @@ export type PublicListingDetail = PublicListing & {
   no_show_policy: string | null;
   settlement_policy: string | null;
   quantity_unit: string | null;
-  clauses: Array<{ clause_order: number; title: string; body: string }>;
+  clauses: Array<{ id: string; clause_order?: number; title: string; body: string }>;
 };
 
 export function getPublicListing(listingId: string): Promise<PublicListingDetail> {
@@ -586,7 +590,7 @@ export async function getPublicListingAsContract(listingId: string): Promise<imp
       unitPrice: `${(listing.base_price?.amount_minor ?? 0).toLocaleString("ko-KR")} ${listing.base_price?.currency ?? "KRW"}`,
       cancellation: listing.cancellation_policy ?? "미정", noShow: listing.no_show_policy ?? "미정", settlement: listing.settlement_policy ?? "미정",
     },
-    clauses: listing.clauses.map((clause, index) => ({ no: `제${index + 1}조`, title: clause.title, text: clause.body })),
+    clauses: listing.clauses.map((clause, index) => ({ id: clause.id, no: `제${index + 1}조`, title: clause.title, text: clause.body })),
   };
 }
 
