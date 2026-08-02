@@ -96,8 +96,7 @@ async def list_buyer_revision_requests(
     actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
     service: Annotated[RevisionService, Depends(get_revision_service)],
     status_filter: Annotated[
-        list[Literal["sent", "countered", "accepted", "rejected", "partially_accepted"]]
-        | None,
+        list[Literal["sent", "countered", "accepted", "rejected", "partially_accepted"]] | None,
         Query(alias="status"),
     ] = None,
 ) -> SuccessEnvelope[list[SellerRevisionRequestListItem]]:
