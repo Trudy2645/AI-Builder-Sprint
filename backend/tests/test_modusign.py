@@ -112,6 +112,9 @@ def test_create_signature_request_success(app: FastAPI, auth_provider: FakeAuthP
         "status": "ON_PROCESSING",
     }
     assert fake_client.create_calls[0]["template_id"] == "tmpl-607668d0"
+    assert fake_client.create_calls[0]["participants"] == [
+        ModusignParticipant(role="바이어", name="Aiko Tanaka", email="aiko@example.jp")
+    ]
 
 
 def test_create_signature_request_requires_auth(

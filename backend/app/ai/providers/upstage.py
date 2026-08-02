@@ -102,6 +102,13 @@ _EXTRACTION_FIELDS: dict[str, tuple[str, str, str, str]] = {
         "Liability allocation, limits, and exclusions exactly grounded in the document. "
         "Omit when absent.",
     ),
+    "termination_terms": (
+        "termination",
+        "terms",
+        "string",
+        "Contract termination, cure period, and dispute resolution terms exactly grounded "
+        "in the document. Omit when absent.",
+    ),
 }
 
 
@@ -248,6 +255,7 @@ class UpstageAIProvider:
                 "safety",
                 "compensation",
                 "liability",
+                "termination",
             )
         }
         for provider_field, (section_name, field_name, _, _) in _EXTRACTION_FIELDS.items():

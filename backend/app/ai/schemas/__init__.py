@@ -22,6 +22,7 @@ from app.ai.schemas.providers import (
     FileSearchResult,
     KnowledgeFileRecord,
     LanguageModelRequest,
+    ListingMapping,
     ParsedBlock,
     ParsedPage,
     VectorStoreFileRecord,
@@ -31,6 +32,7 @@ from app.ai.schemas.providers import (
 __all__ = [
     "BoundingBox",
     "ContractExtraction",
+    "ListingMapping",
     "ContractReviewFindingCandidate",
     "ContractReviewSubmission",
     "ContractReviewToolBatch",

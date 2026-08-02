@@ -85,14 +85,30 @@ class ContractExtraction(BaseModel):
     safety: ExtractedSection
     compensation: ExtractedSection
     liability: ExtractedSection
+    termination: ExtractedSection = Field(default_factory=ExtractedSection)
     provider_request_id: str | None = None
     model_name: str = "information-extract"
+
+
+class ListingMapping(BaseModel):
+    """Solar's seller-facing normalization of already extracted contract data."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(default=None, max_length=200)
+    district: str | None = Field(default=None, max_length=80)
+    quantity: str | None = Field(default=None, max_length=120)
+    price_unit: str | None = Field(default=None, max_length=80)
+    cancellation_policy: str | None = Field(default=None, max_length=3000)
+    refund_policy: str | None = Field(default=None, max_length=3000)
+    settlement_terms: str | None = Field(default=None, max_length=2000)
 
 
 class LanguageModelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task_type: Literal[
+        "listing_mapping",
         "contract_generate",
         "contract_review",
         "public_summary",

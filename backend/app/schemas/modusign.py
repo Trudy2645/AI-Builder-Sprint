@@ -1,5 +1,5 @@
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -11,7 +11,7 @@ _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 class SignatureParticipant(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    role: Literal["바이어", "셀러"]
+    role: Literal["바이어"]
     name: str = Field(min_length=1, max_length=200)
     email: str = Field(min_length=3, max_length=254)
 
@@ -28,7 +28,27 @@ class SignatureRequestCreate(BaseModel):
 
     title: str = Field(min_length=1, max_length=200)
     buyer: SignatureParticipant
-    seller: SignatureParticipant
+
+
+class BuyerFieldCreate(BaseModel):
+    """A buyer-controlled field overlaid on the immutable source PDF."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    field_type: Literal["TEXT", "SIGNATURE", "CHECKBOX"]
+    data_label: str = Field(min_length=1, max_length=100)
+    position: dict[str, Any]
+    size: dict[str, float] | None = None
+    required: bool = True
+
+
+class SignatureRequestFromDocumentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    document_id: str
+    title: str = Field(min_length=1, max_length=200)
+    buyer: SignatureParticipant
+    fields: list[BuyerFieldCreate] = Field(min_length=1, max_length=20)
 
 
 class SignatureRequestResponse(BaseModel):

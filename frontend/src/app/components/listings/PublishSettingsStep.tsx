@@ -22,7 +22,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4 py-2" style={{ fontSize: "13px" }}>
       <span className="whitespace-nowrap text-muted-foreground">{label}</span>
-      <span className="text-right">{value}</span>
+      <span className="max-w-[75%] whitespace-pre-wrap break-words text-right leading-5">{value}</span>
     </div>
   );
 }
@@ -32,7 +32,7 @@ function BuyerPreview({ draft }: { draft: ListingDraft }) {
   const { t } = useApp();
   const price = parseInt(draft.unitPrice, 10) || 0;
   const period =
-    draft.start && draft.end ? `${draft.start} ~ ${draft.end}` : t("wz.tbd");
+    draft.availabilityStart && draft.availabilityEnd ? `${draft.availabilityStart} ~ ${draft.availabilityEnd}` : t("wz.tbd");
   const title = draft.productName || t("lf.productName");
 
   return (
@@ -172,43 +172,8 @@ export function PublishSettingsStep({ draft, onChange }: PublishSettingsStepProp
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
-          <div className="mb-4">
-            <h3 style={{ color: "var(--navy)" }}>계약 요약 편집</h3>
-            <p className="mt-1 text-muted-foreground" style={{ fontSize: "13px" }}>
-              바이어가 조건 확인 화면에서 보는 기간, 수량, 단가, 취소·정산 문구를 다듬을 수 있습니다.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="quantity">공급 수량</Label>
-              <Input id="quantity" value={draft.quantity} onChange={(e) => onChange({ quantity: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="priceUnit">단가 기준</Label>
-              <Input id="priceUnit" value={draft.priceUnit} onChange={(e) => onChange({ priceUnit: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="unitPrice">단가</Label>
-              <Input id="unitPrice" value={draft.unitPrice} onChange={(e) => onChange({ unitPrice: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="settlement">정산</Label>
-              <Input id="settlement" value={draft.settlement} onChange={(e) => onChange({ settlement: e.target.value })} />
-            </div>
-          </div>
-
-          <div className="mt-3 grid gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cancellation">무료 취소</Label>
-              <Input id="cancellation" value={draft.cancellation} onChange={(e) => onChange({ cancellation: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="noShow">노쇼</Label>
-              <Input id="noShow" value={draft.noShow} onChange={(e) => onChange({ noShow: e.target.value })} />
-            </div>
-          </div>
+        <div className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          공고는 저장과 동시에 바이어에게 공개됩니다. 공개 여부를 따로 설정하지 않습니다.
         </div>
       </div>
 
