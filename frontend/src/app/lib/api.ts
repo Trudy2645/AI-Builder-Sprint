@@ -38,6 +38,7 @@ type UploadedDocumentProcessingResult = {
   } | null;
   confirmationRequired: string[];
   validationWarnings: string[];
+  extraction: Record<string, unknown> | null;
 };
 
 function requestIdempotencyKey(prefix: string): string {
@@ -166,6 +167,7 @@ export async function uploadAndProcessSourceContract(file: File): Promise<Upload
     const result = await apiFetch<{
       status: "processing" | "ready" | "failed";
       listing_candidate: UploadedDocumentProcessingResult["listingCandidate"];
+      extraction: Record<string, unknown> | null;
       confirmation_required: string[];
       validation_warnings: string[];
       failure_code: string | null;
@@ -177,6 +179,7 @@ export async function uploadAndProcessSourceContract(file: File): Promise<Upload
         listingCandidate: result.listing_candidate,
         confirmationRequired: result.confirmation_required,
         validationWarnings: result.validation_warnings,
+        extraction: result.extraction,
       };
     }
     if (result.status === "failed") throw new Error(`AI 계약서 분석에 실패했습니다${result.failure_code ? ` (${result.failure_code})` : ""}.`);
