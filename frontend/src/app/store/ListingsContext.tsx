@@ -120,102 +120,17 @@ interface ListingsContextValue {
 
 const ListingsContext = createContext<ListingsContextValue | null>(null);
 
-const seed: Listing[] = [
-  {
-    id: "lst-coastline-room",
-    productName: "2026 해운대 단체 객실 공급 계약",
-    category: "accommodation",
-    district: "해운대구",
-    start: "2026.07.01",
-    end: "2026.08.31",
-    unitPrice: 146000,
-    priceUnit: "객실당",
-    quantityLabel: "1일 최대 32실",
-    status: "public",
-    method: "write",
-    requests: 5,
-    updatedAt: "2026.07.20",
-    riskCount: 0,
-  },
-  {
-    id: "lst-bluewave-surf",
-    productName: "2026 송정 단체 서핑 강습 공급 계약",
-    category: "activity",
-    district: "해운대구",
-    start: "2026.06.01",
-    end: "2026.09.30",
-    unitPrice: 68000,
-    priceUnit: "1인당",
-    quantityLabel: "1일 최대 45명",
-    status: "public",
-    method: "write",
-    requests: 2,
-    updatedAt: "2026.07.11",
-    riskCount: 1,
-  },
-  {
-    id: "lst-route-rental",
-    productName: "2026 김해공항 단체 밴 렌탈 계약",
-    category: "vehicle_rental",
-    district: "강서구",
-    start: "2026.03.01",
-    end: "2026.12.31",
-    unitPrice: 132000,
-    priceUnit: "차량 1대·1일",
-    quantityLabel: "1일 최대 12대",
-    status: "needsReview",
-    method: "upload",
-    requests: 0,
-    updatedAt: "2026.07.25",
-    riskCount: 2,
-  },
-];
-
-function localStatus(status: SellerListingSummary["status"]): ListingStatus {
-  if (status === "published") return "public";
-  if (status === "paused") return "paused";
-  if (status === "expired") return "expired";
-  if (status === "draft") return "draft";
-  return "needsReview";
-}
-
-function displayDate(value: string | null): string {
-  return value ? value.slice(0, 10).replaceAll("-", ".") : "";
-}
-
-function fromServerListing(item: SellerListingSummary): Listing {
-  return {
-    id: item.id,
-    productName: item.display_title || item.title,
-    category: item.category,
-    district: item.district,
-    start: displayDate(item.service_start_date),
-    end: displayDate(item.service_end_date),
-    unitPrice: item.base_price?.amount_minor ?? 0,
-    priceUnit: item.base_price?.unit ?? "기준 단가",
-    quantityLabel: item.supply_quantity_description || "미정",
-    status: localStatus(item.status),
-    method: item.creation_method,
-    requests: item.contract_request_count,
-    updatedAt: displayDate(item.updated_at),
-    riskCount: item.attention_required_count,
-  };
-}
-
 export function ListingsProvider({ children }: { children: ReactNode }) {
   const { isDemoSession } = useApp();
   const [listings, setListings] = useState<Listing[]>([]);
 
   useEffect(() => {
-    if (!hasApiSession()) {
-      if (!isDemoSession) { setListings([]); return; }
-      try {
-        const saved = window.localStorage.getItem("busanlink.seller.listings");
-        setListings(saved ? JSON.parse(saved) as Listing[] : seed);
-      } catch {
-        setListings(seed);
-      }
-      return;
+    if (!isDemoSession) { setListings([]); return; }
+    try {
+      const saved = window.localStorage.getItem("busanlink.seller.listings");
+      setListings(saved ? JSON.parse(saved) as Listing[] : []);
+    } catch {
+      setListings([]);
     }
 
     let active = true;
@@ -239,7 +154,6 @@ export function ListingsProvider({ children }: { children: ReactNode }) {
       });
     return () => { active = false; };
   }, [isDemoSession]);
-
   const addListing: ListingsContextValue["addListing"] = (l) => {
     const now = new Date();
     const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
