@@ -1213,6 +1213,8 @@ export function generatePublicListingSummary(
       ].join("\n"),
     },
   ]);
+}
+
 export function getPublicSourceDocumentUrl(listingId: string): Promise<{ document_id: string; download_url: string; expires_at: string }> {
   const token = getAccessToken();
   if (!token) throw new ApiError({ code: "AUTH_REQUIRED", message: "Login required." });
