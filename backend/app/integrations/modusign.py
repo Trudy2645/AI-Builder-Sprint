@@ -220,7 +220,9 @@ class ModusignClient:
         response: httpx.Response | None = None
         for attempt in range(self._max_retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+                async with httpx.AsyncClient(
+                    timeout=self._timeout_seconds, transport=self._transport
+                ) as client:
                     response = await client.get(download_url, auth=self._auth)
             except httpx.HTTPError as exc:
                 if attempt == self._max_retries:
@@ -250,7 +252,9 @@ class ModusignClient:
         response: httpx.Response | None = None
         for attempt in range(self._max_retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+                async with httpx.AsyncClient(
+                    timeout=self._timeout_seconds, transport=self._transport
+                ) as client:
                     response = await client.request(
                         method,
                         url,
