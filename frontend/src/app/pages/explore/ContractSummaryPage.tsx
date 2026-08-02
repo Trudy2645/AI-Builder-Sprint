@@ -7,7 +7,6 @@ import {
   Ban,
   UserX,
   Wallet,
-  Sparkles,
   MapPin,
   AlertTriangle,
   ShieldCheck,
@@ -35,8 +34,8 @@ function DetailRow({ icon, label, value }: { icon: ReactNode; label: string; val
     <div className="flex items-start gap-3 border-b border-border py-3 last:border-b-0">
       <span className="mt-0.5 shrink-0" style={{ color: "var(--ocean)" }}>{icon}</span>
       <div className="min-w-0">
-        <div className="whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px" }}>{label}</div>
-        <div className="text-foreground" style={{ fontSize: "14px" }}>{value}</div>
+        <div className="whitespace-nowrap text-muted-foreground" style={{ fontSize: "14px" }}>{label}</div>
+        <div className="text-foreground" style={{ fontSize: "16px" }}>{value}</div>
       </div>
     </div>
   );
@@ -80,7 +79,7 @@ export function ContractSummaryPage() {
         noShow: listing.no_show_policy ?? "미정",
         settlement: listing.settlement_policy ?? "미정",
       },
-      clauses: listing.clauses.map((clause) => ({ no: `제${clause.clause_order}조`, title: clause.title, text: clause.body })),
+      clauses: listing.clauses.map((clause, index) => ({ no: `제${index + 1}조`, title: clause.title, text: clause.body })),
     })).catch((error: unknown) => setLoadError(friendlyApiError(error)));
   }, [demoContract, id]);
   const contract = demoContract ?? serverContract;
@@ -133,8 +132,8 @@ export function ContractSummaryPage() {
         </div>
       </div>
 
-      {/* Details + AI summary */}
-      <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6">
+      {/* Details */}
+      <div className="mt-6">
         <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
           <h3 className="mb-2" style={{ color: "var(--navy)" }}>{t("summary.period")} · {t("summary.settlement")}</h3>
           <DetailRow icon={<CalendarDays className="size-4" />} label={t("summary.period")} value={d.period} />
@@ -146,32 +145,15 @@ export function ContractSummaryPage() {
           <DetailRow icon={<Wallet className="size-4" />} label={t("summary.settlement")} value={d.settlement} />
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="rounded-xl border p-5" style={{ background: "var(--info-soft)", borderColor: "var(--ocean)" }}>
-            <div className="flex items-center gap-1.5 whitespace-nowrap" style={{ color: "var(--ocean)", fontWeight: 600 }}>
-              <Sparkles className="size-4" />
-              {t("summary.aiSummary")}
-            </div>
-            <ul className="mt-3 flex flex-col gap-2">
-              {contract.aiSummary.map((line, i) => (
-                <li key={i} className="flex gap-2 text-foreground" style={{ fontSize: "14px", lineHeight: 1.5 }}>
-                  <span style={{ color: "var(--ocean)", fontWeight: 700 }}>{i + 1}</span>
-                  <span>{line}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Button className="w-full gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => navigate(`${base}/${contract.id}/document${location.search}`)}>
-              <FileText className="size-4" />
-              {t("summary.viewOriginal")}
-            </Button>
-            <Button variant="outline" className="w-full gap-1.5 whitespace-nowrap" onClick={() => navigate(base)}>
-              <ArrowLeft className="size-4" />
-              {t("summary.backToList")}
-            </Button>
-          </div>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <Button className="w-full gap-1.5 whitespace-nowrap sm:flex-1" style={{ background: "var(--navy)" }} onClick={() => navigate(`${base}/${contract.id}/document${location.search}`)}>
+            <FileText className="size-4" />
+            {t("summary.viewOriginal")}
+          </Button>
+          <Button variant="outline" className="w-full gap-1.5 whitespace-nowrap sm:flex-1" onClick={() => navigate(base)}>
+            <ArrowLeft className="size-4" />
+            {t("summary.backToList")}
+          </Button>
         </div>
       </div>
 
