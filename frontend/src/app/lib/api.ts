@@ -32,6 +32,7 @@ let activeSession: ApiSession | null = null;
 
 type UploadedDocumentProcessingResult = {
   listingId: string;
+  listingVersionNo: number;
   listingCandidate: {
     title?: string;
     category?: "vehicle_rental" | "activity" | "tour" | "accommodation";
@@ -188,6 +189,7 @@ export async function uploadAndProcessSourceContract(
       await publishSellerListing(listing.listing_id);
       return {
         listingId: listing.listing_id,
+        listingVersionNo: listing.version_no,
         listingCandidate: result.listing_candidate,
         confirmationRequired: result.confirmation_required,
         validationWarnings: result.validation_warnings,
@@ -222,7 +224,7 @@ export async function updateSellerListingTerms(listingId: string, terms: Record<
     liability_policy: String(terms.liability_policy || "계약서 기준"),
     termination_policy: String(terms.termination_policy || "계약서 기준"),
   };
-  await apiFetch(`/seller/listings/${listingId}/terms`, { method: "PATCH", headers: authenticatedHeaders(session, { "Content-Type": "application/json" }), body: JSON.stringify(body) });
+  await apiFetch(`/seller/listings/${listingId}/terms`, { method: "PATCH", headers: authenticatedHeaders(session, { "Content-Type": "application/json" }), body: JSON.stringify({ base_version_no: 1, terms: body }) });
 }
 
 export type PublicListing = {
