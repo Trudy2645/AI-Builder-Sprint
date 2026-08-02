@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { useApp } from "../../context/AppContext";
-import { CATEGORIES, DISTRICTS } from "../../data/contracts";
+import { CATEGORIES, DISTRICTS } from "../../lib/catalog";
 import type { ListingDraft } from "../../store/ListingsContext";
 
 type Patch = Partial<ListingDraft>;

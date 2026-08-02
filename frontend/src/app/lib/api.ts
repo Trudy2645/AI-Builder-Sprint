@@ -1,3 +1,5 @@
+import type { Category } from "./catalog";
+
 export type ApiErrorPayload = {
   error: {
     code: string;
@@ -119,6 +121,14 @@ export function friendlyApiError(error: unknown): string {
 export async function apiFetch<Data>(path: string, init: RequestInit = {}): Promise<Data> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
+  const accessToken = getAccessToken();
+  if (accessToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+  const organizationId = window.localStorage.getItem("busanlink.organization_id");
+  if (organizationId && !headers.has("X-Organization-Id")) {
+    headers.set("X-Organization-Id", organizationId);
+  }
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers,
@@ -386,6 +396,22 @@ export async function publishSellerListing(listingId: string): Promise<void> {
   await apiFetch(`/seller/listings/${listingId}/complete`, { method: "POST", headers: authenticatedHeaders(session) });
   await apiFetch(`/seller/listings/${listingId}/publish`, { method: "POST", headers: authenticatedHeaders(session) });
 }
+
+export async function pauseSellerListing(listingId: string): Promise<void> {
+  const session = getApiSession();
+  await apiFetch(`/seller/listings/${listingId}/pause`, {
+    method: "POST",
+    headers: authenticatedHeaders(session),
+  });
+}
+
+export async function archiveSellerListing(listingId: string): Promise<void> {
+  const session = getApiSession();
+  await apiFetch(`/seller/listings/${listingId}/archive`, {
+    method: "POST",
+    headers: authenticatedHeaders(session),
+  });
+}
 export type Role = "buyer" | "seller";
 
 type AuthSession = { access_token: string; refresh_token: string; token_type: string; expires_in: number };
@@ -424,13 +450,375 @@ export function getMyContracts(): Promise<ContractListItem[]> {
   return apiFetch<ContractListItem[]>("/me/contracts");
 }
 
+export type SellerContractListItem = {
+  contract_id: string;
+  listing_id: string | null;
+  listing_title: string;
+  buyer_name: string;
+  buyer_group_name: string | null;
+  requested_people: number;
+  service_start_date: string;
+  service_end_date: string;
+  amount_minor: number | null;
+  currency: string | null;
+  initial_request_kind: "as_is" | "revision";
+  request_kind_label: string;
+  status: string;
+  status_label: string;
+  requested_at: string;
+};
+
+export function getReceivedContracts(): Promise<SellerContractListItem[]> {
+  const session = getApiSession();
+  return apiFetch<SellerContractListItem[]>("/seller/contracts/received", {
+    headers: authenticatedHeaders(session),
+  });
+}
+
+export type SellerDashboard = {
+  stats: {
+    published_listings: number;
+    received_requests: number;
+    seller_review: number;
+    revision_requested: number;
+    signing: number;
+    signed: number;
+    cancelled: number;
+  };
+  recent_requests: SellerContractListItem[];
+  listing_request_counts: Array<{
+    listing_id: string;
+    listing_title: string;
+    listing_status: string;
+    request_count: number;
+  }>;
+};
+
+export function getSellerDashboard(): Promise<SellerDashboard> {
+  const session = getApiSession();
+  return apiFetch<SellerDashboard>("/seller/dashboard", {
+    headers: authenticatedHeaders(session),
+  });
+}
+
 export type ContractDetail = {
   id: string;
+  listing_id: string | null;
   listing_title: string;
   status: string;
+  bucket: string;
+  status_label: string;
+  has_unread_response: boolean;
+  initial_request_kind: "as_is" | "revision";
+  request_message: string | null;
+  requested_people: number;
+  buyer_group_name: string | null;
+  signing_capacity: "self" | "group_representative";
+  amount_minor: number | null;
+  currency: string | null;
+  service_start_date: string;
+  service_end_date: string;
+  created_at: string;
+  updated_at: string;
   parties: Array<{ role: "buyer" | "seller"; name: string }>;
-  current_version: { id: string; version_no: number; title: string; body: string };
+  terms: {
+    people: number;
+    quantity: number;
+    quantity_unit: string;
+    nights: number;
+    start_date: string;
+    end_date: string;
+    amount_minor: number | null;
+    currency: string | null;
+    formula: string;
+  };
+  current_version: {
+    id: string;
+    version_no: number;
+    title: string;
+    body: string;
+    clauses: Array<{ id: string; clause_order: number; clause_key: string | null; title: string; body: string }>;
+  };
 };
+
+export type ContractVersionListItem = {
+  id: string;
+  version_no: number;
+  version_label: string;
+  title: string;
+  created_by_role: "buyer" | "seller" | "system";
+  creation_reason: "contract_created" | "revision_agreement" | "manual_version";
+  created_from_revision_request_id: string | null;
+  created_at: string;
+  clause_count: number;
+  risk: { score: number | null; finding_count: number };
+};
+
+export type ContractVersionCompare = {
+  contract_id: string;
+  from_version: ContractVersionListItem;
+  to_version: ContractVersionListItem;
+  clause_summary: { added: number; deleted: number; modified: number };
+  clause_changes: Array<{
+    change_type: "added" | "deleted" | "modified";
+    before: { id: string; clause_order: number; clause_key: string | null; title: string; body: string } | null;
+    after: { id: string; clause_order: number; clause_key: string | null; title: string; body: string } | null;
+  }>;
+  price_change: {
+    direction: "increased" | "decreased" | "unchanged" | "unknown";
+    before: { amount_minor: number | null; currency: string | null };
+    after: { amount_minor: number | null; currency: string | null };
+    delta_amount_minor: number | null;
+  };
+  period_change: {
+    changed: boolean | null;
+    before: { start_date: string | null; end_date: string | null };
+    after: { start_date: string | null; end_date: string | null };
+  };
+  risk_change: {
+    direction: "increased" | "decreased" | "unchanged" | "unknown";
+    before_score: number | null;
+    after_score: number | null;
+    before_finding_count: number;
+    after_finding_count: number;
+  };
+};
+
+export function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
+  return apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
+}
+
+export function compareContractVersions(
+  contractId: string,
+  fromVersion: number,
+  toVersion: number,
+): Promise<ContractVersionCompare> {
+  const query = new URLSearchParams({ from: String(fromVersion), to: String(toVersion) });
+  return apiFetch<ContractVersionCompare>(`/contracts/${contractId}/versions/compare?${query}`);
+}
+
+export type ContractRequestPayload = {
+  people: number;
+  quantity: number;
+  quantity_unit: string;
+  nights: number;
+  start_date: string;
+  end_date: string;
+  currency: string;
+  group_name?: string;
+  signing_capacity?: "self" | "group_representative";
+  request_message?: string;
+  initial_request_kind: "as_is" | "revision";
+};
+
+export type ContractRequestCreated = {
+  contract_id: string;
+  version_no: number;
+  status: "seller_review" | "revision_requested";
+};
+
+export function createContractRequest(
+  listingId: string,
+  payload: ContractRequestPayload,
+): Promise<ContractRequestCreated> {
+  return apiFetch<ContractRequestCreated>(`/listings/${listingId}/contract-requests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("contract-request") },
+    body: JSON.stringify(payload),
+  });
+}
+
+export type RevisionItemPayload = {
+  request_type: "modify" | "delete" | "add";
+  clause_id?: string;
+  reason: string;
+  requested_text?: string;
+  document_ids?: string[];
+};
+
+export type RevisionRequestResponse = {
+  id: string;
+  contract_id: string;
+  base_version_no: number;
+  status: "draft" | "sent" | "accepted" | "rejected" | "partially_accepted" | "countered" | "cancelled";
+  requested_by_user_id: string;
+  message: string | null;
+  seller_message: string | null;
+  response_message: string | null;
+  items: Array<{
+    id: string;
+    item_order: number;
+    request_type: "modify" | "delete" | "add";
+    clause_id: string | null;
+    reason: string;
+    requested_text: string | null;
+    document_ids: string[];
+    decision: "pending" | "accepted" | "rejected" | "countered";
+    seller_reason: string | null;
+    counter_text: string | null;
+    decided_at: string | null;
+  }>;
+  decision_preview: {
+    resulting_clauses: Array<{ id: string; clause_order: number; clause_key: string | null; title: string; body: string }>;
+    pending_item_count: number;
+    requires_buyer_response: boolean;
+    will_create_version: boolean;
+  };
+  created_at: string;
+  updated_at: string;
+  sent_at: string | null;
+  decided_at: string | null;
+  responded_at: string | null;
+};
+
+export function createRevisionRequest(
+  contractId: string,
+  payload: { base_version_no: number; message?: string; items: RevisionItemPayload[] },
+): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
+  return apiFetch(`/contracts/${contractId}/revision-requests`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-request") },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getRevisionRequest(revisionRequestId: string): Promise<RevisionRequestResponse> {
+  return apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
+}
+
+export function sendRevisionRequest(revisionRequestId: string): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
+  return apiFetch(`/revision-requests/${revisionRequestId}/send`, {
+    method: "POST",
+    headers: { "Idempotency-Key": requestIdempotencyKey("revision-send") },
+  });
+}
+
+export type SellerRevisionRequestListItem = {
+  id: string;
+  contract_id: string;
+  listing_title: string;
+  buyer_name: string;
+  status: "draft" | "sent" | "accepted" | "rejected" | "partially_accepted" | "countered" | "cancelled";
+  message: string | null;
+  item_count: number;
+  item_summary: string[];
+  has_unread: boolean;
+  sent_at: string | null;
+  updated_at: string;
+};
+
+export function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
+  return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
+}
+
+export function decideRevisionRequest(
+  revisionRequestId: string,
+  payload: { seller_message?: string },
+): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
+  return apiFetch(`/revision-requests/${revisionRequestId}/decide`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-decide") },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function patchRevisionItem(
+  revisionRequestId: string,
+  itemId: string,
+  payload: { decision: "accepted" | "rejected" | "countered"; seller_reason?: string; counter_text?: string },
+): Promise<RevisionRequestResponse> {
+  return apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export type MeProfile = {
+  id: string;
+  email: string | null;
+  username: string;
+  display_name: string;
+  phone: string | null;
+  country_code: string | null;
+  locale: "ko-KR" | "en-US" | "ja-JP" | "zh-CN";
+  preferred_currency: string;
+  default_group_name: string | null;
+  affiliation_name: string | null;
+  business_type: string | null;
+  role: "buyer" | "seller";
+  created_at: string;
+  updated_at: string;
+  organizations: Array<{ id: string; name: string; verification_status: string; member_role: string }>;
+};
+
+export function getMe(): Promise<MeProfile> {
+  return apiFetch<MeProfile>("/me");
+}
+
+export function updateMe(payload: Record<string, unknown>): Promise<MeProfile> {
+  return apiFetch<MeProfile>("/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export type OrganizationProfile = {
+  id: string;
+  organization_type: "seller";
+  name: string;
+  legal_name: string | null;
+  business_registration_no: string | null;
+  representative_name: string | null;
+  business_address: string | null;
+  supply_categories: Category[];
+  verification_status: "pending" | "verified" | "rejected";
+  rating_average: number | string;
+  rating_count: number;
+  member_role: string;
+  created_at: string;
+  updated_at: string;
+  verified_at: string | null;
+};
+
+export function getOrganization(organizationId: string): Promise<OrganizationProfile> {
+  return apiFetch<OrganizationProfile>(`/organizations/${organizationId}`);
+}
+
+export function updateOrganization(
+  organizationId: string,
+  payload: Record<string, unknown>,
+): Promise<OrganizationProfile> {
+  return apiFetch<OrganizationProfile>(`/organizations/${organizationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getPublicContractPreview(
+  listingId: string,
+  locale: "ko-KR" | "en-US" | "ja-JP" | "zh-CN" = "ko-KR",
+): Promise<{
+  listing_version_id: string;
+  body: string;
+  clauses: PublicListingClause[];
+  findings: Array<{
+    id: string | null;
+    clause_id: string | null;
+    severity: "high" | "medium" | "low" | "none";
+    explanation: string;
+    suggested_text: string | null;
+    disclaimer: string;
+    evidence_refs: Array<{ id: string; label: string; document_title: string; source_kind: string; page: number; section: string | null; excerpt: string }>;
+  }>;
+  requested_locale: string;
+  content_locale: string;
+  fallback_locale: string | null;
+}> {
+  return apiFetch(`/public/listings/${listingId}/contract-preview?locale=${encodeURIComponent(locale)}`);
+}
 
 export type ApprovalStatus = {
   contract_id: string;
@@ -518,6 +906,18 @@ export type PublicListing = {
   attention_required_count: number;
 };
 
+const demoSeedListingIds = new Set([
+  "11111111-1111-4111-8111-111111111111",
+  "22222222-2222-4222-8222-222222222222",
+  "33333333-3333-4333-8333-333333333333",
+]);
+
+function isHiddenTestListing(listing: PublicListing): boolean {
+  if (import.meta.env.VITE_SHOW_TEST_DATA === "true") return false;
+  const marker = `${listing.title} ${listing.seller.name}`.toLocaleLowerCase();
+  return demoSeedListingIds.has(listing.id) || marker.includes("e2e");
+}
+
 export type SellerListingSummary = {
   id: string;
   title: string;
@@ -538,6 +938,50 @@ export type SellerListingSummary = {
   updated_at: string;
 };
 
+export type SellerListingDetail = SellerListingSummary & {
+  language: "ko-KR" | "en-US" | "ja-JP" | "zh-CN";
+  display_company_name: string | null;
+  seller_description: string | null;
+  ai_summary: string | null;
+  hero_document_id: string | null;
+  terms: {
+    service_start_date: string | null;
+    service_end_date: string | null;
+    supply_quantity: number | null;
+    supply_quantity_description: string | null;
+    quantity_unit: string | null;
+    minimum_quantity: number | null;
+    maximum_quantity: number | null;
+    people_per_unit: number | null;
+    base_price_amount_minor: number | null;
+    currency: string | null;
+    price_unit: string | null;
+    minimum_people: number | null;
+    maximum_people: number | null;
+    cancellation_policy: string | null;
+    no_show_policy: string | null;
+    refund_policy: string | null;
+    settlement_policy: string | null;
+    safety_policy: string | null;
+    compensation_policy: string | null;
+    liability_policy: string | null;
+    termination_policy: string | null;
+    special_terms: string | null;
+    price_display_basis: string | null;
+    contract_availability_note: string | null;
+  };
+  current_version: {
+    id: string;
+    version_no: number;
+    title: string;
+    body: string;
+    created_at: string;
+    clauses: Array<{ id: string; clause_order: number; clause_key: string | null; title: string; body: string }>;
+  };
+  published_at: string | null;
+  paused_at: string | null;
+};
+
 export function getSellerListings(): Promise<SellerListingSummary[]> {
   const session = getApiSession();
   return apiFetch<SellerListingSummary[]>("/seller/listings", {
@@ -545,8 +989,16 @@ export function getSellerListings(): Promise<SellerListingSummary[]> {
   });
 }
 
-export function getPublicListings(): Promise<PublicListing[]> {
-  return apiFetch<PublicListing[]>("/public/listings");
+export function getSellerListing(listingId: string): Promise<SellerListingDetail> {
+  const session = getApiSession();
+  return apiFetch<SellerListingDetail>(`/seller/listings/${listingId}`, {
+    headers: authenticatedHeaders(session),
+  });
+}
+
+export async function getPublicListings(): Promise<PublicListing[]> {
+  const listings = await apiFetch<PublicListing[]>("/public/listings");
+  return listings.filter((listing) => !isHiddenTestListing(listing));
 }
 
 export type PublicListingClause = {
@@ -587,7 +1039,12 @@ export function getPublicListing(
 ): Promise<PublicListingDetail> {
   return apiFetch<PublicListingDetail>(
     `/public/listings/${encodeURIComponent(listingId)}?locale=${encodeURIComponent(locale)}`,
-  );
+  ).then((listing) => {
+    if (isHiddenTestListing(listing)) {
+      throw new ApiError({ code: "LISTING_NOT_FOUND", message: "요청한 공고를 찾을 수 없습니다." });
+    }
+    return listing;
+  });
 }
 
 export type AuthenticatedDemoSession = {

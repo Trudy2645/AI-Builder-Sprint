@@ -10,7 +10,7 @@ import { RiskReviewStep, analyzeDraft } from "../../components/listings/RiskRevi
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
 import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
-import { formatKRW } from "../../data/contracts";
+import { formatKRW } from "../../lib/catalog";
 import { friendlyApiError, hasApiSession, saveSellerListing } from "../../lib/api";
 
 const STEPS = ["wz.product", "wz.supply", "wz.terms", "wz.generate", "wz.risk", "wz.publish"];
@@ -103,9 +103,8 @@ export function WriteContractPage() {
     };
     setPublishing(true);
     try {
-      if (hasApiSession()) {
-        await saveSellerListing(serverDraft, !asDraft && draft.available);
-      }
+      if (!hasApiSession()) throw new Error("API 로그인 정보가 없습니다. 다시 로그인해 주세요.");
+      await saveSellerListing(serverDraft, !asDraft && draft.available);
       addListing(draftToListing(serverDraft, asDraft ? "draft" : "public", risks));
       toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
       navigate("/seller/listings");

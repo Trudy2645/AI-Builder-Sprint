@@ -5,7 +5,17 @@ import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { VersionBadge } from "../contract/VersionBadge";
 import { useApp } from "../../context/AppContext";
-import type { ReceivedRevision } from "../../data/receivedRequests";
+
+export interface ReceivedRevision {
+  id: string;
+  clauseNo: string;
+  clauseTitle: string;
+  original: string;
+  requested: string;
+  reason: string;
+  aiImpact: string;
+  aiRecommend: string;
+}
 
 export type DecisionKind = "accept" | "reject" | "counter";
 

@@ -15,10 +15,8 @@ import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { useApp } from "../../context/AppContext";
 import { useListings } from "../../store/ListingsContext";
-import { CATEGORIES, formatKRW } from "../../data/contracts";
-import { receivedRequests, type ReceivedRequest } from "../../data/receivedRequests";
-
-const SELLER_FALLBACK = "해운대 오션스테이";
+import { CATEGORIES, formatKRW } from "../../lib/catalog";
+import { useRequests } from "../../store/RequestsContext";
 
 interface Stat {
   key: string;
@@ -30,14 +28,13 @@ interface Stat {
   path: string;
 }
 
-const requestStatusLabel: Record<ReceivedRequest["status"], string> = {
-  new: "새 요청",
-  negotiating: "협상 중",
-  signing: "서명 대기",
-  signed: "체결 완료",
+type DashboardRequestStatus = "new" | "negotiating" | "signing" | "signed";
+
+const requestStatusLabel: Record<"new" | "negotiating" | "signing" | "signed", string> = {
+  new: "새 요청", negotiating: "협상 중", signing: "서명 대기", signed: "체결 완료",
 };
 
-const requestStatusTone: Record<ReceivedRequest["status"], { bg: string; color: string }> = {
+const requestStatusTone: Record<"new" | "negotiating" | "signing" | "signed", { bg: string; color: string }> = {
   new: { bg: "var(--info-soft)", color: "var(--ocean)" },
   negotiating: { bg: "var(--warning-soft)", color: "var(--warning)" },
   signing: { bg: "var(--success-soft)", color: "var(--teal)" },
@@ -45,15 +42,15 @@ const requestStatusTone: Record<ReceivedRequest["status"], { bg: string; color: 
 };
 
 export function SellerDashboardPage() {
-  const { t, companyName, isDemoSession } = useApp();
+  const { t, companyName } = useApp();
   const navigate = useNavigate();
   const { listings, publicCount } = useListings();
-  const company = companyName || (isDemoSession ? SELLER_FALLBACK : "계정 정보 없음");
-  const sellerRequests = isDemoSession ? receivedRequests : [];
-  const newRequestCount = sellerRequests.filter((request) => request.status === "new").length;
+  const company = companyName || "계정 정보 없음";
+  const { requests: sellerRequests } = useRequests();
+  const newRequestCount = sellerRequests.filter((request) => request.status === "reviewing").length;
   const negotiatingCount = sellerRequests.filter((request) => request.status === "negotiating").length;
   const signingCount = sellerRequests.filter((request) => request.status === "signing").length;
-  const signedThisMonthCount = sellerRequests.filter((request) => request.status === "signed" && request.createdAt.startsWith("2026.07")).length;
+  const signedThisMonthCount = sellerRequests.filter((request) => request.status === "completed" && request.createdAt.slice(0, 7) === new Date().toISOString().slice(0, 7).replace("-", ".")).length;
 
   const stats: Stat[] = [
     { key: "public", labelKey: "sdash.stat.public", value: publicCount, icon: Globe, color: "var(--success)", bg: "var(--success-soft)", path: "/seller/listings?status=public" },
@@ -64,7 +61,18 @@ export function SellerDashboardPage() {
   ];
 
   const recent = listings.slice(0, 5);
-  const recentRequests = sellerRequests.slice(0, 4);
+  const recentRequests = sellerRequests.slice(0, 4).flatMap((request) => {
+    const displayStatus: DashboardRequestStatus | null = request.status === "reviewing"
+      ? "new"
+      : request.status === "negotiating"
+        ? "negotiating"
+        : request.status === "signing"
+          ? "signing"
+          : request.status === "completed"
+            ? "signed"
+            : null;
+    return displayStatus ? [{ ...request, displayStatus, period: `${request.serviceStartDate ?? ""} ~ ${request.serviceEndDate ?? ""}` }] : [];
+  });
 
   return (
     <div>
@@ -115,10 +123,10 @@ export function SellerDashboardPage() {
             <div key={row.id} className="grid min-w-[900px] grid-cols-[1fr_1.2fr_1.7fr_1fr_1fr_.8fr] items-center gap-4 border-b px-6 py-4 last:border-b-0">
               <div className="text-xs font-semibold" style={{ color: "var(--ocean)" }}>{row.id}</div>
               <div className="truncate font-semibold">{row.buyer}</div>
-              <div className="truncate text-sm">{row.contractTitle}</div>
+              <div className="truncate text-sm">{row.title}</div>
               <div className="text-sm text-muted-foreground">{row.period}</div>
-              <div><Badge className="whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.status].bg, color: requestStatusTone[row.status].color }}>{requestStatusLabel[row.status]}</Badge></div>
-              <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.status}`)}>상세 보기</Button>
+              <div><Badge className="whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge></div>
+              <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
             </div>
           ))}
         </div>
@@ -128,12 +136,12 @@ export function SellerDashboardPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-xs font-semibold" style={{ color: "var(--ocean)" }}>{row.id}</div>
-                  <div className="mt-1 truncate font-semibold">{row.contractTitle}</div>
+                  <div className="mt-1 truncate font-semibold">{row.title}</div>
                   <div className="mt-1 text-sm text-muted-foreground">{row.buyer} · {row.period}</div>
                 </div>
-                <Badge className="shrink-0 whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.status].bg, color: requestStatusTone[row.status].color }}>{requestStatusLabel[row.status]}</Badge>
+                <Badge className="shrink-0 whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge>
               </div>
-              <Button size="sm" variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.status}`)}>상세 보기</Button>
+              <Button size="sm" variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
             </div>
           ))}
         </div>

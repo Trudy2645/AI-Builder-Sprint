@@ -24,7 +24,7 @@ import { useApp } from "../../context/AppContext";
 import { LANGUAGES, type Lang } from "../../i18n/translations";
 import type { Role } from "../../context/AppContext";
 import { useRequests } from "../../store/RequestsContext";
-import { receivedRequests } from "../../data/receivedRequests";
+import { loginWithDemoRole } from "../../lib/api";
 
 export function Header({
   role,
@@ -35,46 +35,22 @@ export function Header({
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
 }) {
-  const { lang, setLang, t, companyName, login, logout, isDemoSession } = useApp();
+  const { lang, setLang, t, companyName, loginWithSession, logout } = useApp();
   const navigate = useNavigate();
   const otherRole: Role = role === "buyer" ? "seller" : "buyer";
   const roleLabel = t(role === "buyer" ? "role.buyer" : "role.seller");
   const homePath = role === "buyer" ? "/buyer/explore" : "/seller/dashboard";
   const { requests } = useRequests();
-  const directCompletion = requests.find((request) => request.type === "asis" && request.status === "completed");
-  const calendarItems = role === "buyer"
-    ? requests
-        .filter((request) => request.status === "completed" || request.status === "signing")
-        .map((request) => ({
-          id: request.id,
-          title: request.title,
-          partner: request.seller,
-          date: request.createdAt,
-          status: request.status === "completed" ? "체결 완료" : "서명 대기",
-          tone: request.status === "completed" ? "var(--success)" : "var(--warning)",
-        }))
-    : [
-        ...receivedRequests
-          .filter((request) => request.status === "signed" || request.status === "signing")
-          .map((request) => ({
-            id: request.id,
-            title: request.contractTitle,
-            partner: request.buyer,
-            date: request.period,
-            status: request.status === "signed" ? "체결 완료" : "서명 대기",
-            tone: request.status === "signed" ? "var(--success)" : "var(--warning)",
-          })),
-        ...(directCompletion
-          ? [{
-              id: directCompletion.id,
-              title: directCompletion.title,
-              partner: "GlobalTrip Japan",
-              date: directCompletion.createdAt,
-              status: "체결 완료",
-              tone: "var(--success)",
-            }]
-          : []),
-      ];
+  const calendarItems = requests
+    .filter((request) => request.status === "completed" || request.status === "signing")
+    .map((request) => ({
+      id: request.id,
+      title: request.title,
+      partner: role === "buyer" ? request.seller : request.buyer ?? "바이어",
+      date: request.serviceStartDate ?? request.createdAt,
+      status: request.status === "completed" ? "체결 완료" : "서명 대기",
+      tone: request.status === "completed" ? "var(--success)" : "var(--warning)",
+    }));
   const calendarPath = role === "buyer" ? "/buyer/contracts" : "/seller/contracts";
   const calendarDays = Array.from({ length: 35 }, (_, index) => {
     const day = index - 2;
@@ -93,7 +69,7 @@ export function Header({
   }, {});
   const calendarRoleLabel = role === "buyer" ? "바이어 일정" : "셀러 일정";
   // 셀러는 수정 요청과 조건 그대로 체결 완료 알림을 확인한다.
-  const sellerNotif = role === "seller" && isDemoSession;
+  const sellerNotif = role === "seller" && requests.some((request) => request.status === "reviewing" || request.status === "negotiating");
   const displayName = companyName || "계정 정보 없음";
 
   return (
@@ -286,40 +262,12 @@ export function Header({
             <DropdownMenuLabel>{t("notif.title")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {sellerNotif ? (
-              <>
-                {directCompletion && (
-                  <>
-                    <DropdownMenuItem
-                      className="flex flex-col items-start gap-1 whitespace-normal py-2.5"
-                      onClick={() => navigate("/seller/contracts")}
-                    >
-                      <span style={{ fontSize: "13px", lineHeight: 1.5 }}>
-                        {t("notif.directCompleted")
-                          .replace("{buyer}", "GlobalTrip Japan")
-                          .replace("{title}", directCompletion.title)}
-                      </span>
-                      <span className="whitespace-nowrap" style={{ color: "var(--success)", fontSize: "12px", fontWeight: 600 }}>
-                        {t("notif.viewCompleted")} →
-                      </span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                <DropdownMenuItem
-                  className="flex flex-col items-start gap-1 whitespace-normal py-2.5"
-                  onClick={() => navigate("/seller/received/rcv-coastline")}
-                >
-                  <span style={{ fontSize: "13px", lineHeight: 1.5 }}>
-                    {t("notif.revision")
-                      .replace("{buyer}", "GlobalTrip Japan")
-                      .replace("{title}", "2026 해운대 단체 객실 공급 계약")
-                      .replace("{count}", "3")}
-                  </span>
-                  <span className="whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 600 }}>
-                    {t("notif.viewRevision")} →
-                  </span>
+              requests.filter((request) => request.status === "reviewing" || request.status === "negotiating").slice(0, 3).map((request) => (
+                <DropdownMenuItem key={request.id} className="flex flex-col items-start gap-1 whitespace-normal py-2.5" onClick={() => navigate("/seller/received")}>
+                  <span style={{ fontSize: "13px", lineHeight: 1.5 }}>{request.buyer ?? "바이어"}의 계약 요청 · {request.title}</span>
+                  <span className="whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 600 }}>요청 확인 →</span>
                 </DropdownMenuItem>
-              </>
+              ))
             ) : (
               <div className="px-2 py-6 text-center text-muted-foreground" style={{ fontSize: "13px" }}>
                 {t("notif.empty")}
@@ -361,13 +309,10 @@ export function Header({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {
-                login(
-                  otherRole,
-                  otherRole === "buyer" ? "GlobalTrip Japan" : "해운대 오션스테이",
-                  true,
-                );
-                // Let the role context commit before the route guard evaluates.
-                window.setTimeout(() => navigate(`/${otherRole}`), 0);
+                void loginWithDemoRole(otherRole).then((session) => {
+                  loginWithSession(otherRole, session.email, session.accessToken, session.organizationId);
+                  window.setTimeout(() => navigate(`/${otherRole}`), 0);
+                });
               }}
             >
               <ArrowLeftRight className="size-4" />

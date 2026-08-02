@@ -32,7 +32,7 @@ import {
   formatKRW,
   type Category,
   type Contract,
-} from "../../data/contracts";
+} from "../../lib/catalog";
 import { friendlyApiError, getPublicListings, type PublicListing } from "../../lib/api";
 
 type Sort = "recommended" | "latest" | "popular" | "priceLow" | "priceHigh";

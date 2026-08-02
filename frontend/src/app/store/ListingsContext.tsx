@@ -1,12 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApp } from "../context/AppContext";
-import type { Category } from "../data/contracts";
-import { getSellerListings, hasApiSession, type SellerListingSummary } from "../lib/api";
+import { archiveSellerListing, getSellerListings, pauseSellerListing, publishSellerListing, type SellerListingSummary } from "../lib/api";
+import type { Category } from "../lib/catalog";
 
-// 계약 공고 상태: 임시저장 / AI 검토 필요 / 공개 중 / 공개 중지 / 기간 만료
 export type ListingStatus = "draft" | "needsReview" | "public" | "paused" | "expired";
-
-// 공고 작성 방식
 export type CreateMethod = "write" | "upload";
 
 export interface Listing {
@@ -14,50 +11,42 @@ export interface Listing {
   productName: string;
   category: Category;
   district: string;
-  start: string; // YYYY.MM.DD
+  start: string;
   end: string;
-  unitPrice: number; // KRW
-  priceUnit: string; // 객실당 / 1인당 / 1동당
+  unitPrice: number;
+  priceUnit: string;
   quantityLabel: string;
   status: ListingStatus;
   method: CreateMethod;
-  requests: number; // 받은 요청 수
-  updatedAt: string; // YYYY.MM.DD
-  riskCount: number; // AI가 감지한 확인 필요 조항 수
+  requests: number;
+  updatedAt: string;
+  riskCount: number;
 }
 
-/**
- * 공고 작성 위저드에서 단계 간 공유하는 초안 데이터.
- * (숫자 입력은 폼 편의를 위해 문자열로 보관)
- */
 export interface ListingDraft {
   method: CreateMethod;
-  // 상품 정보
   productName: string;
   category: Category | "";
   district: string;
-  // 공급 조건
   availabilityStart: string;
   availabilityEnd: string;
   start: string;
   end: string;
-  quantity: string; // 공급 수량 라벨 (예: 주말 객실 최대 30실)
+  quantity: string;
   unitPrice: string;
   priceUnit: string;
   minQty: string;
   maxQty: string;
-  // 계약 조건
   cancellation: string;
   noShow: string;
   settlement: string;
-  liability: string; // 책임 조건
-  termination: string; // 계약 해지
-  special: string; // 특약
-  // 바이어 공개 정보 설정
-  headline: string; // 공개용 한 줄 소개
-  imageUrl: string; // 바이어 카드 대표 이미지
-  available: boolean; // 계약 가능 여부 공개
-  showRisk: boolean; // AI 위험 요약 공개
+  liability: string;
+  termination: string;
+  special: string;
+  headline: string;
+  imageUrl: string;
+  available: boolean;
+  showRisk: boolean;
 }
 
 export function createEmptyDraft(method: CreateMethod): ListingDraft {
@@ -88,7 +77,6 @@ export function createEmptyDraft(method: CreateMethod): ListingDraft {
   };
 }
 
-/** 위저드 초안을 공고 목록 항목으로 변환한다. */
 export function draftToListing(
   draft: ListingDraft,
   status: ListingStatus,
@@ -97,10 +85,10 @@ export function draftToListing(
   return {
     productName: draft.productName || "제목 없는 공고",
     category: (draft.category || "accommodation") as Category,
-    district: draft.district || "해운대구",
+    district: draft.district || "부산",
     start: draft.availabilityStart,
     end: draft.availabilityEnd,
-    unitPrice: parseInt(draft.unitPrice, 10) || 0,
+    unitPrice: Number.parseInt(draft.unitPrice, 10) || 0,
     priceUnit: draft.priceUnit,
     quantityLabel: draft.quantity || "미정",
     status,
@@ -110,86 +98,101 @@ export function draftToListing(
   };
 }
 
+function listingStatus(status: SellerListingSummary["status"]): ListingStatus {
+  if (status === "published") return "public";
+  if (status === "ready" || status === "processing") return "needsReview";
+  return status === "paused" ? "paused" : status === "expired" ? "expired" : "draft";
+}
+
+function dateLabel(value: string | null): string {
+  return value ? value.replace(/-/g, ".").slice(0, 10) : "";
+}
+
+function fromServerListing(item: SellerListingSummary): Listing {
+  return {
+    id: item.id,
+    productName: item.display_title ?? item.title,
+    category: item.category,
+    district: item.district,
+    start: dateLabel(item.service_start_date),
+    end: dateLabel(item.service_end_date),
+    unitPrice: item.base_price?.amount_minor ?? 0,
+    priceUnit: item.base_price?.unit ?? "기준 단가",
+    quantityLabel: item.supply_quantity_description ?? "미정",
+    status: listingStatus(item.status),
+    method: item.creation_method,
+    requests: item.contract_request_count,
+    updatedAt: dateLabel(item.updated_at),
+    riskCount: item.attention_required_count,
+  };
+}
+
 interface ListingsContextValue {
   listings: Listing[];
-  addListing: (l: Omit<Listing, "id" | "updatedAt">) => void;
-  updateListingStatus: (id: string, status: ListingStatus) => void;
-  deleteListing: (id: string) => void;
+  refreshListings: () => Promise<void>;
+  addListing: (_listing: Omit<Listing, "id" | "updatedAt">) => void;
+  updateListingStatus: (id: string, status: ListingStatus) => Promise<void>;
+  deleteListing: (id: string) => Promise<void>;
   publicCount: number;
 }
 
 const ListingsContext = createContext<ListingsContextValue | null>(null);
 
 export function ListingsProvider({ children }: { children: ReactNode }) {
-  const { isDemoSession } = useApp();
+  const { currentRole } = useApp();
   const [listings, setListings] = useState<Listing[]>([]);
 
-  useEffect(() => {
-    if (!isDemoSession) { setListings([]); return; }
-    try {
-      const saved = window.localStorage.getItem("busanlink.seller.listings");
-      setListings(saved ? JSON.parse(saved) as Listing[] : []);
-    } catch {
+  const refreshListings = useCallback(async () => {
+    if (currentRole !== "seller") {
       setListings([]);
+      return;
     }
+    const items = await getSellerListings();
+    setListings(items.map(fromServerListing));
+  }, [currentRole]);
 
+  useEffect(() => {
     let active = true;
+    if (currentRole !== "seller") {
+      setListings([]);
+      return () => { active = false; };
+    }
     getSellerListings()
-      .then((items) => {
-        if (active) setListings(items.map(fromServerListing));
-      })
-      .catch(() => {
-        if (!active) return;
-        // Keep the local demo board usable if the optional API session expires.
-        if (isDemoSession) {
-          try {
-            const saved = window.localStorage.getItem("busanlink.seller.listings");
-            setListings(saved ? JSON.parse(saved) as Listing[] : seed);
-          } catch {
-            setListings(seed);
-          }
-        } else {
-          setListings([]);
-        }
-      });
+      .then((items) => { if (active) setListings(items.map(fromServerListing)); })
+      .catch(() => { if (active) setListings([]); });
     return () => { active = false; };
-  }, [isDemoSession]);
-  const addListing: ListingsContextValue["addListing"] = (l) => {
-    const now = new Date();
-    const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-    setListings((prev) => {
-      const next = [{ ...l, id: `lst-${Date.now()}`, updatedAt }, ...prev];
-      window.localStorage.setItem("busanlink.seller.listings", JSON.stringify(next));
-      return next;
-    });
-  };
+  }, [currentRole]);
 
-  const updateListingStatus: ListingsContextValue["updateListingStatus"] = (id, status) => {
-    const now = new Date();
-    const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-    setListings((prev) => prev.map((listing) => listing.id === id ? { ...listing, status, updatedAt } : listing));
-  };
+  const addListing = useCallback(() => {
+    void refreshListings();
+  }, [refreshListings]);
 
-  const deleteListing: ListingsContextValue["deleteListing"] = (id) => {
-    setListings((prev) => prev.filter((listing) => listing.id !== id));
-  };
+  const updateListingStatus = useCallback(async (id: string, status: ListingStatus) => {
+    if (status === "public") await publishSellerListing(id);
+    else if (status === "paused") await pauseSellerListing(id);
+    else return;
+    await refreshListings();
+  }, [refreshListings]);
 
-  const value = useMemo<ListingsContextValue>(
-    () => ({
-      listings,
-      addListing,
-      updateListingStatus,
-      deleteListing,
-      publicCount: listings.filter((l) => l.status === "public").length,
-    }),
-    [listings],
-  );
+  const deleteListing = useCallback(async (id: string) => {
+    await archiveSellerListing(id);
+    await refreshListings();
+  }, [refreshListings]);
+
+  const value = useMemo<ListingsContextValue>(() => ({
+    listings,
+    refreshListings,
+    addListing,
+    updateListingStatus,
+    deleteListing,
+    publicCount: listings.filter((listing) => listing.status === "public").length,
+  }), [listings, refreshListings, addListing, updateListingStatus, deleteListing]);
 
   return <ListingsContext.Provider value={value}>{children}</ListingsContext.Provider>;
 }
 
 export function useListings() {
-  const ctx = useContext(ListingsContext);
-  if (!ctx) throw new Error("useListings must be used within ListingsProvider");
-  return ctx;
+  const context = useContext(ListingsContext);
+  if (!context) throw new Error("useListings must be used within ListingsProvider");
+  return context;
 }
