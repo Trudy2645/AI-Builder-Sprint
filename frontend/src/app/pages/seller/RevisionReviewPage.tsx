@@ -56,6 +56,14 @@ export function RevisionReviewPage() {
     request?.revisions.forEach((r) => (init[r.id] = emptyDecision()));
     return init;
   });
+  useEffect(() => {
+    if (!request) return;
+    setDecisions((previous) => {
+      const next: Record<string, Decision> = {};
+      for (const revision of request.revisions) next[revision.id] = previous[revision.id] ?? emptyDecision();
+      return next;
+    });
+  }, [request]);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const total = request?.revisions.length ?? 0;
@@ -83,7 +91,7 @@ export function RevisionReviewPage() {
     // 대안 제시는 제안 문구가 있어야 미리보기/전송 가능
     const missingCounter = request.revisions.some((r) => {
       const d = decisions[r.id];
-      return d.kind === "counter" && !d.counterText.trim();
+      return d?.kind === "counter" && !d.counterText.trim();
     });
     if (missingCounter) {
       toast.error(t("rvw.needCounterText"));
@@ -99,7 +107,7 @@ export function RevisionReviewPage() {
     }
     const missingCounter = request.revisions.some((r) => {
       const d = decisions[r.id];
-      return d.kind === "counter" && !d.counterText.trim();
+      return d?.kind === "counter" && !d.counterText.trim();
     });
     if (missingCounter) {
       toast.error(t("rvw.needCounterText"));
@@ -110,7 +118,7 @@ export function RevisionReviewPage() {
       try {
         for (const item of request.revisions) {
           const decision = decisions[item.id];
-          if (decision.kind) await decideRevisionItem(id, item.id, { decision: decision.kind === "accept" ? "accepted" : decision.kind === "reject" ? "rejected" : "countered", seller_reason: decision.kind === "reject" ? "기존 조건 유지" : undefined, counter_text: decision.kind === "counter" ? decision.counterText : undefined });
+          if (decision?.kind) await decideRevisionItem(id, item.id, { decision: decision.kind === "accept" ? "accepted" : decision.kind === "reject" ? "rejected" : "countered", seller_reason: decision.kind === "reject" ? "기존 조건 유지" : undefined, counter_text: decision.kind === "counter" ? decision.counterText : undefined });
         }
         await decideRevisionRequest(id, "셀러가 요청 조항을 검토했습니다.");
         toast.success(t("rvw.sent"));
@@ -121,7 +129,7 @@ export function RevisionReviewPage() {
     // 조항별 검토 결과(수락/거절/대안)를 셀러 응답 문구와 함께 요청 상태에 반영해
     // 협상 중 화면에서 바이어 원안 vs 셀러 제안안을 그대로 이어 볼 수 있게 한다.
     const revisedRevisions = request.revisions.map((r) => {
-      const d = decisions[r.id];
+      const d = decisions[r.id] ?? emptyDecision();
       return {
         id: r.id,
         clauseNo: r.clauseNo,
