@@ -4,7 +4,7 @@ import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { useApp } from "../../context/AppContext";
-import { CATEGORIES, formatKRW, riskCount, type Contract } from "../../data/contracts";
+import { CATEGORIES, formatKRW, riskCount, type Contract } from "../../lib/catalog";
 
 const catKey = (c: Contract) => CATEGORIES.find((x) => x.value === c.category)?.labelKey ?? "cat.all";
 

@@ -27,7 +27,7 @@ import {
 } from "../../components/ui/accordion";
 import { useApp } from "../../context/AppContext";
 import { useExploreCtx } from "../../hooks/useExploreCtx";
-import { CATEGORIES } from "../../data/contracts";
+import { CATEGORIES } from "../../lib/catalog";
 import { friendlyApiError, getPublicListing, type PublicListingDetail } from "../../lib/api";
 
 function DetailRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {

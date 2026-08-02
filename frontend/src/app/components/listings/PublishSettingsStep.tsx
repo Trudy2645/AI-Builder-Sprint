@@ -12,7 +12,7 @@ import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { useApp } from "../../context/AppContext";
-import { CATEGORIES, formatKRW } from "../../data/contracts";
+import { CATEGORIES, formatKRW } from "../../lib/catalog";
 import type { ListingDraft } from "../../store/ListingsContext";
 
 const catKey = (c: ListingDraft["category"]) =>

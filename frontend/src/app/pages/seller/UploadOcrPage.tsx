@@ -173,7 +173,8 @@ export function UploadOcrPage() {
           !asDraft && publishableDraft.available,
           serverListingVersionNo,
         );
-      } else if (hasApiSession()) {
+      } else {
+        if (!hasApiSession()) throw new Error("API 로그인 정보가 없습니다. 다시 로그인해 주세요.");
         await saveSellerListing(serverDraft, !asDraft && publishableDraft.available);
       }
       addListing(draftToListing(serverDraft, asDraft ? "draft" : "public", risks));

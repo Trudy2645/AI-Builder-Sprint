@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { useApp } from "../../context/AppContext";
-import type { Contract } from "../../data/contracts";
+import type { Contract } from "../../lib/catalog";
 
 export interface RevisionDraft {
   id: string;

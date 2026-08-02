@@ -11,8 +11,7 @@ interface AppContextValue {
   companyName: string;
   setCompanyName: (name: string) => void;
   currentRole: Role | null;
-  isDemoSession: boolean;
-  login: (role: Role, company?: string, isDemo?: boolean) => void;
+  login: (role: Role, company?: string) => void;
   loginWithSession: (
     role: Role,
     company: string,
@@ -48,15 +47,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>("ko");
   const [companyName, setCompanyName] = useState<string>(storedSession?.companyName ?? "");
   const [currentRole, setCurrentRole] = useState<Role | null>(storedSession?.role ?? null);
-  const [isDemoSession, setIsDemoSession] = useState(false);
-
-  const login = (role: Role, company?: string, isDemo = false) => {
+  const login = (role: Role, company?: string) => {
     setCurrentRole(role);
     setCompanyName(company ?? "");
-    setIsDemoSession(isDemo);
-    if (!isDemo) {
-      window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
-    }
+    window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
   };
 
   const logout = () => {
@@ -66,7 +60,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.localStorage.removeItem("busanlink.organization_id");
     setCurrentRole(null);
     setCompanyName("");
-    setIsDemoSession(false);
   };
 
   const loginWithSession = (
@@ -77,7 +70,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   ) => {
     setAccessToken(accessToken);
     if (organizationId) window.localStorage.setItem("busanlink.organization_id", organizationId);
-    login(role, company, false);
+    login(role, company);
   };
 
   const value = useMemo<AppContextValue>(
@@ -88,12 +81,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       companyName,
       setCompanyName,
       currentRole,
-      isDemoSession,
       login,
       loginWithSession,
       logout,
     }),
-    [lang, companyName, currentRole, isDemoSession],
+    [lang, companyName, currentRole],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
   User,
@@ -18,7 +18,7 @@ import { Button } from "../components/ui/button";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { StatusBadge } from "../components/requests/StatusBadge";
 import { useApp } from "../context/AppContext";
-import { buyerProfile } from "../data/profile";
+import { getMe, type MeProfile } from "../lib/api";
 import { useRequests, type RequestStatus } from "../store/RequestsContext";
 
 function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
@@ -36,22 +36,18 @@ function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value
 const STAT_ORDER: RequestStatus[] = ["draft", "reviewing", "responded", "negotiating", "signing", "completed", "closed"];
 
 export function BuyerMyPage() {
-  const { t, companyName, isDemoSession } = useApp();
+  const { t, companyName } = useApp();
   const { requests } = useRequests();
-  const company = companyName || (isDemoSession ? buyerProfile.company : "계정 정보 없음");
-  const profile = isDemoSession
-    ? buyerProfile
-    : {
-        ...buyerProfile,
-        company,
-        contactName: "-",
-        email: companyName || "-",
-        phone: "-",
-        country: "-",
-        language: "-",
-        currency: "-",
-        joinedAt: "-",
-      };
+  const [profile, setProfile] = useState<MeProfile | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getMe().then((me) => { if (active) setProfile(me); }).catch(() => { if (active) setProfile(null); });
+    return () => { active = false; };
+  }, []);
+
+  const company = profile?.affiliation_name || companyName || "계정 정보 없음";
+  const country = profile?.country_code ?? "-";
 
   const stats = useMemo(() => {
     const c: Record<string, number> = {};
@@ -72,7 +68,7 @@ export function BuyerMyPage() {
         </Avatar>
         <div className="min-w-0">
           <div style={{ color: "var(--navy)", fontWeight: 700, fontSize: "18px" }}>{company}</div>
-          <div className="text-muted-foreground" style={{ fontSize: "13px" }}>{t("role.buyer")} · {profile.country}</div>
+          <div className="text-muted-foreground" style={{ fontSize: "13px" }}>{t("role.buyer")} · {country}</div>
         </div>
       </div>
 
@@ -81,13 +77,13 @@ export function BuyerMyPage() {
         <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
           <h3 className="mb-3" style={{ color: "var(--navy)" }}>{t("my.profile")}</h3>
           <InfoRow icon={<Building2 className="size-4" />} label={t("my.company")} value={company} />
-          <InfoRow icon={<User className="size-4" />} label={t("my.contact")} value={profile.contactName} />
-          <InfoRow icon={<Mail className="size-4" />} label={t("my.email")} value={profile.email} />
-          <InfoRow icon={<Phone className="size-4" />} label={t("my.phone")} value={profile.phone} />
-          <InfoRow icon={<Globe2 className="size-4" />} label={t("my.country")} value={profile.country} />
-          <InfoRow icon={<Languages className="size-4" />} label={t("my.language")} value={profile.language} />
-          <InfoRow icon={<Coins className="size-4" />} label={t("my.currency")} value={profile.currency} />
-          <InfoRow icon={<CalendarDays className="size-4" />} label={t("my.joined")} value={profile.joinedAt} />
+          <InfoRow icon={<User className="size-4" />} label={t("my.contact")} value={profile?.display_name || "-"} />
+          <InfoRow icon={<Mail className="size-4" />} label={t("my.email")} value={profile?.email || "-"} />
+          <InfoRow icon={<Phone className="size-4" />} label={t("my.phone")} value={profile?.phone || "-"} />
+          <InfoRow icon={<Globe2 className="size-4" />} label={t("my.country")} value={country} />
+          <InfoRow icon={<Languages className="size-4" />} label={t("my.language")} value={profile?.locale || "-"} />
+          <InfoRow icon={<Coins className="size-4" />} label={t("my.currency")} value={profile?.preferred_currency || "-"} />
+          <InfoRow icon={<CalendarDays className="size-4" />} label={t("my.joined")} value={profile?.created_at?.slice(0, 10).replace(/-/g, ".") || "-"} />
         </div>
 
         {/* Password + stats */}
