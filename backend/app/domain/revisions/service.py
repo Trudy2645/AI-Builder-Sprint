@@ -109,6 +109,41 @@ class RevisionService:
             for record in records
         ]
 
+    async def list_buyer(
+        self, actor: AuthenticatedUser, statuses: set[str]
+    ) -> list[SellerRevisionRequestListItem]:
+        try:
+            records = await self._repository.list_buyer_revisions(actor.id, statuses)
+            unread_contract_ids = await self._repository.list_unread_revision_contract_ids(
+                actor.id, [record.contract_id for record in records]
+            )
+        except RevisionRepositoryError as exc:
+            self._database_unavailable(exc)
+        return [
+            SellerRevisionRequestListItem(
+                id=record.id,
+                contract_id=record.contract_id,
+                listing_title=record.listing_title,
+                buyer_name=record.buyer_name,
+                status=record.status,
+                message=record.message,
+                item_count=len(record.items),
+                item_summary=[item.reason for item in record.items[:3]],
+                has_unread=record.contract_id in unread_contract_ids,
+                sent_at=record.sent_at,
+                updated_at=record.updated_at,
+            )
+            for record in records
+        ]
+
+    async def mark_buyer_read(self, revision_id: UUID, actor: AuthenticatedUser) -> None:
+        record = await self._revision(revision_id)
+        self._authorize_revision_buyer(record, actor)
+        try:
+            await self._repository.mark_buyer_revision_read(actor.id, revision_id)
+        except RevisionRepositoryError as exc:
+            self._database_unavailable(exc)
+
     async def add_item(
         self,
         revision_id: UUID,

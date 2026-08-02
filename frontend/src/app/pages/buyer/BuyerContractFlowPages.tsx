@@ -13,7 +13,7 @@ import {
   Send,
   UploadCloud,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
@@ -28,7 +28,7 @@ import {
   type BuyerContractStatus,
 } from "../../store/BuyerContractsContext";
 import { formatKRW } from "../../data/contracts";
-import { friendlyApiError, getContractDetail, type ContractDetail } from "../../lib/api";
+import { friendlyApiError, getBuyerRevisionRequests, getContractDetail, getRevisionRequest, type BuyerRevisionSummary, type ContractDetail, type RevisionDetail, markRevisionRequestRead } from "../../lib/api";
 
 const STATUS_META: Record<BuyerContractStatus, { label: string; tone: string; desc: string }> = {
   draft: { label: "작성 중", tone: "var(--muted-foreground)", desc: "계약 조건을 정리하고 있습니다." },
@@ -204,6 +204,8 @@ function useContractFromRoute() {
 export function BuyerContractsHomePage() {
   const navigate = useNavigate();
   const { contracts } = useBuyerContracts();
+  const [revisions, setRevisions] = useState<BuyerRevisionSummary[]>([]);
+  useEffect(() => { void getBuyerRevisionRequests().then(setRevisions).catch(() => setRevisions([])); }, []);
 
   return (
     <div>
@@ -249,6 +251,26 @@ export function BuyerContractsHomePage() {
           </button>
         ))}
       </div>
+      {revisions.length > 0 && (
+        <div className="mt-8 space-y-3">
+          <h2 className="text-base" style={{ color: "var(--navy)" }}>내 수정 요청 내역</h2>
+          {revisions.map((revision) => (
+            <button
+              type="button"
+              key={revision.id}
+              className="block w-full rounded-xl border border-border bg-card p-4 text-left hover:border-[var(--ocean)]"
+              onClick={() => { void markRevisionRequestRead(revision.id); navigate(`/buyer/contracts/${revision.contract_id}/status?revision=${revision.id}`); }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold" style={{ color: "var(--navy)" }}>{revision.listing_title}</span>
+                <span className="text-xs" style={{ color: revision.has_unread ? "var(--coral)" : "var(--muted-foreground)" }}>{revision.has_unread ? "셀러 답변 안 읽음" : "확인함"}</span>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">{revision.item_count}개 조항 수정 요청 · {revision.item_summary.join(" · ")}</p>
+              <p className="mt-2 text-xs text-muted-foreground">상태: {revision.status}</p>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -366,13 +388,20 @@ export function BuyerContractWritePage() {
 
 export function BuyerContractStatusPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const contract = useContractFromRoute();
   const [detail, setDetail] = useState<ContractDetail | null>(null);
+  const [revision, setRevision] = useState<RevisionDetail | null>(null);
+  const revisionId = searchParams.get("revision");
 
   useEffect(() => {
     if (!contract?.id || contract.id.startsWith("BL-")) return;
     getContractDetail(contract.id).then(setDetail).catch((error) => toast.error(friendlyApiError(error)));
   }, [contract?.id]);
+  useEffect(() => {
+    if (!revisionId) return;
+    void getRevisionRequest(revisionId).then((value) => { setRevision(value); void markRevisionRequestRead(revisionId); }).catch((error) => toast.error(friendlyApiError(error)));
+  }, [revisionId]);
 
   if (!contract) {
     return <PageHeader title="계약 요청이 없습니다" description="먼저 계약 요청을 생성해주세요." />;
@@ -391,6 +420,25 @@ export function BuyerContractStatusPage() {
     <div>
       <PageHeader title="계약 상태" description="계약 요청 이후 셀러 검토, 전자서명, 체결 완료까지 상태를 확인합니다." />
       <ContractSummary contract={contract} />
+      {revision && (
+        <div className="mt-5 rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 style={{ color: "var(--navy)" }}>내가 보낸 수정 요청</h3>
+            <span className="text-xs text-muted-foreground">{revision.status === "sent" ? "셀러 검토 중" : revision.status}</span>
+          </div>
+          {revision.message && <p className="mt-2 text-sm text-muted-foreground">{revision.message}</p>}
+          <div className="mt-4 space-y-3">
+            {revision.items.map((item) => (
+              <div key={item.id} className="rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between gap-2 text-sm font-medium"><span>{item.request_type === "modify" ? "문구 수정" : item.request_type === "delete" ? "조항 삭제" : "조항 추가"}</span><span className="text-xs text-muted-foreground">{item.decision === "pending" ? "답변 대기" : item.decision === "accepted" ? "수락" : item.decision === "rejected" ? "거절" : "대안 제시"}</span></div>
+                <p className="mt-1 text-sm">{item.requested_text ?? item.reason}</p>
+                {item.seller_reason && <p className="mt-2 text-xs text-muted-foreground">셀러 답변 사유: {item.seller_reason}</p>}
+                {item.counter_text && <p className="mt-2 rounded bg-muted p-2 text-sm">셀러 대안: {item.counter_text}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="mt-5 rounded-xl border border-border bg-card p-5">
         <div className="flex items-start gap-3">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--info-soft)", color: meta.tone }}>

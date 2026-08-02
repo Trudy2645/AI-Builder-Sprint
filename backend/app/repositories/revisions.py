@@ -128,6 +128,10 @@ class RevisionRepository(Protocol):
         self, organization_id: UUID, statuses: set[str]
     ) -> list[RevisionRequestRecord]: ...
 
+    async def list_buyer_revisions(
+        self, user_id: UUID, statuses: set[str]
+    ) -> list[RevisionRequestRecord]: ...
+
     async def list_unread_revision_contract_ids(
         self, user_id: UUID, contract_ids: list[UUID]
     ) -> set[UUID]: ...
@@ -319,6 +323,52 @@ class SqlAlchemyRevisionRepository:
                 if record is not None:
                     records.append(record)
             return records
+        except SQLAlchemyError as exc:
+            raise RevisionRepositoryError from exc
+
+    async def list_buyer_revisions(
+        self, user_id: UUID, statuses: set[str]
+    ) -> list[RevisionRequestRecord]:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select rr.id
+                    from public.revision_requests rr
+                    join public.contracts c on c.id = rr.contract_id
+                    where c.buyer_user_id = :user_id
+                      and rr.status::text = any(cast(:statuses as text[]))
+                    order by coalesce(rr.sent_at, rr.updated_at) desc, rr.id desc
+                    """
+                ),
+                {"user_id": user_id, "statuses": sorted(statuses)},
+            )
+            records = []
+            for revision_id in result.scalars().all():
+                record = await self.get_revision(revision_id)
+                if record is not None:
+                    records.append(record)
+            return records
+        except SQLAlchemyError as exc:
+            raise RevisionRepositoryError from exc
+
+    async def mark_buyer_revision_read(self, user_id: UUID, revision_id: UUID) -> None:
+        try:
+            await self._session.execute(
+                text(
+                    """
+                    update public.notifications n
+                    set read_at = coalesce(read_at, now())
+                    from public.revision_requests rr
+                    where rr.id = :revision_id
+                      and n.user_id = :user_id
+                      and n.resource_type = 'contract'
+                      and n.resource_id = rr.contract_id
+                      and n.notification_type in ('revision_decided', 'seller_response')
+                    """
+                ),
+                {"user_id": user_id, "revision_id": revision_id},
+            )
         except SQLAlchemyError as exc:
             raise RevisionRepositoryError from exc
 

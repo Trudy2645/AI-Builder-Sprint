@@ -454,6 +454,17 @@ export function sendRevisionRequest(revisionId: string): Promise<unknown> {
   const session = getApiSession();
   return apiFetch(`/revision-requests/${revisionId}/send`, { method: "POST", headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("revision-send")]]) });
 }
+export type BuyerRevisionSummary = SellerRevisionSummary;
+export function getBuyerRevisionRequests(): Promise<BuyerRevisionSummary[]> {
+  const token = getAccessToken();
+  if (!token) return Promise.resolve([]);
+  return apiFetch<BuyerRevisionSummary[]>("/me/revision-requests", { headers: { Authorization: `Bearer ${token}` } });
+}
+export function markRevisionRequestRead(revisionId: string): Promise<{ read: boolean }> {
+  const token = getAccessToken();
+  if (!token) return Promise.resolve({ read: false });
+  return apiFetch(`/revision-requests/${revisionId}/read`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+}
 export function decideRevisionItem(revisionId: string, itemId: string, payload: { decision: "accepted" | "rejected" | "countered"; seller_reason?: string; counter_text?: string }): Promise<RevisionDetail> {
   const session = getApiSession();
   return apiFetch<RevisionDetail>(`/revision-requests/${revisionId}/items/${itemId}`, { method: "PATCH", headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("revision-item-decide")]]), body: JSON.stringify(payload) });
