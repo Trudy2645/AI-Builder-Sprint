@@ -86,10 +86,7 @@ async def create_signature_request(
             participants=[
                 ModusignParticipant(
                     role=payload.buyer.role, name=payload.buyer.name, email=payload.buyer.email
-                ),
-                ModusignParticipant(
-                    role=payload.seller.role, name=payload.seller.name, email=payload.seller.email
-                ),
+                )
             ],
         )
     except (ModusignNotFoundError, ModusignRequestError, ModusignUnavailableError) as exc:

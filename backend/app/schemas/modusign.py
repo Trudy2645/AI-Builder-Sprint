@@ -11,7 +11,7 @@ _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 class SignatureParticipant(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    role: Literal["바이어", "셀러"]
+    role: Literal["바이어"]
     name: str = Field(min_length=1, max_length=200)
     email: str = Field(min_length=3, max_length=254)
 
@@ -28,7 +28,6 @@ class SignatureRequestCreate(BaseModel):
 
     title: str = Field(min_length=1, max_length=200)
     buyer: SignatureParticipant
-    seller: SignatureParticipant
 
 
 class SignatureRequestResponse(BaseModel):
