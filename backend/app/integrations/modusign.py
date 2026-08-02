@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,6 +35,51 @@ class ModusignParticipant:
     email: str
 
 
+def build_accommodation_template_payload(
+    *,
+    title: str,
+    pdf_bytes: bytes,
+    buyer_role: str = "바이어",
+) -> dict[str, Any]:
+    """Build the one-buyer accommodation template from BusanLink's final PDF.
+
+    The PDF is the canonical contract artifact. Only the buyer signature is
+    interactive in Modusign, so the text displayed in Modusign stays identical
+    to the server-rendered PDF. Coordinates are normalized to the A4 page and
+    target the signature line printed on page two of the accommodation sample.
+    """
+    if not pdf_bytes.startswith(b"%PDF"):
+        raise ValueError("The accommodation template source must be a PDF.")
+    return {
+        "title": title,
+        "file": {
+            "base64": base64.b64encode(pdf_bytes).decode("ascii"),
+            "extension": "pdf",
+        },
+        "participants": [
+            {
+                "type": "SIGNER",
+                "role": buyer_role,
+                "signingOrder": 1,
+                "fields": [
+                    {
+                        "type": "SIGNATURE",
+                        "required": True,
+                        "dataLabel": "buyer_signature",
+                        "position": {"page": 2, "x": 0.56, "y": 0.72},
+                        "size": {"width": 0.30, "height": 0.06},
+                    }
+                ],
+            }
+        ],
+        "requesterEditable": False,
+        "metadatas": [
+            {"key": "busanlink_category", "value": "accommodation"},
+            {"key": "busanlink_template_version", "value": "v1"},
+        ],
+    }
+
+
 class ModusignClient:
     """Thin async wrapper around the Modusign e-signature REST API.
 
@@ -48,10 +94,25 @@ class ModusignClient:
         api_key: str,
         auth_email: str,
         timeout_seconds: float = 15.0,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._auth = (auth_email, api_key)
         self._timeout_seconds = timeout_seconds
+        self._transport = transport
+
+    async def create_accommodation_template(
+        self,
+        *,
+        title: str,
+        pdf_bytes: bytes,
+    ) -> dict[str, Any]:
+        """Create the reusable one-buyer accommodation template in Modusign."""
+        return await self._request(
+            "POST",
+            "/templates",
+            json=build_accommodation_template_payload(title=title, pdf_bytes=pdf_bytes),
+        )
 
     async def create_signature_request(
         self,
@@ -88,7 +149,9 @@ class ModusignClient:
         """Stream a Modusign-hosted file (signed PDF / audit trail) through our
         own backend so the frontend never needs Modusign credentials."""
         try:
-            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout_seconds, transport=self._transport
+            ) as client:
                 response = await client.get(download_url, auth=self._auth)
         except httpx.HTTPError as exc:
             raise ModusignUnavailableError from exc
@@ -104,7 +167,9 @@ class ModusignClient:
     async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         url = f"{self._base_url}{path}"
         try:
-            async with httpx.AsyncClient(timeout=self._timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout_seconds, transport=self._transport
+            ) as client:
                 response = await client.request(
                     method,
                     url,
