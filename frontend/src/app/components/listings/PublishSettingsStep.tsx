@@ -2,46 +2,21 @@ import {
   MapPin,
   CalendarDays,
   Package,
-  Sparkles,
-  AlertTriangle,
   CheckCircle2,
-  XCircle,
-  Eye,
+  ImagePlus,
+  Link,
 } from "lucide-react";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { Switch } from "../ui/switch";
+import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { useApp } from "../../context/AppContext";
 import { CATEGORIES, formatKRW } from "../../data/contracts";
-import { analyzeDraft } from "./RiskReviewStep";
 import type { ListingDraft } from "../../store/ListingsContext";
 
 const catKey = (c: ListingDraft["category"]) =>
   CATEGORIES.find((x) => x.value === c)?.labelKey ?? "cat.all";
-
-function ToggleRow({
-  label,
-  desc,
-  checked,
-  onChange,
-}: {
-  label: string;
-  desc: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-border py-4 last:border-b-0">
-      <div className="min-w-0">
-        <div style={{ fontSize: "14px", fontWeight: 600 }}>{label}</div>
-        <p className="mt-0.5 text-muted-foreground" style={{ fontSize: "12px" }}>{desc}</p>
-      </div>
-      <Switch checked={checked} onCheckedChange={onChange} className="mt-0.5 shrink-0" />
-    </div>
-  );
-}
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
@@ -55,7 +30,6 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 /** 오른쪽 실시간 미리보기: 바이어 계약 카드 + 요약 화면. */
 function BuyerPreview({ draft }: { draft: ListingDraft }) {
   const { t } = useApp();
-  const risks = analyzeDraft(draft).length;
   const price = parseInt(draft.unitPrice, 10) || 0;
   const period =
     draft.start && draft.end ? `${draft.start} ~ ${draft.end}` : t("wz.tbd");
@@ -64,15 +38,18 @@ function BuyerPreview({ draft }: { draft: ListingDraft }) {
   return (
     <div className="flex flex-col gap-5">
       {/* Contract card preview */}
-      <div>
-        <div className="mb-2 flex items-center gap-1.5 whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px", fontWeight: 600 }}>
-          <Eye className="size-3.5" />
-          {t("pub.previewCard")}
-        </div>
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="flex items-center justify-center" style={{ height: "96px", background: "var(--info-soft)" }}>
-            <Package className="size-8" style={{ color: "var(--ocean)" }} />
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        {draft.imageUrl ? (
+          <img
+            src={draft.imageUrl}
+            alt=""
+            className="h-36 w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-36 items-center justify-center" style={{ background: "var(--info-soft)" }}>
+            <ImagePlus className="size-8" style={{ color: "var(--ocean)" }} />
           </div>
+        )}
           <div className="flex flex-col gap-2 p-4">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="whitespace-nowrap" style={{ borderColor: "var(--ocean)", color: "var(--ocean)" }}>
@@ -84,17 +61,10 @@ function BuyerPreview({ draft }: { draft: ListingDraft }) {
                   {draft.district}
                 </span>
               )}
-              {draft.available ? (
-                <Badge className="ml-auto gap-1 whitespace-nowrap border-transparent" style={{ background: "var(--success)", color: "#fff" }}>
-                  <CheckCircle2 className="size-3" />
-                  {t("status.available")}
-                </Badge>
-              ) : (
-                <Badge className="ml-auto gap-1 whitespace-nowrap border-transparent" style={{ background: "var(--muted-foreground)", color: "#fff" }}>
-                  <XCircle className="size-3" />
-                  {t("status.closed")}
-                </Badge>
-              )}
+              <Badge className="ml-auto gap-1 whitespace-nowrap border-transparent" style={{ background: "var(--success)", color: "#fff" }}>
+                <CheckCircle2 className="size-3" />
+                {t("status.available")}
+              </Badge>
             </div>
             <h3 className="line-clamp-2" style={{ color: "var(--navy)" }}>{title}</h3>
             <div className="flex flex-col gap-1 text-muted-foreground" style={{ fontSize: "13px" }}>
@@ -113,42 +83,28 @@ function BuyerPreview({ draft }: { draft: ListingDraft }) {
             </div>
             {draft.headline && (
               <div className="rounded-lg p-2.5" style={{ background: "var(--info-soft)" }}>
-                <div className="flex items-center gap-1 whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 600 }}>
-                  <Sparkles className="size-3.5" />
-                  {t("card.aiSummary")}
+                <div className="whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 700 }}>
+                  계약 요약
                 </div>
                 <p className="mt-1 line-clamp-2 text-foreground" style={{ fontSize: "13px", lineHeight: 1.5 }}>{draft.headline}</p>
               </div>
             )}
-            {draft.showRisk && risks > 0 && (
-              <div className="flex items-center gap-1.5 whitespace-nowrap" style={{ color: "var(--coral)", fontSize: "13px" }}>
-                <AlertTriangle className="size-4" />
-                {t("card.riskClauses")} {risks}{t("card.riskUnit")}
-              </div>
-            )}
           </div>
-        </div>
       </div>
 
       {/* Summary preview */}
-      <div>
-        <div className="mb-2 flex items-center gap-1.5 whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px", fontWeight: 600 }}>
-          <Eye className="size-3.5" />
-          {t("pub.previewSummary")}
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4">
-          <SummaryRow label={t("summary.period")} value={period} />
-          <Separator />
-          <SummaryRow label={t("summary.quantity")} value={draft.quantity || t("wz.tbd")} />
-          <Separator />
-          <SummaryRow label={t("summary.unitPrice")} value={`${draft.priceUnit} ${formatKRW(price)}`} />
-          <Separator />
-          <SummaryRow label={t("summary.cancellation")} value={draft.cancellation || t("wz.tbd")} />
-          <Separator />
-          <SummaryRow label={t("summary.noShow")} value={draft.noShow || t("wz.tbd")} />
-          <Separator />
-          <SummaryRow label={t("summary.settlement")} value={draft.settlement || t("wz.tbd")} />
-        </div>
+      <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+        <SummaryRow label={t("summary.period")} value={period} />
+        <Separator />
+        <SummaryRow label={t("summary.quantity")} value={draft.quantity || t("wz.tbd")} />
+        <Separator />
+        <SummaryRow label={t("summary.unitPrice")} value={`${draft.priceUnit} ${formatKRW(price)}`} />
+        <Separator />
+        <SummaryRow label={t("summary.cancellation")} value={draft.cancellation || t("wz.tbd")} />
+        <Separator />
+        <SummaryRow label={t("summary.noShow")} value={draft.noShow || t("wz.tbd")} />
+        <Separator />
+        <SummaryRow label={t("summary.settlement")} value={draft.settlement || t("wz.tbd")} />
       </div>
     </div>
   );
@@ -161,44 +117,109 @@ interface PublishSettingsStepProps {
 
 export function PublishSettingsStep({ draft, onChange }: PublishSettingsStepProps) {
   const { t } = useApp();
+  const handleImageFile = (file: File | undefined) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onChange({ imageUrl: String(reader.result) });
+    reader.readAsDataURL(file);
+  };
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
       {/* Left: settings form */}
-      <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="headline">{t("pub.headline")}</Label>
-          <Textarea
-            id="headline"
-            rows={3}
-            value={draft.headline}
-            placeholder={t("pub.headlinePh")}
-            onChange={(e) => onChange({ headline: e.target.value })}
-          />
+      <div className="flex flex-col gap-4">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
+          <div className="mb-4">
+            <h3 style={{ color: "var(--navy)" }}>바이어 카드 편집</h3>
+            <p className="mt-1 text-muted-foreground" style={{ fontSize: "13px" }}>
+              바이어 계약 탐색 화면에 보이는 대표 이미지와 짧은 설명을 설정하세요.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="imageUrl">대표 이미지 URL</Label>
+            <div className="relative">
+              <Link className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="imageUrl"
+                className="pl-9"
+                value={draft.imageUrl}
+                placeholder="https://..."
+                onChange={(e) => onChange({ imageUrl: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-col gap-1.5">
+            <Label htmlFor="imageFile">또는 이미지 파일 선택</Label>
+            <Input
+              id="imageFile"
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleImageFile(e.target.files?.[0])}
+            />
+          </div>
+
+          <div className="mt-4 flex flex-col gap-1.5">
+            <Label htmlFor="headline">계약 요약</Label>
+            <Textarea
+              id="headline"
+              rows={3}
+              value={draft.headline}
+              placeholder={t("pub.headlinePh")}
+              onChange={(e) => onChange({ headline: e.target.value })}
+            />
+          </div>
         </div>
 
-        <div className="mt-4">
-          <ToggleRow
-            label={t("pub.available")}
-            desc={t("pub.availableDesc")}
-            checked={draft.available}
-            onChange={(v) => onChange({ available: v })}
-          />
-          <ToggleRow
-            label={t("pub.showRisk")}
-            desc={t("pub.showRiskDesc")}
-            checked={draft.showRisk}
-            onChange={(v) => onChange({ showRisk: v })}
-          />
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-6">
+          <div className="mb-4">
+            <h3 style={{ color: "var(--navy)" }}>계약 요약 편집</h3>
+            <p className="mt-1 text-muted-foreground" style={{ fontSize: "13px" }}>
+              바이어가 조건 확인 화면에서 보는 기간, 수량, 단가, 취소·정산 문구를 다듬을 수 있습니다.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="quantity">공급 수량</Label>
+              <Input id="quantity" value={draft.quantity} onChange={(e) => onChange({ quantity: e.target.value })} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="priceUnit">단가 기준</Label>
+              <Input id="priceUnit" value={draft.priceUnit} onChange={(e) => onChange({ priceUnit: e.target.value })} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="unitPrice">단가</Label>
+              <Input id="unitPrice" value={draft.unitPrice} onChange={(e) => onChange({ unitPrice: e.target.value })} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="settlement">정산</Label>
+              <Input id="settlement" value={draft.settlement} onChange={(e) => onChange({ settlement: e.target.value })} />
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cancellation">무료 취소</Label>
+              <Input id="cancellation" value={draft.cancellation} onChange={(e) => onChange({ cancellation: e.target.value })} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="noShow">노쇼</Label>
+              <Input id="noShow" value={draft.noShow} onChange={(e) => onChange({ noShow: e.target.value })} />
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Right: live preview */}
       <div>
         <div className="xl:sticky xl:top-6">
-          <div className="mb-3 flex items-center gap-1.5 whitespace-nowrap" style={{ color: "var(--ocean)", fontWeight: 700 }}>
-            <Eye className="size-4" />
-            {t("pub.previewTitle")}
+          <div className="mb-3">
+            <h3 style={{ color: "var(--navy)" }}>바이어에게 보이는 화면</h3>
+            <p className="mt-1 text-muted-foreground" style={{ fontSize: "13px" }}>
+              왼쪽에서 수정한 내용이 카드와 계약 요약에 바로 반영됩니다.
+            </p>
           </div>
           <BuyerPreview draft={draft} />
         </div>

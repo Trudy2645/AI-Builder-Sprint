@@ -1,10 +1,17 @@
 import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { Globe2, MoreVertical, PauseCircle, Plus, Trash2 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
+import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { ListingStatusBadge } from "../../components/listings/ListingStatusBadge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -14,7 +21,7 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { useApp } from "../../context/AppContext";
-import { useListings, type ListingStatus } from "../../store/ListingsContext";
+import { useListings, type Listing, type ListingStatus } from "../../store/ListingsContext";
 import { CATEGORIES, formatKRW } from "../../data/contracts";
 
 type Tab = "all" | ListingStatus;
@@ -31,7 +38,7 @@ const tabLabel: Record<Tab, string> = {
 export function ListingsManagePage() {
   const { t } = useApp();
   const navigate = useNavigate();
-  const { listings } = useListings();
+  const { listings, updateListingStatus, deleteListing } = useListings();
   const [params, setParams] = useSearchParams();
   const initialStatus = params.get("status") as Tab | null;
   const [tab, setTab] = useState<Tab>(initialStatus && TABS.includes(initialStatus) ? initialStatus : "all");
@@ -43,6 +50,46 @@ export function ListingsManagePage() {
   }, [listings]);
 
   const rows = tab === "all" ? listings : listings.filter((l) => l.status === tab);
+  const listingCategory = (listing: Listing) => CATEGORIES.find((c) => c.value === listing.category)?.labelKey ?? "cat.all";
+  const pauseListing = (listing: Listing) => {
+    updateListingStatus(listing.id, "paused");
+    toast.success("공고를 공개 중지했습니다.");
+  };
+  const publishListing = (listing: Listing) => {
+    updateListingStatus(listing.id, "public");
+    toast.success("공고를 다시 공개했습니다.");
+  };
+  const removeListing = (listing: Listing) => {
+    deleteListing(listing.id);
+    toast.success("공고를 삭제했습니다.");
+  };
+
+  const ActionMenu = ({ listing }: { listing: Listing }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="공고 상세 및 관리 메뉴">
+          <MoreVertical className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {listing.status === "paused" ? (
+          <DropdownMenuItem onClick={() => publishListing(listing)}>
+            <Globe2 className="mr-2 size-4" />
+            공고 재공개
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onClick={() => pauseListing(listing)}>
+            <PauseCircle className="mr-2 size-4" />
+            공고 중지
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeListing(listing)}>
+          <Trash2 className="mr-2 size-4" />
+          삭제
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   return (
     <div>
@@ -101,15 +148,18 @@ export function ListingsManagePage() {
       {rows.length > 0 && (
         <div className="space-y-3 lg:hidden">
           {rows.map((l) => {
-            const catKey = CATEGORIES.find((c) => c.value === l.category)?.labelKey ?? "cat.all";
+            const catKey = listingCategory(l);
             return (
-              <button key={l.id} type="button" onClick={() => navigate("/seller/listings")} className="w-full rounded-xl border border-border bg-card p-4 text-left">
+              <div key={l.id} className="w-full rounded-xl border border-border bg-card p-4 text-left">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <button type="button" className="min-w-0 text-left" onClick={() => navigate(`/seller/listings/${l.id}`)}>
                     <h3 className="line-clamp-2 text-base" style={{ color: "var(--navy)" }}>{l.productName}</h3>
                     <p className="mt-1 text-xs text-muted-foreground">{l.quantityLabel}</p>
+                  </button>
+                  <div className="flex shrink-0 items-start gap-1">
+                    <ListingStatusBadge status={l.status} />
+                    <ActionMenu listing={l} />
                   </div>
-                  <ListingStatusBadge status={l.status} />
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-3 text-sm">
                   <div><div className="text-xs text-muted-foreground">{t("listings.col.category")}</div><div className="mt-1">{t(catKey)}</div></div>
@@ -117,7 +167,7 @@ export function ListingsManagePage() {
                   <div><div className="text-xs text-muted-foreground">{t("listings.col.period")}</div><div className="mt-1 leading-5">{l.start && l.end ? `${l.start} ~ ${l.end}` : t("wz.tbd")}</div></div>
                   <div className="text-right"><div className="text-xs text-muted-foreground">{t("listings.col.price")}</div><div className="mt-1">{l.priceUnit}<br /><strong>{formatKRW(l.unitPrice)}</strong></div></div>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -128,13 +178,14 @@ export function ListingsManagePage() {
         ) : (
           <Table className="table-fixed">
             <colgroup>
-              <col className="w-[27%]" />
+              <col className="w-[25%]" />
               <col className="w-[10%]" />
-              <col className="w-[18%]" />
+              <col className="w-[17%]" />
               <col className="w-[14%]" />
               <col className="w-[8%]" />
-              <col className="w-[13%]" />
+              <col className="w-[12%]" />
               <col className="w-[10%]" />
+              <col className="w-[4%]" />
             </colgroup>
             <TableHeader className="bg-muted/20">
               <TableRow>
@@ -145,15 +196,18 @@ export function ListingsManagePage() {
                 <TableHead className="h-12 whitespace-nowrap text-center">{t("listings.col.requests")}</TableHead>
                 <TableHead className="h-12 whitespace-nowrap text-center">{t("listings.col.status")}</TableHead>
                 <TableHead className="h-12 whitespace-nowrap text-center">{t("listings.col.updated")}</TableHead>
+                <TableHead className="h-12" aria-label="공고 관리" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((l) => {
-                const catKey = CATEGORIES.find((c) => c.value === l.category)?.labelKey ?? "cat.all";
+                const catKey = listingCategory(l);
                 return (
                   <TableRow key={l.id} className="h-16">
                     <TableCell className="min-w-0 py-3">
-                      <span className="block truncate" style={{ fontWeight: 600, color: "var(--navy)" }}>{l.productName}</span>
+                      <button type="button" className="block max-w-full truncate text-left hover:underline" style={{ fontWeight: 600, color: "var(--navy)" }} onClick={() => navigate(`/seller/listings/${l.id}`)}>
+                        {l.productName}
+                      </button>
                       <span className="whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px" }}>{l.quantityLabel}</span>
                     </TableCell>
                     <TableCell className="py-3 text-center">
@@ -176,6 +230,7 @@ export function ListingsManagePage() {
                     <TableCell className="py-3 text-center">{l.requests}</TableCell>
                     <TableCell className="py-3 text-center"><ListingStatusBadge status={l.status} /></TableCell>
                     <TableCell className="whitespace-nowrap py-3 text-center text-muted-foreground" style={{ fontSize: "13px" }}>{l.updatedAt}</TableCell>
+                    <TableCell className="py-3 text-center"><ActionMenu listing={l} /></TableCell>
                   </TableRow>
                 );
               })}
@@ -183,6 +238,7 @@ export function ListingsManagePage() {
           </Table>
         )}
       </div>
+
     </div>
   );
 }
