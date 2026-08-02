@@ -343,7 +343,9 @@ async def test_upstage_maps_universal_extraction_values_and_provenance() -> None
         ]
     )
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        result = await provider(client).extract_information(document(), parsed)
+        upstage = provider(client)
+        extraction_result = await upstage.request_information_extraction(document())
+        result = upstage.map_information_extraction(extraction_result, parsed)
 
     amount = result.price.fields["amount_minor"]
     assert amount.value == 145000

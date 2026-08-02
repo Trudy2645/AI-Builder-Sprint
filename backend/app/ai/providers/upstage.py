@@ -26,6 +26,7 @@ from app.ai.schemas import (
     FileSearchHit,
     FileSearchRequest,
     FileSearchResult,
+    InformationExtractionResult,
     KnowledgeFileRecord,
     LanguageModelRequest,
     ParsedBlock,
@@ -157,9 +158,9 @@ class UpstageAIProvider:
         payload = self._json(response)
         return self._parse_document_response(payload, response.headers.get("x-request-id"))
 
-    async def extract_information(
-        self, document: DocumentInput, parsed: DocumentParseResult
-    ) -> ContractExtraction:
+    async def request_information_extraction(
+        self, document: DocumentInput
+    ) -> InformationExtractionResult:
         # Universal Extraction is mapped only here; the domain task remains
         # `information_extract` regardless of the provider product name.
         encoded_document = base64.b64encode(document.content).decode("ascii")
@@ -205,14 +206,32 @@ class UpstageAIProvider:
             message = payload["choices"][0]["message"]
             values = self._json_value(message["content"])
             additional_values = self._additional_values(message)
-            return self._map_contract_extraction(
-                values,
-                additional_values,
-                parsed,
-                response.headers.get("x-request-id"),
+            return InformationExtractionResult(
+                values=values,
+                additional_values=additional_values,
+                provider_request_id=response.headers.get("x-request-id"),
             )
         except (KeyError, IndexError, TypeError, ValidationError) as exc:
             raise AIProviderInvalidResponseError from exc
+
+    def map_information_extraction(
+        self, result: InformationExtractionResult, parsed: DocumentParseResult
+    ) -> ContractExtraction:
+        try:
+            return self._map_contract_extraction(
+                result.values,
+                result.additional_values,
+                parsed,
+                result.provider_request_id,
+            )
+        except ValidationError as exc:
+            raise AIProviderInvalidResponseError from exc
+
+    async def extract_information(
+        self, document: DocumentInput, parsed: DocumentParseResult
+    ) -> ContractExtraction:
+        result = await self.request_information_extraction(document)
+        return self.map_information_extraction(result, parsed)
 
     @staticmethod
     def _json_value(value: Any) -> dict[str, Any]:

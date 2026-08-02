@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -21,9 +22,11 @@ from app.ai.providers.fake import FakeAIProvider
 from app.ai.schemas import (
     BoundingBox,
     ContractExtraction,
+    DocumentInput,
     DocumentParseResult,
     ExtractedSection,
     ExtractedValue,
+    InformationExtractionResult,
     ParsedBlock,
     ParsedPage,
 )
@@ -126,6 +129,15 @@ class FakeDocumentProcessingRepository:
         if job.status == "queued":
             self.jobs[job_id] = replace(job, status="processing", started_at=NOW)
 
+    async def update_job_result_metadata(
+        self, job_id: UUID, result_metadata: dict[str, Any]
+    ) -> None:
+        job = self.jobs[job_id]
+        self.jobs[job_id] = replace(
+            job,
+            result_metadata={**job.result_metadata, **result_metadata},
+        )
+
     async def create_parse_artifact(
         self,
         *,
@@ -192,6 +204,25 @@ class FakeDocumentProcessingRepository:
         self.documents[document_id] = replace(
             self.documents[document_id], status="failed", failure_code=failure_code
         )
+
+
+class ConcurrentFakeAIProvider(FakeAIProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parse_started = asyncio.Event()
+        self.extraction_started = asyncio.Event()
+
+    async def parse_document(self, document: DocumentInput) -> DocumentParseResult:
+        self.parse_started.set()
+        await asyncio.wait_for(self.extraction_started.wait(), timeout=1)
+        return await super().parse_document(document)
+
+    async def request_information_extraction(
+        self, document: DocumentInput
+    ) -> InformationExtractionResult:
+        self.extraction_started.set()
+        await asyncio.wait_for(self.parse_started.wait(), timeout=1)
+        return await super().request_information_extraction(document)
 
 
 def parsed_result(*, include_table: bool = True, prompt_injection: bool = False):
@@ -288,12 +319,13 @@ def build_context(
     mime_type: str = "application/pdf",
     parsed: DocumentParseResult | None = None,
     extraction: ContractExtraction | None = None,
+    provider: FakeAIProvider | None = None,
 ):
     repository = FakeDocumentProcessingRepository(source, mime_type)
     storage = FakeStorageProvider()
     record = repository.documents[DOCUMENT_ID]
     storage.put(record.storage_bucket, record.storage_object_path, source)
-    provider = FakeAIProvider()
+    provider = provider or FakeAIProvider()
     provider.parse_result = parsed or parsed_result()
     provider.extraction_result = extraction or extracted_result()
     service = DocumentProcessingService(
@@ -381,6 +413,24 @@ async def test_scanned_pdf_and_images_follow_same_structured_pipeline(
     assert provider.calls[0] == ("document_parse", "contract.pdf")
 
 
+@pytest.mark.asyncio
+async def test_initial_parse_and_information_extraction_requests_run_concurrently() -> None:
+    provider = ConcurrentFakeAIProvider()
+    repository, _, _, service = build_context(provider=provider)
+    started = await service.start(
+        DOCUMENT_ID,
+        AuthenticatedUser(SELLER_ID, "seller@example.test"),
+        str(ORGANIZATION_ID),
+        "parallel-process-key",
+    )
+
+    await service.run(DOCUMENT_ID, started.response.job_id, started.response.task_type)
+
+    assert provider.parse_started.is_set()
+    assert provider.extraction_started.is_set()
+    assert repository.documents[DOCUMENT_ID].status == "ready"
+
+
 def test_low_confidence_and_missing_sections_require_seller_confirmation(
     app: FastAPI, client: TestClient
 ) -> None:
@@ -428,6 +478,66 @@ def test_parse_provider_failures_are_recorded_without_sensitive_error_text(
     assert document.failure_code == failure_code
     failed_job = next(job for job in repository.jobs.values() if job.status == "failed")
     assert failed_job.failure_code == failure_code
+
+
+def test_parse_failure_reuses_extraction_checkpoint_on_retry(
+    app: FastAPI, client: TestClient
+) -> None:
+    repository, storage, provider, service = build_context()
+    provider.queue_failure("document_parse", AIProviderTemporaryError())
+    app.dependency_overrides[get_document_processing_service] = lambda: service
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        SELLER_ID, "seller@example.test"
+    )
+
+    first = client.post(f"/api/v1/documents/{DOCUMENT_ID}/process", headers=process_headers())
+    extract_job = next(
+        job for job in repository.jobs.values() if job.job_type == "information_extract"
+    )
+    checkpoint_path = extract_job.result_metadata["checkpoint_storage_object_path"]
+
+    assert first.status_code == 202
+    assert repository.documents[DOCUMENT_ID].status == "failed"
+    assert extract_job.status == "processing"
+    assert ("ai-artifacts", checkpoint_path) in storage.objects
+
+    second = client.post(
+        f"/api/v1/documents/{DOCUMENT_ID}/process",
+        headers={**process_headers(), "Idempotency-Key": "retry-parse-only"},
+    )
+
+    assert repository.documents[DOCUMENT_ID].status == "ready"
+    assert second.status_code == 202
+    assert second.json()["data"]["task_type"] == "document_parse"
+    assert repository.jobs[extract_job.id].status == "succeeded"
+    assert [call[0] for call in provider.calls].count("document_parse") == 2
+    assert [call[0] for call in provider.calls].count("information_extract") == 1
+
+
+def test_parse_and_extraction_failures_retry_both_jobs(app: FastAPI, client: TestClient) -> None:
+    repository, _, provider, service = build_context()
+    provider.queue_failure("document_parse", AIProviderTemporaryError())
+    provider.queue_failure("information_extract", AIProviderTemporaryError())
+    app.dependency_overrides[get_document_processing_service] = lambda: service
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        SELLER_ID, "seller@example.test"
+    )
+
+    first = client.post(f"/api/v1/documents/{DOCUMENT_ID}/process", headers=process_headers())
+    second = client.post(
+        f"/api/v1/documents/{DOCUMENT_ID}/process",
+        headers={**process_headers(), "Idempotency-Key": "retry-both-jobs"},
+    )
+
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert repository.documents[DOCUMENT_ID].status == "ready"
+    assert [call[0] for call in provider.calls].count("document_parse") == 2
+    assert [call[0] for call in provider.calls].count("information_extract") == 2
+    assert len([job for job in repository.jobs.values() if job.job_type == "document_parse"]) == 2
+    assert (
+        len([job for job in repository.jobs.values() if job.job_type == "information_extract"]) == 2
+    )
 
 
 def test_encrypted_pdf_is_rejected_before_provider_call(app: FastAPI, client: TestClient) -> None:

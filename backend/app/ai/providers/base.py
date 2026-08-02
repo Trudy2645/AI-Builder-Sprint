@@ -10,6 +10,7 @@ from app.ai.schemas import (
     DocumentParseResult,
     FileSearchRequest,
     FileSearchResult,
+    InformationExtractionResult,
     KnowledgeFileRecord,
     LanguageModelRequest,
     VectorStoreFileRecord,
@@ -48,8 +49,12 @@ class DocumentParseProvider(Protocol):
 
 
 class InformationExtractProvider(Protocol):
-    async def extract_information(
-        self, document: DocumentInput, parsed: DocumentParseResult
+    async def request_information_extraction(
+        self, document: DocumentInput
+    ) -> InformationExtractionResult: ...
+
+    def map_information_extraction(
+        self, result: InformationExtractionResult, parsed: DocumentParseResult
     ) -> ContractExtraction: ...
 
 
