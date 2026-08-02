@@ -517,11 +517,16 @@ export type SignatureRequest = {
 };
 
 export function getSignatureRequest(id: string): Promise<SignatureRequest> {
-  return apiFetch<SignatureRequest>(`/signature-requests/${id}`);
+  const session = getApiSession();
+  return apiFetch<SignatureRequest>(`/signature-requests/${id}`, { headers: authenticatedHeaders(session) });
 }
 
 export function syncSignatureRequest(id: string): Promise<SignatureRequest> {
-  return apiFetch<SignatureRequest>(`/signature-requests/${id}/sync`, { method: "POST" });
+  const session = getApiSession();
+  return apiFetch<SignatureRequest>(`/signature-requests/${id}/sync`, { method: "POST", headers: new Headers([
+    ...authenticatedHeaders(session).entries(),
+    ["Idempotency-Key", requestIdempotencyKey("signature-sync")],
+  ]) });
 }
 
 export type SignatureParticipant = { name: string; email: string };
@@ -531,9 +536,13 @@ export function createSignatureRequest(
   versionId: string,
   payload: { title: string; buyer: SignatureParticipant; seller: SignatureParticipant },
 ): Promise<SignatureRequest> {
+  const session = getApiSession();
   return apiFetch<SignatureRequest>(`/contracts/${contractId}/versions/${versionId}/signature-requests`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    headers: new Headers([
+      ...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(),
+      ["Idempotency-Key", requestIdempotencyKey("signature-request")],
+    ]),
     body: JSON.stringify(payload),
   });
 }
