@@ -40,6 +40,7 @@ function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDr
     // Do not show the same extracted paragraph twice in the confirmation form.
     noShow: refund && refund !== cancellation ? refund : "",
     liability: stringValue(terms.liability_policy),
+    termination: stringValue(terms.termination_policy),
   };
 }
 

@@ -85,6 +85,7 @@ class ContractExtraction(BaseModel):
     safety: ExtractedSection
     compensation: ExtractedSection
     liability: ExtractedSection
+    termination: ExtractedSection = Field(default_factory=ExtractedSection)
     provider_request_id: str | None = None
     model_name: str = "information-extract"
 

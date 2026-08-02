@@ -62,6 +62,7 @@ _SECTIONS = (
     "safety",
     "compensation",
     "liability",
+    "termination",
 )
 
 
@@ -458,6 +459,7 @@ class DocumentProcessingService:
             "safety_policy": self._section_text(extraction.safety),
             "compensation_policy": self._section_text(extraction.compensation),
             "liability_policy": self._section_text(extraction.liability),
+            "termination_policy": self._section_text(extraction.termination),
         }
         if mapping is not None:
             terms.update(
