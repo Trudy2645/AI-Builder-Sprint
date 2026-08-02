@@ -62,6 +62,7 @@ export function UploadOcrPage() {
       const result = await uploadAndProcessSourceContract(file);
       setDraft((d) => ({ ...d, ...candidateToDraft(result.listingCandidate) }));
       setAnalysisNotes([...result.confirmationRequired, ...result.validationWarnings]);
+      setAnalyzed(true);
       toast.success(t("ocr.analyzeDone"));
     } catch (error) {
       toast.error(friendlyApiError(error));
