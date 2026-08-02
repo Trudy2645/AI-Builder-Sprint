@@ -625,7 +625,7 @@ export function createContractRequest(
   listingId: string,
   payload: ContractRequestPayload,
 ): Promise<ContractRequestCreated> {
-  return apiFetch<ContractRequestCreated>(`/listings/${listingId}/contract-requests`, {
+  return apiFetch(`/listings/${listingId}/contract-requests`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("contract-request") },
     body: JSON.stringify(payload),
@@ -653,14 +653,10 @@ export type RevisionRequestResponse = {
     id: string;
     item_order: number;
     request_type: "modify" | "delete" | "add";
-    clause_id: string | null;
+    clause_id?: string;
     reason: string;
-    requested_text: string | null;
-    document_ids: string[];
-    decision: "pending" | "accepted" | "rejected" | "countered";
-    seller_reason: string | null;
-    counter_text: string | null;
-    decided_at: string | null;
+    requested_text?: string;
+    document_ids?: string[];
   }>;
   decision_preview: {
     resulting_clauses: Array<{ id: string; clause_order: number; clause_key: string | null; title: string; body: string }>;
@@ -727,7 +723,6 @@ export function decideRevisionRequest(
   return apiFetch(`/revision-requests/${revisionRequestId}/decide`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-decide") },
-    body: JSON.stringify(payload),
   });
 }
 
@@ -776,7 +771,6 @@ export function updateMe(payload: Record<string, unknown>): Promise<MeProfile> {
 export type OrganizationProfile = {
   id: string;
   organization_type: "seller";
-  name: string;
   legal_name: string | null;
   business_registration_no: string | null;
   representative_name: string | null;
@@ -818,7 +812,7 @@ export function getPublicContractPreview(
     clause_id: string | null;
     severity: "high" | "medium" | "low" | "none";
     explanation: string;
-    suggested_text: string | null;
+    suggested_text: string;
     disclaimer: string;
     evidence_refs: Array<{ id: string; label: string; document_title: string; source_kind: string; page: number; section: string | null; excerpt: string }>;
   }>;
@@ -919,64 +913,16 @@ export type PublicListing = {
   attention_required_count: number;
 };
 
-// Keep the database fixtures available for backend/integration tests without
-// showing them in the buyer-facing explore flow. Set VITE_SHOW_TEST_DATA=true
-// when a local test run needs to inspect the fixtures explicitly.
-const hiddenTestListingIds = new Set([
+const demoSeedListingIds = new Set([
   "11111111-1111-4111-8111-111111111111",
   "22222222-2222-4222-8222-222222222222",
   "33333333-3333-4333-8333-333333333333",
-  "f51a405c-2b2d-4228-ba48-ec12309dc48e",
-  "f3b2a7df-9143-48f3-84be-2133563906d8",
-  "cf430f40-0f75-43c3-bfa4-536d6aa98a07",
-  "b4fc1ff9-1df2-4078-8129-7c2f5cbed4de",
-  "a821a306-e76e-4a73-bb27-7e814445bccf",
-  "31e872a4-aab8-4eac-b983-8e8e0295bbc4",
-  "0f88dcf6-d49d-41a4-b7eb-2e72654885e9",
 ]);
 
-// Every database record that existed before this instant belongs to the
-// pre-deployment test dataset. New records created by the deployed app remain
-// visible without requiring another ID allow/deny list update.
-const hiddenTestDataBefore = Date.parse("2026-08-02T13:30:00Z");
-
-type TestDataMarker = {
-  id?: string | null;
-  listing_id?: string | null;
-  title?: string | null;
-  listing_title?: string | null;
-  seller_name?: string | null;
-  buyer_name?: string | null;
-  created_at?: string | null;
-  requested_at?: string | null;
-  sent_at?: string | null;
-  updated_at?: string | null;
-};
-
-function isHiddenTestRecord(record: TestDataMarker): boolean {
-  if (import.meta.env.VITE_SHOW_TEST_DATA === "true") return false;
-  const createdAt = record.created_at ?? record.requested_at ?? record.sent_at ?? record.updated_at;
-  if (createdAt) {
-    const createdAtMs = Date.parse(createdAt);
-    if (!Number.isNaN(createdAtMs) && createdAtMs < hiddenTestDataBefore) return true;
-  }
-  const marker = [record.title, record.listing_title, record.seller_name, record.buyer_name]
-    .filter(Boolean)
-    .join(" ")
-    .toLocaleLowerCase();
-  return (
-    hiddenTestListingIds.has(record.id ?? "")
-    || hiddenTestListingIds.has(record.listing_id ?? "")
-    || marker.includes("e2e")
-  );
-}
-
 function isHiddenTestListing(listing: PublicListing): boolean {
-  return isHiddenTestRecord({
-    id: listing.id,
-    title: listing.title,
-    seller_name: listing.seller.name,
-  });
+  if (import.meta.env.VITE_SHOW_TEST_DATA === "true") return false;
+  const marker = `${listing.title} ${listing.seller.name}`.toLocaleLowerCase();
+  return demoSeedListingIds.has(listing.id) || marker.includes("e2e");
 }
 
 export type SellerListingSummary = {
@@ -1009,7 +955,6 @@ export type SellerListingDetail = SellerListingSummary & {
     service_start_date: string | null;
     service_end_date: string | null;
     supply_quantity: number | null;
-    supply_quantity_description: string | null;
     quantity_unit: string | null;
     minimum_quantity: number | null;
     maximum_quantity: number | null;
@@ -1043,23 +988,18 @@ export type SellerListingDetail = SellerListingSummary & {
   paused_at: string | null;
 };
 
-export async function getSellerListings(): Promise<SellerListingSummary[]> {
+export function getSellerListings(): Promise<SellerListingSummary[]> {
   const session = getApiSession();
-  const listings = await apiFetch<SellerListingSummary[]>("/seller/listings", {
+  return apiFetch<SellerListingSummary[]>("/seller/listings", {
     headers: authenticatedHeaders(session),
   });
-  return listings.filter((listing) => !isHiddenTestRecord(listing));
 }
 
-export async function getSellerListing(listingId: string): Promise<SellerListingDetail> {
+export function getSellerListing(listingId: string): Promise<SellerListingDetail> {
   const session = getApiSession();
-  const listing = await apiFetch<SellerListingDetail>(`/seller/listings/${listingId}`, {
+  return apiFetch<SellerListingDetail>(`/seller/listings/${listingId}`, {
     headers: authenticatedHeaders(session),
   });
-  if (isHiddenTestRecord(listing)) {
-    throw new ApiError({ code: "LISTING_NOT_FOUND", message: "공고를 찾을 수 없습니다." });
-  }
-  return listing;
 }
 
 export async function getPublicListings(): Promise<PublicListing[]> {
@@ -1163,7 +1103,6 @@ export function requestSigningFromSourceDocument(input: {
       ["Idempotency-Key", requestIdempotencyKey("modusign-signing")],
     ]),
     body: JSON.stringify({
-      document_id: input.documentId,
       title: input.title,
       buyer: { role: "바이어", ...input.buyer },
       fields: input.fields,
