@@ -542,12 +542,12 @@ const strings: Record<string, Dict> = {
   "risk.applyToast": { ko: "추천 문구를 적용했습니다.", en: "Suggestion applied.", ja: "推奨文言を適用しました。", zh: "已应用建议措辞。" },
 
   // Publish step
-  "pub.title": { ko: "바이어 공개 정보 설정", en: "Buyer-facing publish settings", ja: "バイヤー公開情報設定", zh: "买家可见发布设置" },
+  "pub.title": { ko: "바이어 카드·계약 요약 편집", en: "Edit buyer card and contract summary", ja: "バイヤーカード・契約要約編集", zh: "编辑买家卡片和合约摘要" },
   "pub.desc": {
-    ko: "바이어에게 보여질 정보를 설정하세요. 오른쪽에서 실시간 미리보기를 확인할 수 있습니다.",
-    en: "Configure what buyers see. Preview updates live on the right.",
-    ja: "バイヤーに表示される情報を設定します。右側でリアルタイムにプレビューできます。",
-    zh: "设置买家可见的信息，右侧实时预览。",
+    ko: "바이어가 탐색 화면에서 보는 대표 이미지와 계약 요약 문구를 수정하세요.",
+    en: "Edit the image and contract summary buyers see in discovery.",
+    ja: "バイヤーが探索画面で見る代表画像と契約要約を編集します。",
+    zh: "编辑买家在探索页面看到的代表图片和合约摘要。",
   },
   "pub.headline": { ko: "공개용 한 줄 소개", en: "Public headline", ja: "公開用ひとこと紹介", zh: "公开一句话简介" },
   "pub.headlinePh": { ko: "예: 성수기 주말 객실을 안정적으로 확보하세요.", en: "e.g. Secure peak-season weekend rooms.", ja: "例: 繁忙期の週末客室を確保。", zh: "例：稳定确保旺季周末客房。" },

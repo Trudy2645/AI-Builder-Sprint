@@ -128,6 +128,7 @@ def test_per_person_price_uses_people_as_explicit_quantity(price_client: TestCli
     ("price_unit", "quantity_unit", "quantity", "expected"),
     [
         ("room", "room", 3, 30_000),
+        ("seat", "seat", 4, 40_000),
         ("vehicle", "vehicle", 2, 20_000),
     ],
 )

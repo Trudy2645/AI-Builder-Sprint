@@ -153,6 +153,22 @@ class ContractVersionApprovalMutationRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class SignatureRequestRecord:
+    id: UUID
+    contract_id: UUID
+    contract_version_id: UUID
+    status: str
+    provider: str
+    provider_document_id: str | None
+    provider_status: str | None
+    current_signing_order: int | None
+    completed_at: datetime | None
+    signed_document_id: UUID | None = None
+    audit_trail_document_id: UUID | None = None
+    reused: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class SellerListingRequestCountRecord:
     listing_id: UUID
     listing_title: str
@@ -237,6 +253,52 @@ class ContractRepository(Protocol):
     ) -> ContractVersionApprovalMutationRecord: ...
 
     async def is_seller_member(self, user_id: UUID, organization_id: UUID) -> bool: ...
+
+    async def begin_signature_request(
+        self,
+        *,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        requested_by: UUID,
+        idempotency_key: str,
+        provider_template_id: str,
+        buyer_name: str,
+        buyer_email: str,
+        seller_name: str,
+        seller_email: str,
+    ) -> SignatureRequestRecord: ...
+
+    async def mark_signature_request_dispatched(
+        self, signature_request_id: UUID, provider_document_id: str, provider_status: str
+    ) -> SignatureRequestRecord: ...
+
+    async def mark_signature_request_failed(self, signature_request_id: UUID) -> None: ...
+
+    async def get_signature_request(
+        self, signature_request_id: UUID
+    ) -> SignatureRequestRecord | None: ...
+
+    async def get_signature_request_by_provider_document_id(
+        self, provider_document_id: str
+    ) -> SignatureRequestRecord | None: ...
+
+    async def update_signature_request_status(
+        self,
+        signature_request_id: UUID,
+        *,
+        provider_status: str,
+        current_signing_order: int | None,
+    ) -> SignatureRequestRecord: ...
+
+    async def complete_signature_request(
+        self,
+        signature_request_id: UUID,
+        *,
+        signed_size_bytes: int,
+        signed_sha256: str,
+        audit_size_bytes: int,
+        audit_sha256: str,
+    ) -> SignatureRequestRecord: ...
 
     async def cancel_contract(
         self,
@@ -968,6 +1030,336 @@ class SqlAlchemyContractRepository:
             ContractVersionConflictError,
             ContractVersionNotFoundError,
         ):
+            raise
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def begin_signature_request(
+        self,
+        *,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        requested_by: UUID,
+        idempotency_key: str,
+        provider_template_id: str,
+        buyer_name: str,
+        buyer_email: str,
+        seller_name: str,
+        seller_email: str,
+    ) -> SignatureRequestRecord:
+        try:
+            if self._session.in_transaction():
+                await self._session.rollback()
+            async with self._session.begin():
+                existing = await self._session.execute(
+                    text(
+                        """
+                        select id, contract_id, contract_version_id, status::text as status,
+                               provider, provider_document_id, provider_status,
+                               current_signing_order, completed_at
+                        from public.signature_requests
+                        where contract_id = :contract_id and idempotency_key = :idempotency_key
+                        """
+                    ),
+                    {"contract_id": contract_id, "idempotency_key": idempotency_key},
+                )
+                row = existing.mappings().one_or_none()
+                if row:
+                    record = SignatureRequestRecord(**row)
+                    if record.contract_version_id != contract_version_id:
+                        raise IdempotencyConflictError
+                    return SignatureRequestRecord(**row, reused=True)
+
+                context = await self._lock_approval_context(contract_id, contract_version_id)
+                if context is None:
+                    raise ContractVersionNotFoundError
+                if context.current_version_id != contract_version_id:
+                    raise ContractVersionConflictError
+                if context.contract_status != "signing":
+                    raise ContractStateConflictError
+                approvals = await self._list_approvals_in_transaction(contract_version_id)
+                if {approval.party_role for approval in approvals} != {"buyer", "seller"}:
+                    raise ContractStateConflictError
+
+                created = await self._session.execute(
+                    text(
+                        """
+                        insert into public.signature_requests (
+                            contract_id, contract_version_id, status, provider,
+                            provider_template_id, idempotency_key, requested_by
+                        ) values (
+                            :contract_id, :contract_version_id, 'preparing', 'modusign',
+                            :provider_template_id, :idempotency_key, :requested_by
+                        )
+                        returning id, contract_id, contract_version_id, status::text as status,
+                                  provider, provider_document_id, provider_status,
+                                  current_signing_order, completed_at, signed_document_id,
+                                  audit_trail_document_id
+                        """
+                    ),
+                    {
+                        "contract_id": contract_id,
+                        "contract_version_id": contract_version_id,
+                        "provider_template_id": provider_template_id,
+                        "idempotency_key": idempotency_key,
+                        "requested_by": requested_by,
+                    },
+                )
+                request = SignatureRequestRecord(**created.mappings().one())
+                await self._session.execute(
+                    text(
+                        """
+                        insert into public.signature_participants (
+                            signature_request_id, party_role, provider_role_name,
+                            signing_order, name_snapshot, email_snapshot
+                        ) values
+                            (:request_id, 'buyer', '바이어', 1, :buyer_name, :buyer_email),
+                            (:request_id, 'seller', '셀러', 2, :seller_name, :seller_email)
+                        """
+                    ),
+                    {
+                        "request_id": request.id,
+                        "buyer_name": buyer_name,
+                        "buyer_email": buyer_email,
+                        "seller_name": seller_name,
+                        "seller_email": seller_email,
+                    },
+                )
+                return request
+        except (
+            ContractStateConflictError,
+            ContractVersionConflictError,
+            ContractVersionNotFoundError,
+            IdempotencyConflictError,
+        ):
+            raise
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def mark_signature_request_dispatched(
+        self, signature_request_id: UUID, provider_document_id: str, provider_status: str
+    ) -> SignatureRequestRecord:
+        try:
+            async with self._session.begin():
+                result = await self._session.execute(
+                    text(
+                        """
+                        update public.signature_requests
+                        set status = 'in_progress', provider_document_id = :provider_document_id,
+                            provider_status = :provider_status, current_signing_order = 1
+                        where id = :id and status = 'preparing'
+                        returning id, contract_id, contract_version_id, status::text as status,
+                                  provider, provider_document_id, provider_status,
+                                  current_signing_order, completed_at
+                        """
+                    ),
+                    {
+                        "id": signature_request_id,
+                        "provider_document_id": provider_document_id,
+                        "provider_status": provider_status,
+                    },
+                )
+                row = result.mappings().one_or_none()
+                if row is None:
+                    raise ContractStateConflictError
+                return SignatureRequestRecord(**row)
+        except ContractStateConflictError:
+            raise
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def mark_signature_request_failed(self, signature_request_id: UUID) -> None:
+        try:
+            async with self._session.begin():
+                await self._session.execute(
+                    text(
+                        """
+                        update public.signature_requests
+                        set status = 'failed', failed_at = timezone('utc', now())
+                        where id = :id and status = 'preparing'
+                        """
+                    ),
+                    {"id": signature_request_id},
+                )
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def get_signature_request(
+        self, signature_request_id: UUID
+    ) -> SignatureRequestRecord | None:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select id, contract_id, contract_version_id, status::text as status,
+                           provider, provider_document_id, provider_status,
+                           current_signing_order, completed_at, signed_document_id,
+                           audit_trail_document_id
+                    from public.signature_requests where id = :id
+                    """
+                ),
+                {"id": signature_request_id},
+            )
+            row = result.mappings().one_or_none()
+            return SignatureRequestRecord(**row) if row else None
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def get_signature_request_by_provider_document_id(
+        self, provider_document_id: str
+    ) -> SignatureRequestRecord | None:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select id, contract_id, contract_version_id, status::text as status,
+                           provider, provider_document_id, provider_status,
+                           current_signing_order, completed_at, signed_document_id,
+                           audit_trail_document_id
+                    from public.signature_requests
+                    where provider_document_id = :provider_document_id
+                    """
+                ),
+                {"provider_document_id": provider_document_id},
+            )
+            row = result.mappings().one_or_none()
+            return SignatureRequestRecord(**row) if row else None
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def update_signature_request_status(
+        self,
+        signature_request_id: UUID,
+        *,
+        provider_status: str,
+        current_signing_order: int | None,
+    ) -> SignatureRequestRecord:
+        try:
+            async with self._session.begin():
+                result = await self._session.execute(
+                    text(
+                        """
+                        update public.signature_requests
+                        set provider_status = :provider_status,
+                            current_signing_order = :current_signing_order
+                        where id = :id
+                        returning id, contract_id, contract_version_id, status::text as status,
+                                  provider, provider_document_id, provider_status,
+                                  current_signing_order, completed_at, signed_document_id,
+                                  audit_trail_document_id
+                        """
+                    ),
+                    {
+                        "id": signature_request_id,
+                        "provider_status": provider_status,
+                        "current_signing_order": current_signing_order,
+                    },
+                )
+                row = result.mappings().one_or_none()
+                if row is None:
+                    raise ContractVersionNotFoundError
+                return SignatureRequestRecord(**row)
+        except ContractVersionNotFoundError:
+            raise
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
+    async def complete_signature_request(
+        self,
+        signature_request_id: UUID,
+        *,
+        signed_size_bytes: int,
+        signed_sha256: str,
+        audit_size_bytes: int,
+        audit_sha256: str,
+    ) -> SignatureRequestRecord:
+        try:
+            async with self._session.begin():
+                result = await self._session.execute(
+                    text(
+                        """
+                        select id, contract_id, contract_version_id, requested_by,
+                               status::text as status, provider, provider_document_id,
+                               provider_status, current_signing_order, completed_at
+                        from public.signature_requests where id = :id for update
+                        """
+                    ),
+                    {"id": signature_request_id},
+                )
+                row = result.mappings().one_or_none()
+                if row is None:
+                    raise ContractVersionNotFoundError
+                row_data = dict(row)
+                requested_by = row_data.pop("requested_by")
+                record = SignatureRequestRecord(**row_data)
+                if record.status == "completed":
+                    return record
+                if record.status != "in_progress":
+                    raise ContractStateConflictError
+                base_path = f"contracts/{record.contract_id}/signatures/{record.id}"
+                signed_document_id = uuid4()
+                audit_document_id = uuid4()
+                await self._session.execute(
+                    text(
+                        """
+                        insert into public.documents (
+                            id, contract_id, contract_version_id, purpose, status,
+                            storage_bucket, storage_object_path, original_filename,
+                            mime_type, size_bytes, content_sha256, uploaded_by
+                        ) values
+                            (:signed_id, :contract_id, :version_id, 'signed_contract', 'ready',
+                             'contract-documents', :signed_path, 'signed-contract.pdf',
+                             'application/pdf', :signed_size, :signed_sha, :requested_by),
+                            (:audit_id, :contract_id, :version_id, 'audit_trail', 'ready',
+                             'contract-documents', :audit_path, 'audit-trail.pdf',
+                             'application/pdf', :audit_size, :audit_sha, :requested_by)
+                        """
+                    ),
+                    {
+                        "signed_id": signed_document_id,
+                        "audit_id": audit_document_id,
+                        "contract_id": record.contract_id,
+                        "version_id": record.contract_version_id,
+                        "signed_path": f"{base_path}/signed.pdf",
+                        "audit_path": f"{base_path}/audit-trail.pdf",
+                        "signed_size": signed_size_bytes,
+                        "signed_sha": signed_sha256,
+                        "audit_size": audit_size_bytes,
+                        "audit_sha": audit_sha256,
+                        "requested_by": requested_by,
+                    },
+                )
+                updated = await self._session.execute(
+                    text(
+                        """
+                        update public.signature_requests
+                        set status = 'completed', provider_status = 'COMPLETED',
+                            signed_document_id = :signed_id, audit_trail_document_id = :audit_id,
+                            completed_at = timezone('utc', now())
+                        where id = :id
+                        returning id, contract_id, contract_version_id, status::text as status,
+                                  provider, provider_document_id, provider_status,
+                                  current_signing_order, completed_at
+                        """
+                    ),
+                    {
+                        "id": record.id,
+                        "signed_id": signed_document_id,
+                        "audit_id": audit_document_id,
+                    },
+                )
+                await self._session.execute(
+                    text(
+                        """
+                        update public.contracts set status = 'signed'
+                        where id = :contract_id and current_version_id = :version_id
+                          and status = 'signing'
+                        """
+                    ),
+                    {"contract_id": record.contract_id, "version_id": record.contract_version_id},
+                )
+                return SignatureRequestRecord(**updated.mappings().one())
+        except (ContractVersionNotFoundError, ContractStateConflictError):
             raise
         except SQLAlchemyError as exc:
             raise ContractRepositoryUnavailableError from exc

@@ -1,4 +1,4 @@
-import { MapPin, CalendarDays, Package, AlertTriangle, CheckCircle2, XCircle, Sparkles, ArrowRight, Calculator } from "lucide-react";
+import { MapPin, CalendarDays, Package, AlertTriangle, CheckCircle2, XCircle, ArrowRight, Calculator } from "lucide-react";
 import { useNavigate } from "react-router";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { Button } from "../ui/button";
@@ -97,17 +97,6 @@ export function ContractCard({ contract, base, guests, from, to }: { contract: C
             </div>
           </div>
         )}
-
-        {/* AI summary */}
-        <div className="rounded-lg p-2.5" style={{ background: "var(--info-soft)" }}>
-          <div className="flex items-start gap-1 break-keep" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 600 }}>
-            <Sparkles className="mt-0.5 size-3.5 shrink-0" />
-            {t("card.aiSummary")}
-          </div>
-          <p className="mt-1 line-clamp-2 text-foreground" style={{ fontSize: "13px", lineHeight: 1.5 }}>
-            {contract.aiSummary[0]}
-          </p>
-        </div>
 
         {risks > 0 && (
           <div className="flex items-start gap-1.5 break-keep" style={{ color: "var(--coral)", fontSize: "13px" }}>

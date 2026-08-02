@@ -26,9 +26,12 @@ from app.ai.schemas import (
     FileSearchHit,
     FileSearchRequest,
     FileSearchResult,
+    KnowledgeFileRecord,
     LanguageModelRequest,
     ParsedBlock,
     ParsedPage,
+    VectorStoreFileRecord,
+    VectorStoreRecord,
 )
 
 Sleep = Callable[[float], Awaitable[None]]
@@ -399,17 +402,35 @@ class UpstageAIProvider:
             for item in raw_hits:
                 content = item.get("content", "")
                 if isinstance(content, list):
+                    locations = [part for part in content if isinstance(part, dict)]
                     content = "\n".join(
                         str(part.get("text", "")) if isinstance(part, dict) else str(part)
                         for part in content
                     )
+                else:
+                    locations = []
+                metadata = dict(item.get("attributes") or item.get("metadata") or {})
+                location = locations[0] if locations else item
+                for source_key, target_key in (
+                    ("page_number", "page_start"),
+                    ("page", "page_start"),
+                    ("page_start", "page_start"),
+                    ("page_end", "page_end"),
+                    ("section", "section_path"),
+                    ("section_path", "section_path"),
+                    ("bbox", "bbox"),
+                ):
+                    if source_key in location and target_key not in metadata:
+                        metadata[target_key] = location[source_key]
+                if "page_start" in metadata and "page_end" not in metadata:
+                    metadata["page_end"] = metadata["page_start"]
                 hits.append(
                     FileSearchHit(
                         file_id=item.get("file_id") or item["id"],
                         chunk_id=item.get("chunk_id"),
                         score=item.get("score"),
                         excerpt=content,
-                        metadata=item.get("attributes") or item.get("metadata") or {},
+                        metadata=metadata,
                     )
                 )
         except (KeyError, TypeError, ValidationError) as exc:
@@ -418,6 +439,78 @@ class UpstageAIProvider:
             hits=hits,
             provider_request_id=response.headers.get("x-request-id"),
         )
+
+    async def list_vector_stores(self) -> list[VectorStoreRecord]:
+        response = await self._get(f"{self._agent_base_url}/vector_stores")
+        payload = self._json(response)
+        try:
+            return [
+                VectorStoreRecord(
+                    id=item["id"],
+                    name=item["name"],
+                    status=item.get("status"),
+                )
+                for item in payload.get("data", [])
+            ]
+        except (KeyError, TypeError, ValidationError) as exc:
+            raise AIProviderInvalidResponseError from exc
+
+    async def create_vector_store(self, name: str) -> VectorStoreRecord:
+        response = await self._post(
+            f"{self._agent_base_url}/vector_stores", json_body={"name": name}
+        )
+        payload = self._json(response)
+        try:
+            return VectorStoreRecord(
+                id=payload["id"], name=payload["name"], status=payload.get("status")
+            )
+        except (KeyError, TypeError, ValidationError) as exc:
+            raise AIProviderInvalidResponseError from exc
+
+    async def upload_knowledge_file(
+        self, filename: str, content: bytes, mime_type: str
+    ) -> KnowledgeFileRecord:
+        response = await self._post(
+            f"{self._agent_base_url}/files",
+            files={"file": (filename, content, mime_type)},
+            data={"purpose": "user_data"},
+        )
+        payload = self._json(response)
+        try:
+            return KnowledgeFileRecord(
+                id=payload["id"], filename=payload.get("filename") or filename
+            )
+        except (KeyError, TypeError, ValidationError) as exc:
+            raise AIProviderInvalidResponseError from exc
+
+    async def attach_vector_store_file(
+        self, vector_store_id: str, file_id: str, attributes: dict[str, str | int | bool]
+    ) -> VectorStoreFileRecord:
+        response = await self._post(
+            f"{self._agent_base_url}/vector_stores/{vector_store_id}/files",
+            json_body={"file_id": file_id, "attributes": attributes},
+        )
+        return self._vector_store_file(response)
+
+    async def get_vector_store_file(
+        self, vector_store_id: str, file_id: str
+    ) -> VectorStoreFileRecord:
+        response = await self._get(
+            f"{self._agent_base_url}/vector_stores/{vector_store_id}/files/{file_id}"
+        )
+        return self._vector_store_file(response)
+
+    def _vector_store_file(self, response: httpx.Response) -> VectorStoreFileRecord:
+        payload = self._json(response)
+        error = payload.get("last_error")
+        if isinstance(error, dict):
+            error = error.get("message") or error.get("code")
+        try:
+            return VectorStoreFileRecord(
+                id=payload["id"], status=payload["status"], last_error=error
+            )
+        except (KeyError, TypeError, ValidationError) as exc:
+            raise AIProviderInvalidResponseError from exc
 
     async def _post(
         self,
@@ -445,6 +538,15 @@ class UpstageAIProvider:
                     data=data,
                     json=json_body,
                 )
+
+        return await self._request_with_retry(send)
+
+    async def _get(self, url: str) -> httpx.Response:
+        async def send() -> httpx.Response:
+            if self._client is not None:
+                return await self._client.get(url, headers=self._headers, timeout=self._timeout)
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                return await client.get(url, headers=self._headers)
 
         return await self._request_with_retry(send)
 

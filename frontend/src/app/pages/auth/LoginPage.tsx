@@ -9,11 +9,15 @@ import { Separator } from "../../components/ui/separator";
 import { useApp, type Role } from "../../context/AppContext";
 import { friendlyApiError, loginWithDemoRole } from "../../lib/api";
 import { toast } from "sonner";
+import { friendlyApiError, loginWithPassword } from "../../lib/api";
 
 export function LoginPage() {
-  const { t, login } = useApp();
+  const { t, login, loginWithSession } = useApp();
   const navigate = useNavigate();
   const [email, setEmail] = useState("buyer@globaltrip.jp");
+  const [password, setPassword] = useState("demo-password");
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const inferDemoRole = (value: string): Role => {
     const normalized = value.toLocaleLowerCase();
@@ -24,11 +28,36 @@ export function LoginPage() {
       : "buyer";
   };
 
-  const submit = (e: React.FormEvent) => {
+  const demoCompany = (role: Role) => role === "seller" ? "해운대 오션스테이" : "GlobalTrip Japan";
+  const isDemoEmail = (value: string) => {
+    const normalized = value.toLocaleLowerCase();
+    return normalized.includes("buyer@globaltrip") ||
+      normalized.includes("seller") ||
+      normalized.includes("ocean") ||
+      normalized.includes("haeundae");
+  };
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const role = inferDemoRole(email);
-    login(role, email);
-    navigate(`/${role}`);
+    setSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const result = await loginWithPassword(email, password);
+      if (!result.session) throw new Error("Login session was not returned.");
+      const role = inferDemoRole(email);
+      loginWithSession(role, email, result.session.access_token);
+      navigate(`/${role}`);
+    } catch (error) {
+      if (error instanceof TypeError && isDemoEmail(email)) {
+        const role = inferDemoRole(email);
+        login(role, demoCompany(role), true);
+        navigate(`/${role}`);
+        return;
+      }
+      setErrorMessage(friendlyApiError(error));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const demoLogin = async (r: Role, company: string) => {
@@ -57,10 +86,11 @@ export function LoginPage() {
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="password">{t("common.password")}</Label>
-          <Input id="password" type="password" defaultValue="demo1234" required />
+          <Input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
         </div>
 
-        <Button type="submit" className="mt-2 w-full" style={{ background: "var(--navy)" }}>
+        {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+        <Button type="submit" disabled={submitting} className="mt-2 w-full" style={{ background: "var(--navy)" }}>
           {t("common.login")}
         </Button>
       </form>

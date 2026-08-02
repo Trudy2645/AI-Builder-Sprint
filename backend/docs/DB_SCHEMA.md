@@ -188,6 +188,12 @@ erDiagram
 
 ### `listing_versions`, `listing_clauses`
 
+AI 계약 생성은 현재 `listing_versions`를 수정하지 않는다. 입력 version을 대상으로
+`contract_generate` AI job과 organization idempotency record를 먼저 만들고 listing을
+`processing`으로 전이한다. 검증된 결과만 새 `listing_versions`와 순서가 지정된
+`listing_clauses`로 추가하며 같은 transaction에서 `current_version_id`와 상태를 `ready`로
+변경한다. 실패한 job은 `failed`로 남기고 미완료 idempotency record를 제거해 재시도를 허용한다.
+
 - OCR 추출 또는 AI 생성 결과를 immutable version으로 보존한다.
 - `(listing_id, version_no)`는 unique다.
 - publish된 버전을 수정하지 않고 새 version을 만든다.
@@ -348,7 +354,7 @@ AI target은 listing version 또는 contract version 중 정확히 하나다.
 - 공개 API는 buyer 분석만 반환한다.
 - 모든 finding은 모델명, prompt version, evidence와 disclaimer를 가진다.
 
-향후 AI 구현용 새 migration에서는 `ai_analysis_runs`에 다음 실행 metadata를 추가한다.
+`014_ai_contract_review_agent.sql`은 `ai_analysis_runs`에 다음 실행 metadata를 추가한다.
 
 | 컬럼 | 의미 |
 | --- | --- |
@@ -359,7 +365,20 @@ AI target은 listing version 또는 contract version 중 정확히 하나다.
 | `stop_reason` | `completed`, `max_iterations`, `insufficient_evidence`, `provider_error` |
 | `execution_metadata` | 사용한 tool 이름, 호출 순서, schema version 등 비민감 metadata |
 
-원문 prompt, 전체 계약서, API 응답 전문은 `execution_metadata`에 저장하지 않는다. Agent의 각 File Search 호출은 기존 `rag_retrieval_runs`에 별도 행으로 남기며, 최종 채택된 근거만 `rag_evidence`에 고정한다.
+원문 prompt, 전체 계약서, API 응답 전문은 `execution_metadata`에 저장하지 않는다. RAG knowledge
+base 단계에서는 Agent의 각 File Search 호출을 `rag_retrieval_runs`에 별도 행으로 남기고,
+최종 채택된 근거만 `rag_evidence`에 고정한다.
+
+`ai_findings.is_public`은 시스템이 승인한 buyer finding만 공개 API에 노출하기 위한 값이다.
+seller 관점 결과는 Agent 출력과 무관하게 항상 `false`로 저장된다. 이 branch에서는 채택한
+검색 결과의 제한된 metadata를 `ai_findings.evidence` snapshot에도 보존하며, knowledge registry와
+연결된 정규화 `rag_retrieval_runs`/`rag_evidence` 기록은 RAG knowledge base 단계에서 완성한다.
+
+finding 적용은 `suggested_text_sha256`, 분석 대상 version, resource의 현재 version을 한
+transaction에서 잠그고 검증한다. 기존 version/clause 행은 유지한 채 새 immutable version과
+clause snapshot을 생성하고 `applied_version_id`에 새 version id를 기록한다. 적용과 기각 이력은
+`audit_events`에 append-only로 저장하며, 중복 action은 `idempotency_records`의 24시간 결과
+snapshot을 재사용한다.
 
 ### RAG knowledge registry
 
@@ -367,14 +386,24 @@ AI target은 listing version 또는 contract version 중 정확히 하나다.
 
 | 테이블 | 의미 |
 | --- | --- |
-| `knowledge_bases` | 공식/템플릿 corpus와 Upstage Vector Store 연결 |
+| `knowledge_bases` | 공식/템플릿/승인 판례 corpus와 분리된 Upstage Vector Store 연결 |
 | `knowledge_documents` | 논리 문서, 출처, 권위 수준, 공식 URL, 적용 상품 카테고리 |
 | `knowledge_document_versions` | 시행일, hash, immutable Storage 경로, Upstage file id, active/superseded 상태 |
 | `rag_retrieval_runs` | analysis별 한국어 query, metadata filter, top-k와 provider 요청 기록 |
 | `rag_evidence` | finding별 고정 근거의 rank, score, page, section, excerpt, bbox |
 | `localized_contents` | 공고·계약·finding의 한국어/영어/일본어/중국어 결과 cache |
 
+공개 공고 localization은 `content_type=public_listing`으로 저장한다. unique key에 immutable target,
+locale, prompt version과 source hash를 모두 포함하며 `numeric_validation_passed=true`인 행만 공개
+API가 사용할 수 있다. locale별 AI job과 저장 transaction을 분리하므로 일부 locale 실패 시 다른
+locale 행은 유지된다. `content`에는 번역·쉬운 설명과 함께 보존된 구조화 facts, clause/finding ID,
+조항·근거 번호 및 고유명사 목록을 저장한다.
+
 AI 패널의 근거 번호는 `rag_evidence.id`를 가리킨다. 문서가 개정되어도 체결·분석 당시 사용한 `knowledge_document_versions` snapshot을 유지해 같은 페이지와 인용을 재현한다.
+
+`015_rag_knowledge_base_runtime.sql`은 `knowledge_corpus_type`에 `case_reference`를 추가하고
+`knowledge_document_versions.upstage_vector_store_file_id`를 저장한다. provider의 임시 다운로드
+URL은 어떤 registry 컬럼에도 저장하지 않는다.
 
 MVP 공식 자료는 PDF를 그대로 Upstage Files/Vector Store에 적재한다. `knowledge_document_versions.metadata`에는 `file_format=pdf`, `is_searchable`, `parse_required`, `original_page_count`를 기록한다. Markdown 정규화 경로는 nullable이며 필수 ingestion 단계가 아니다. 국내여행 표준약관은 `common`에 한 번만 저장하고 `contract_categories={tour}`로 제한한다.
 

@@ -21,6 +21,7 @@ USER = AuthenticatedUser(UUID("00000000-0000-0000-0000-000000000001"), "buyer@ex
 VALID_PAYLOAD = {
     "title": "Ocean Stay Contract",
     "buyer": {"role": "바이어", "name": "Aiko Tanaka", "email": "aiko@example.jp"},
+    "seller": {"role": "셀러", "name": "Ocean Stay", "email": "seller@example.kr"},
 }
 
 

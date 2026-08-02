@@ -256,7 +256,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 셀러가 받은 계약 요청 | `GET /seller/contracts/received` | 구현 |
 | 내 공고문·편집 | `GET /seller/listings`, `GET /seller/listings/{id}` | 구현 |
 | 직접 작성 | `POST /seller/listings`, `PATCH /seller/listings/{id}/terms` | 구현 |
-| AI 계약 생성 | `POST /seller/listings/{id}/generate` | 계획 |
+| AI 계약 생성 | `POST /seller/listings/{id}/generate` | 구현 |
 | 문서 업로드·검증 | `POST /documents/upload-url`, `POST /documents/{id}/complete`, `GET /documents/{id}`, `POST /documents/{id}/download-url` | 구현 |
 | 작성 완료·게시 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation`, `POST /seller/listings/{id}/publish`, `POST /seller/listings/{id}/pause`, `POST /seller/listings/{id}/archive` | 구현 |
 | 수정 요청 알림·판단 | revision request API와 알림 생성 | 구현 |
@@ -469,6 +469,8 @@ Query:
 
 `people`은 단체 규모이고 실제 과금 수량은 `quantity`와 `quantity_unit`으로 명시한다. 예를 들어 30명이 2인실 15개를 2박 이용하면 `people=30`, `quantity=15`, `quantity_unit=room`, `nights=2`다. 서버가 임의로 객실당 2명을 가정하지 않는다.
 
+과금 단위 규칙은 공고 저장·완료·공개와 예상 가격·계약 요청 계산에 공통 적용한다. 지원하는 `price_unit → quantity_unit` 조합은 `person → person`, `room → room`, `room_night → room`, `seat → seat`, `vehicle → vehicle`이며, `room_night`만 박수를 곱한다.
+
 ```json
 {
   "data": {
@@ -620,7 +622,7 @@ Figma의 공고 편집·상세 화면에 필요한 현재 terms, presentation, c
 }
 ```
 
-부분 입력을 현재 terms와 합쳐 저장하며 기간, 최소·최대 공급 수량, 최소·최대 인원 범위를 검사한다. `supply_quantity_description`은 프론트의 “주말 객실 최대 30실” 같은 자유형 문구를 손실 없이 보존하고, `minimum_quantity`/`maximum_quantity`는 실제 과금 수량 범위다. 저장할 때 기존 version을 수정하지 않고 구조화 terms snapshot, 계약 정책 clauses와 본문을 가진 V2, V3 등의 새 version을 만든다. 현재 version 번호가 `base_version_no`와 다르면 `VERSION_CONFLICT`다. 계약 요청이 하나라도 존재하면 가격·기간·정책을 포함한 terms 변경을 `LISTING_HAS_CONTRACTS`로 차단한다. 이미 공개 또는 중지된 공고는 필수값을 제거하는 수정도 허용하지 않는다.
+부분 입력을 현재 terms와 합쳐 저장하며 기간, 최소·최대 공급 수량, 최소·최대 인원 범위와 공통 과금 단위 규칙을 검사한다. 지원하지 않는 값은 `UNSUPPORTED_QUANTITY_UNIT` 또는 `UNSUPPORTED_PRICE_UNIT`으로 거절하고, `quantity_unit`과 `price_unit`의 조합도 일치해야 한다. 공고 완료·공개에는 `quantity_unit`이 필수다. `supply_quantity_description`은 프론트의 “주말 객실 최대 30실” 같은 자유형 문구를 손실 없이 보존하고, `minimum_quantity`/`maximum_quantity`는 실제 과금 수량 범위다. 저장할 때 기존 version을 수정하지 않고 구조화 terms snapshot, 계약 정책 clauses와 본문을 가진 V2, V3 등의 새 version을 만든다. 현재 version 번호가 `base_version_no`와 다르면 `VERSION_CONFLICT`다. 계약 요청이 하나라도 존재하면 가격·기간·정책을 포함한 terms 변경을 `LISTING_HAS_CONTRACTS`로 차단한다. 이미 공개 또는 중지된 공고는 필수값을 제거하는 수정도 허용하지 않는다.
 
 ### PDF 등록 흐름
 
@@ -695,7 +697,7 @@ Document Parse 전체 결과는 private `ai-artifacts` bucket에 JSON으로 보�
 `documents.extracted_data`에 저장한다. 후보는 셀러가 명시적으로 확인하기 전까지 실제
 `listing_terms`, `listing_versions`, `listing_clauses`에 반영하지 않는다.
 
-공식 RAG 자료는 MVP에서 PDF를 Markdown으로 변환하지 않고 그대로 Upstage Files API에 업로드한다. 텍스트가 없는 스캔 PDF만 Document Parse/OCR을 거친 검색 가능한 PDF 또는 parse artifact를 사용한다. 국내여행 표준약관은 물리적으로 `common` corpus에 한 번만 저장하되 `contract_categories=["tour"]`로 제한한다.
+공식 RAG 자료는 기본적으로 PDF를 그대로 Upstage Files API에 업로드한다. 텍스트가 없는 스캔 PDF나 provider가 직접 index하지 못한 장문 PDF만 Document Parse/OCR, 정규화 PDF 또는 page-marked text 파생물을 사용한다. 파생물 hash와 mode는 DB에 기록하고 열람 URL은 항상 immutable 원본 PDF를 가리킨다. 국내여행 표준약관은 물리적으로 `common` corpus에 한 번만 저장하되 `contract_categories=["tour"]`로 제한한다.
 
 과제/API 명세에서는 이 단계를 `Information Extract`로 부른다. 실제 Upstage SDK 또는 콘솔에서 기능명이 `Universal Extraction`이면 provider adapter 내부에서만 해당 이름을 사용한다. 외부 job type과 domain interface는 `information_extract`로 유지한다.
 adapter는 공식 Universal Extraction 형식에 맞춰 `/v1/information-extraction`에 원문을 base64
@@ -719,13 +721,20 @@ Information Extract의 필수 top-level 결과는 다음 일곱 영역이다.
 
 각 값은 `value`, `confidence`, `source_page`, `source_quote`, 가능한 경우 `bbox`를 함께 가진다. 필수 영역이 문서에 없으면 값을 만들어내지 않고 `null`과 `missing=true`를 반환해 리스크 분석 입력으로 사용한다.
 
-### `GET /ai-findings/{finding_id}/evidence/{evidence_id}`
+### `[구현] GET /ai-findings/{finding_id}/evidence/{evidence_id}`
 
-AI 패널의 `[1]`, `[2]` 근거 번호를 클릭할 때 호출한다. finding 조회 권한과 evidence 소속을 확인한 후 내부 PDF viewer URL, page/section/bbox, 짧은 excerpt, 공식 원문 URL, 시행일과 조회일을 반환한다. Storage 원본은 private으로 유지하고 짧은 만료시간의 signed URL만 viewer에 제공한다.
+AI 패널의 `[1]`, `[2]` 근거 번호를 클릭할 때 호출한다. finding 조회 권한과 evidence 소속을
+확인한 후 내부 PDF viewer URL, 짧은 만료시간의 `signed_pdf_url`, 만료 시각,
+page/section/bbox, 짧은 excerpt, 공식 원문 URL, 시행일과 조회일을 반환한다. Storage 원본은
+private으로 유지하며 signed URL과 Upstage 임시 URL은 DB에 저장하지 않는다. 공개 계약
+미리보기의 buyer finding에는 실제 `rag_evidence.id`를 가리키는 `evidence_refs`를 `[1]` 형식으로
+포함한다.
 
-### `POST /ai-findings/{finding_id}/apply`
+### `[구현] POST /ai-findings/{finding_id}/apply`
 
 AI가 제안한 표준 안전장치 또는 대안 문구를 사람이 명시적으로 선택했을 때만 호출한다.
+`X-Organization-Id`와 `Idempotency-Key`가 필수이며 해당 listing/contract의 셀러 조직
+구성원만 호출할 수 있다. 바이어의 계약 변경 제안은 revision request workflow를 사용한다.
 
 ```json
 {
@@ -742,31 +751,89 @@ AI가 제안한 표준 안전장치 또는 대안 문구를 사람이 명시적�
 3. 제안 문구가 분석 당시 값과 같은지 hash로 확인한다.
 4. 기존 version을 수정하지 않고 새 version과 clauses를 생성한다.
 5. finding을 `applied` 처리하고 audit event를 남긴다.
-6. 새 version에 대한 규칙 검사와 역할별 AI 분석을 다시 실행한다.
+6. 새 version에 대한 seller/buyer 규칙 검사와 역할별 AI 분석 job을 다시 실행한다.
 
-### `POST /ai-findings/{finding_id}/dismiss`
+`202 Accepted` 응답은 기존·신규 version id, 신규 `version_no`, 두 역할의
+`analysis_job_ids`를 반환한다.
+`edited_text`를 사용해도 hash는 분석 당시 원 추천 문구를 기준으로 검증하며, 감사 기록에는
+원문 대신 추천·적용 문구의 SHA-256과 사용자 편집 여부만 저장한다. 만료·보관된 공고와
+서명 중·서명 완료·취소된 계약에는 적용할 수 없다. finding 조회 응답은 적용 요청에 사용할
+`suggested_text_hash`를 `sha256:<hex>` 형식으로 함께 반환한다.
+
+### `[구현] POST /ai-findings/{finding_id}/dismiss`
 
 ```json
 { "reason": "현재 계약 운영 방식과 맞지 않아 유지" }
 ```
 
-finding을 `dismissed`로 표시하되 계약 원문은 변경하지 않는다. 적용과 기각 모두 자동으로 서명 요청을 만들지 않는다.
+`X-Organization-Id`와 `Idempotency-Key`가 필수다. 셀러 조직 구성원만 호출할 수 있으며,
+finding을 `dismissed`로 표시하고 사유를 append-only audit event에 남기되 계약 원문은 변경하지
+않는다. 적용과 기각 모두 자동으로 서명 요청을 만들지 않는다.
 
-### `POST /seller/listings/{listing_id}/generate`
+### `[구현] POST /seller/listings/{listing_id}/generate`
 
-직접 입력한 조건으로 고정된 `contract_generate` prompt와 JSON Schema를 사용해 Solar Pro 3가 계약 초안을 생성하고 새 listing version을 만든다. 이 함수는 Agent가 아니며 도구를 자율 호출하지 않는다. 생성 후 셀러 관점 계약검토 Agent를 별도 실행한다.
-
-### `POST /seller/listings/{listing_id}/analyses`
+`X-Organization-Id`와 `Idempotency-Key`가 필수다.
 
 ```json
 {
-  "listing_version_id": "uuid",
+  "base_version_no": 2
+}
+```
+
+직접 입력한 조건으로 고정된 `contract_generate` prompt와 JSON Schema를 사용해 Solar Pro 3가
+계약 초안을 생성하고 새 listing version을 만든다. 이 함수는 Agent가 아니며 도구를 자율
+호출하지 않는다. 생성 전 필수 terms를 검사하고 `draft → processing`으로 전이하며, 생성 결과의
+숫자·ISO 날짜·단가·수량·단위가 입력과 일치하는지 Python 코드로 검증한 뒤에만 새 immutable
+version과 clauses를 저장하고 `ready`로 전이한다. 결과를 자동 게시하지 않으며 생성 후 셀러 관점
+계약검토 Agent는 별도 API에서 실행한다.
+
+```json
+{
+  "data": {
+    "listing_id": "uuid",
+    "job_id": "uuid",
+    "listing_version_id": "uuid",
+    "version_no": 3,
+    "status": "ready",
+    "clauses": [
+      {
+        "id": "uuid",
+        "clause_order": 1,
+        "clause_key": "service",
+        "title": "공급 기간 및 수량",
+        "body": "공급 기간은 2026-08-01부터 2026-08-31까지로 한다."
+      }
+    ]
+  },
+  "meta": {"request_id": "..."}
+}
+```
+
+승인된 template Vector Store가 설정된 경우 `source_type=approved_template`, category,
+`party_type=B2C_individual` 조건으로 최대 5개 문단을 미리 검색해 생성 참고 문맥으로 전달한다.
+이 문맥은 공식 법적 근거로 표시하거나 `ai_evidence`로 저장하지 않는다. Vector Store가 설정되지
+않아도 구조화 terms만으로 생성할 수 있다.
+
+동일 listing, `base_version_no`, model, prompt version과 `Idempotency-Key` 조합은 저장된 동일
+응답을 반환하고 Solar를 다시 호출하지 않는다. 같은 key에 다른 입력을 보내면
+`IDEMPOTENCY_CONFLICT`, 처리 중인 동일 요청은 `IDEMPOTENCY_IN_PROGRESS`, 현재 version이
+달라졌으면 `VERSION_CONFLICT`다. 필수 조건 누락은 `AI_INPUT_INSUFFICIENT`, 생성 결과의 schema
+또는 숫자·날짜·단가·수량 불변식 위반은 `AI_GENERATION_INVALID`로 반환한다. provider 실패 시 job을 failed로
+기록하고 listing을 `draft`로 되돌려 동일 요청을 재시도할 수 있게 한다.
+
+### `[구현] POST /seller/listings/{listing_id}/analyses`
+
+```json
+{
+  "version_id": "uuid",
   "viewer_role": "seller",
   "analysis_types": ["summary", "risk", "missing_terms"]
 }
 ```
 
-분석 결과는 seller workspace에만 노출한다. 공개 시에는 별도의 `viewer_role=buyer` 분석을 생성한다.
+셀러 조직 구성원만 실행할 수 있다. `viewer_role=seller` 결과는 seller workspace에만
+노출하고, 공개 시에는 같은 endpoint로 별도의 `viewer_role=buyer` 분석을 생성한다.
+두 분석은 서로 다른 run과 finding으로 저장된다.
 
 응답 job에는 실행 방식을 명시한다.
 
@@ -784,6 +851,19 @@ finding을 `dismissed`로 표시하되 계약 원문은 변경하지 않는다. 
 ```
 
 Agent는 계약을 수정하거나 서명 요청을 만들 수 없다. 최종 출력은 JSON Schema를 통과한 finding 후보뿐이며, 새 version 생성은 사용자가 `apply`를 호출했을 때 domain service가 수행한다.
+
+### `[구현] POST /contracts/{contract_id}/analyses`
+
+공고 분석과 같은 request/response schema를 사용한다. 바이어는 본인 계약에
+`viewer_role=buyer`, 셀러 조직 구성원은 `viewer_role=seller`만 요청할 수 있다. 선택한
+`version_id`가 해당 계약에 속하지 않으면 `VERSION_NOT_FOUND`, 인증 당사자와 관점이 다르면
+`REVIEW_VIEWER_ROLE_FORBIDDEN`이다.
+
+### `[구현] GET /ai-analysis-runs/{analysis_run_id}`
+
+완료된 run과 finding을 반환한다. 각 finding에는 viewer role, clause ID, 위험도, 설명,
+추천 문구, grounding status, disclaimer, 공개 가능 여부와 run의 model/prompt version이 포함된다.
+공고 run은 셀러 조직 구성원, 계약 run은 해당 관점의 계약 당사자만 조회할 수 있다.
 
 ### `[구현] POST /seller/listings/{listing_id}/complete`
 
@@ -819,6 +899,29 @@ Agent는 계약을 수정하거나 서명 요청을 만들 수 없다. 최종 �
 ### `[구현] POST /seller/listings/{listing_id}/publish`
 
 셀러 검증 상태와 필수 정보를 확인하고 `ready → published`로 바꾼다. AI 기능이 분리된 현재 manual 공고는 공개용 AI 분석을 필수로 강제하지 않는다. Figma의 `계약 가능` switch를 별도 저장하지 않고 ON은 이 API, OFF는 `POST /seller/listings/{id}/pause`에 연결한다. 중지된 공고의 재개도 별도 `/resume` 없이 이 publish API로 `paused → published` 전이한다.
+
+### `[구현] POST /seller/listings/{listing_id}/localizations`
+
+공개가 확정된 현재 listing version의 한국어 공개 결과를 `localize_explain` 고정 task로
+변환한다. `X-Organization-Id`, `Idempotency-Key`, 현재 `base_version_no`가 필수다.
+
+```json
+{
+  "base_version_no": 3,
+  "locales": ["ko-KR", "en-US", "ja-JP", "zh-CN"]
+}
+```
+
+각 locale 결과는 독립적으로 schema와 보존 검사를 통과한 뒤 `localized_contents`에
+`listing_version_id + locale + content_type + prompt_version + source_hash`로 cache한다.
+금액·통화·날짜·비율·수량·조항 번호·근거 번호와 셀러명·지역 고유명사가 바뀌면 해당 locale은
+저장하지 않고 실패한다. 한 locale의 provider/schema/보존 실패는 이미 성공한 다른 locale의
+cache를 삭제하거나 rollback하지 않는다. 동일 source cache는 Solar를 다시 호출하지 않는다.
+
+`GET /public/listings`, 공개 상세, 계약 미리보기는 요청 locale의 검증된 cache가 있으면 별도
+`localized_content` 및 번역된 카드 제목·요약을 반환한다. cache가 없거나 source hash가 현재
+상태와 다르면 한국어 원문을 유지하고 `requested_locale`, `content_locale`, `fallback_locale`로
+fallback을 명시한다. 공개 조회 중에는 Solar를 호출하지 않는다.
 
 ### `[구현] POST /seller/listings/{listing_id}/pause`
 
@@ -1309,12 +1412,12 @@ backend/app/
 | 5 | `feat/documents-storage` | `feat(documents): complete uploaded documents` | `POST /documents/{id}/complete`<br>`GET /documents/{id}` | 업로드 object의 크기·MIME·hash를 확인하고 `uploaded` 상태로 만든다. PDF/DOCX/JPG/PNG와 최대 용량 제한을 적용한다. |
 | 5 | `feat/documents-storage` | `test(documents): validate ownership and file metadata` | 위 document API | 다른 조직 파일 접근, MIME 위조, 크기 초과, 존재하지 않는 Storage object를 테스트한다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): add provider interfaces and job APIs` | `GET /ai-jobs/{id}` | `DocumentProcessor`, `ContractGenerator`, `ContractReviewAgent` interface와 fake provider를 만든다. job 상태는 queued/processing/succeeded/failed다. |
-| 6 | `feat/ai-contract-review` | `feat(db): track bounded contract review agent runs` | 없음 | 구현 시점의 다음 새 migration으로 execution mode, Agent 이름, 최대/실제 iteration, 종료 사유와 비민감 실행 metadata를 `ai_analysis_runs`에 추가한다. 기존 migration은 수정하지 않는다. |
+| 6 | `feat/ai-contract-review` | `feat(db): track bounded contract review agent runs` | 없음 | migration `014`가 execution mode, Agent 이름, 최대/실제 iteration, 종료 사유와 비민감 실행 metadata를 `ai_analysis_runs`에 추가한다. 기존 migration은 수정하지 않는다. |
 | 6 | `feature/ai-document-processing` | `feat(ai): parse and extract uploaded contracts` | `POST /documents/{id}/process`<br>`GET /documents/{id}/processing-result` | Upstage Document Parse → Information Extract로 요금·기간·취소·환불·안전·보상·책임과 셀러 확인용 listing 후보를 만든다. 실제 provider 기능명이 Universal Extraction이면 adapter 내부에서만 매핑한다. |
-| 6 | `feat/ai-contract-review` | `feat(ai): generate contracts with fixed tasks` | `POST /seller/listings/{id}/generate` | 고정 prompt/JSON Schema 함수로 직접 입력 조건의 초안을 생성한다. 생성 함수에는 자율 tool 호출 권한을 주지 않는다. |
+| 6 | `feature/ai-contract-generation` | `feat(ai): generate contracts with fixed tasks` | `POST /seller/listings/{id}/generate` | 고정 prompt/JSON Schema 함수로 직접 입력 조건의 초안을 생성한다. 생성 함수에는 자율 tool 호출 권한을 주지 않는다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): review contracts with a bounded single agent` | `POST /seller/listings/{id}/analyses` | `ContractReviewAgent`가 조항 조회·공식 근거 검색·승인 템플릿 검색 도구만 최대 2회 반복 호출한다. seller/buyer 관점 분석을 분리 저장하고 공개 API는 buyer 분석만 사용한다. |
 | 6 | `feat/ai-contract-review` | `feat(ai): apply reviewed safeguard clauses` | `POST /ai-findings/{id}/apply`<br>`POST /ai-findings/{id}/dismiss` | AI 제안은 자동 반영하지 않는다. 적용 시 immutable 새 version을 만들고 재분석하며, 적용/기각 모두 audit event를 남긴다. |
-| 6 | `feat/ai-contract-review` | `feat(ai): localize contract guidance in four languages` | 공개 상세·finding 응답의 `locale` | ko-KR 원본을 기준으로 en-US/ja-JP/zh-CN 결과를 생성·cache하고 금액·날짜·비율·근거 번호 보존을 검증한다. |
+| 7 | `feature/ai-localization` | `feat(ai): 공개 계약 결과 다국어 설명 추가` | `POST /seller/listings/{id}/localizations`<br>공개 API의 `locale` | ko-KR 원본을 기준으로 en-US/ja-JP/zh-CN 결과를 독립 생성·cache하고 금액·통화·날짜·비율·수량·조항·근거 번호와 고유명사 보존을 검증한다. |
 | 6 | `feat/ai-contract-review` | `test(ai): validate structured output and provider failures` | 위 AI API | JSON Schema/Pydantic 검증, 근거 없는 결과, timeout/429/5xx, 재시도와 실패 상태를 fake provider로 테스트한다. |
 | 6.5 | `feat/rag-knowledge-base` | `feat(rag): add PDF knowledge registry and ingestion` | 운영자용 내부 ingestion command/API | 공식 PDF를 Markdown 변환 없이 Files API와 Vector Store에 적재하고, immutable Storage snapshot, Upstage file/vector id와 active version을 관리한다. 스캔 PDF만 parse/OCR하며 사용자 계약서는 대상에서 제외한다. |
 | 6.5 | `feat/rag-knowledge-base` | `feat(rag): persist retrieval evidence and viewer links` | `GET /ai-findings/{finding_id}/evidence/{evidence_id}` | query/filter/rank와 문서 version, page/section/bbox를 저장하고 근거 번호 클릭 시 내부 viewer로 이동시킨다. |

@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { translate, type Lang } from "../i18n/translations";
+import { setAccessToken } from "../lib/api";
 
 export type Role = "buyer" | "seller";
 
@@ -12,27 +13,58 @@ interface AppContextValue {
   currentRole: Role | null;
   isDemoSession: boolean;
   login: (role: Role, company?: string, isDemo?: boolean) => void;
+  loginWithSession: (role: Role, company: string, accessToken: string) => void;
   logout: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
+const sessionKey = "busan-link-session";
+
+type StoredSession = { role: Role; companyName: string };
+
+function readStoredSession(): StoredSession | null {
+  try {
+    const value = window.localStorage.getItem(sessionKey);
+    if (!value) return null;
+    const parsed: unknown = JSON.parse(value);
+    if (
+      typeof parsed === "object" && parsed !== null &&
+      (parsed as StoredSession).role &&
+      ["buyer", "seller"].includes((parsed as StoredSession).role)
+    ) return parsed as StoredSession;
+  } catch {
+    // An invalid local value must never prevent the app from rendering.
+  }
+  return null;
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const storedSession = readStoredSession();
   const [lang, setLang] = useState<Lang>("ko");
-  const [companyName, setCompanyName] = useState<string>("");
-  const [currentRole, setCurrentRole] = useState<Role | null>(null);
+  const [companyName, setCompanyName] = useState<string>(storedSession?.companyName ?? "");
+  const [currentRole, setCurrentRole] = useState<Role | null>(storedSession?.role ?? null);
   const [isDemoSession, setIsDemoSession] = useState(false);
 
   const login = (role: Role, company?: string, isDemo = false) => {
     setCurrentRole(role);
     setCompanyName(company ?? "");
     setIsDemoSession(isDemo);
+    if (!isDemo) {
+      window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
+    }
   };
 
   const logout = () => {
+    setAccessToken(null);
+    window.localStorage.removeItem(sessionKey);
     setCurrentRole(null);
     setCompanyName("");
     setIsDemoSession(false);
+  };
+
+  const loginWithSession = (role: Role, company: string, accessToken: string) => {
+    setAccessToken(accessToken);
+    login(role, company, false);
   };
 
   const value = useMemo<AppContextValue>(
@@ -45,6 +77,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentRole,
       isDemoSession,
       login,
+      loginWithSession,
       logout,
     }),
     [lang, companyName, currentRole, isDemoSession],

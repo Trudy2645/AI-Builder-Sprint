@@ -28,6 +28,7 @@ import {
   type BuyerContractStatus,
 } from "../../store/BuyerContractsContext";
 import { formatKRW } from "../../data/contracts";
+import { friendlyApiError, getContractDetail, type ContractDetail } from "../../lib/api";
 
 const STATUS_META: Record<BuyerContractStatus, { label: string; tone: string; desc: string }> = {
   draft: { label: "작성 중", tone: "var(--muted-foreground)", desc: "계약 조건을 정리하고 있습니다." },
@@ -56,7 +57,7 @@ const STATUS_META: Record<BuyerContractStatus, { label: string; tone: string; de
 
 const OCR_MOCK: BuyerContractDraft = {
   ...DEFAULT_BUYER_CONTRACT_DRAFT,
-  title: "해운대 오션스테이 여름 객실 공급",
+  title: "해운대 오션스테이 단체 객실 공급",
   cancellationPolicy: "체크인 7일 전까지 무료 취소, 이후 1박 요금의 50% 부과",
   settlementPolicy: "월 마감 후 익월 15일 이내 계좌이체",
 };
@@ -366,25 +367,25 @@ export function BuyerContractWritePage() {
 export function BuyerContractStatusPage() {
   const navigate = useNavigate();
   const contract = useContractFromRoute();
-  const { updateContractStatus } = useBuyerContracts();
+  const [detail, setDetail] = useState<ContractDetail | null>(null);
+
+  useEffect(() => {
+    if (!contract?.id || contract.id.startsWith("BL-")) return;
+    getContractDetail(contract.id).then(setDetail).catch((error) => toast.error(friendlyApiError(error)));
+  }, [contract?.id]);
 
   if (!contract) {
     return <PageHeader title="계약 요청이 없습니다" description="먼저 계약 요청을 생성해주세요." />;
   }
 
-  const meta = STATUS_META[contract.status];
+  const status = (detail?.status as BuyerContractStatus | undefined) ?? contract.status;
+  const meta = STATUS_META[status];
   const steps: BuyerContractStatus[] = ["seller_review", "signing", "signed"];
-  const currentIndex = steps.indexOf(contract.status) === -1 ? 0 : steps.indexOf(contract.status);
-
-  const moveNext = () => {
-    const nextStatus = contract.status === "seller_review" ? "signing" : "signed";
-    updateContractStatus(contract.id, nextStatus);
-    toast.success(nextStatus === "signing" ? "모두싸인 문서가 발송되었습니다." : "양측 서명이 완료되었습니다.");
-  };
+  const currentIndex = steps.indexOf(status) === -1 ? 0 : steps.indexOf(status);
 
   useEffect(() => {
-    if (contract.status === "signed") navigate(`/buyer/contracts/${contract.id}/complete`);
-  }, [contract.id, contract.status, navigate]);
+    if (detail?.status === "signed") navigate(`/buyer/signing/complete?contractId=${detail.id}&versionId=${detail.current_version.id}`);
+  }, [detail, navigate]);
 
   return (
     <div>
@@ -415,9 +416,9 @@ export function BuyerContractStatusPage() {
           })}
         </div>
         <div className="mt-6 flex flex-wrap gap-2">
-          {contract.status !== "signed" && (
-            <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={moveNext}>
-              다음 상태로 변경
+          {detail && status !== "signed" && (
+            <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => navigate(`/buyer/signing?contractId=${detail.id}&versionId=${detail.current_version.id}`)}>
+              계약 상세·최종 검토
               <ArrowRight className="size-4" />
             </Button>
           )}
@@ -438,55 +439,5 @@ export function BuyerContractCompletePage() {
     return <PageHeader title="계약 요청이 없습니다" description="먼저 계약 요청을 생성해주세요." />;
   }
 
-  return (
-    <div className="mx-auto max-w-[860px]">
-      <div className="rounded-xl border border-border bg-card p-6 text-center sm:p-8">
-        <div className="mx-auto flex size-16 items-center justify-center rounded-2xl" style={{ background: "var(--success-soft)", color: "var(--success)" }}>
-          <CheckCircle2 className="size-9" />
-        </div>
-        <h1 className="mt-5 text-2xl" style={{ color: "var(--navy)" }}>계약 체결이 완료되었습니다</h1>
-        <p className="mt-2 text-sm text-muted-foreground">모두싸인 전자서명 mock 연동이 완료된 상태입니다.</p>
-        <div className="mt-6 grid gap-3 rounded-xl border border-border bg-muted/20 p-4 text-left sm:grid-cols-2">
-          <div>
-            <div className="text-xs text-muted-foreground">계약명</div>
-            <div className="mt-1 font-semibold">{contract.title}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">상태</div>
-            <div className="mt-1 font-semibold" style={{ color: "var(--success)" }}>양측 서명 완료</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">바이어명</div>
-            <div className="mt-1">{contract.buyerName}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">셀러명</div>
-            <div className="mt-1">{contract.sellerName}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">체결일</div>
-            <div className="mt-1">{contract.signedAt ?? "2026-07-30"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted-foreground">모두싸인 문서 ID</div>
-            <div className="mt-1">{contract.modusignDocumentId ?? `modusign-${contract.id}`}</div>
-          </div>
-        </div>
-        <div className="mt-6 grid gap-2 sm:grid-cols-3">
-          <Button variant="outline" className="gap-1.5 whitespace-nowrap" onClick={() => toast.success(`PDF 다운로드 mock: ${contract.downloadUrl ?? "준비됨"}`)}>
-            <Download className="size-4" />
-            PDF 다운로드
-          </Button>
-          <Button variant="outline" className="gap-1.5 whitespace-nowrap" onClick={() => toast.success(`서명 이력 mock: ${contract.auditTrailUrl ?? "준비됨"}`)}>
-            <History className="size-4" />
-            서명 이력 확인
-          </Button>
-          <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => navigate("/buyer/contracts")}>
-            <FileText className="size-4" />
-            내 계약 목록으로
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="mx-auto max-w-[700px] rounded-xl border border-border bg-card p-8 text-center"><h1 className="text-xl font-semibold">서버 계약 상태를 확인해 주세요</h1><p className="mt-2 text-sm text-muted-foreground">완료 PDF와 감사이력은 실제 서명 요청이 완료되고 계약 상태가 signed인 경우에만 표시됩니다.</p><Button className="mt-5" style={{ background: "var(--navy)" }} onClick={() => navigate(`/buyer/contracts/${contract.id}/status`)}>계약 상태로</Button></div>;
 }

@@ -10,7 +10,10 @@ from app.ai.schemas import (
     DocumentParseResult,
     FileSearchRequest,
     FileSearchResult,
+    KnowledgeFileRecord,
     LanguageModelRequest,
+    VectorStoreFileRecord,
+    VectorStoreRecord,
 )
 
 StructuredOutputT = TypeVar("StructuredOutputT", bound=BaseModel)
@@ -60,3 +63,21 @@ class LanguageModelProvider(Protocol):
 
 class FileSearchProvider(Protocol):
     async def search_files(self, request: FileSearchRequest) -> FileSearchResult: ...
+
+
+class KnowledgeBaseProvider(Protocol):
+    async def list_vector_stores(self) -> list[VectorStoreRecord]: ...
+
+    async def create_vector_store(self, name: str) -> VectorStoreRecord: ...
+
+    async def upload_knowledge_file(
+        self, filename: str, content: bytes, mime_type: str
+    ) -> KnowledgeFileRecord: ...
+
+    async def attach_vector_store_file(
+        self, vector_store_id: str, file_id: str, attributes: dict[str, str | int | bool]
+    ) -> VectorStoreFileRecord: ...
+
+    async def get_vector_store_file(
+        self, vector_store_id: str, file_id: str
+    ) -> VectorStoreFileRecord: ...

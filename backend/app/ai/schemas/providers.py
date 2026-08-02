@@ -145,3 +145,26 @@ class FileSearchResult(BaseModel):
 
     hits: list[FileSearchHit]
     provider_request_id: str | None = None
+
+
+class VectorStoreRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    status: str | None = None
+
+
+class KnowledgeFileRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    filename: str = Field(min_length=1)
+
+
+class VectorStoreFileRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    status: Literal["in_progress", "completed", "failed", "cancelled"]
+    last_error: str | None = None

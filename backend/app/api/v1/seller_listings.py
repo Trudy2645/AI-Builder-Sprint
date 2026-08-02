@@ -1,13 +1,23 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Request, status
 
-from app.api.dependencies import get_seller_listing_service
+from app.api.dependencies import (
+    get_contract_generation_service,
+    get_contract_review_service,
+    get_localization_service,
+    get_seller_listing_service,
+)
 from app.core.auth import get_current_user
+from app.domain.contract_generation.service import ContractGenerationService
+from app.domain.contract_review.service import ContractReviewService
+from app.domain.localizations.service import LocalizationService
 from app.domain.seller_listings.service import SellerListingService
 from app.integrations.auth import AuthenticatedUser
 from app.schemas.common import SuccessEnvelope, typed_envelope
+from app.schemas.contract_generation import ContractGenerationRequest, ContractGenerationResponse
+from app.schemas.contract_review import ContractReviewAccepted, ContractReviewRequest
 from app.schemas.listings import (
     SellerListingCreate,
     SellerListingCreated,
@@ -17,6 +27,7 @@ from app.schemas.listings import (
     SellerListingSummary,
     SellerListingTermsPatch,
 )
+from app.schemas.localizations import ListingLocalizationRequest, ListingLocalizationResponse
 
 router = APIRouter(prefix="/seller/listings", tags=["seller-listings"])
 OrganizationHeader = Annotated[str | None, Header(alias="X-Organization-Id")]
@@ -71,6 +82,70 @@ async def update_seller_listing_terms(
 ) -> SuccessEnvelope[SellerListingDetail]:
     listing = await service.update_terms(listing_id, payload, actor, organization_id)
     return typed_envelope(request, listing)
+
+
+@router.post(
+    "/{listing_id}/generate",
+    response_model=SuccessEnvelope[ContractGenerationResponse],
+)
+async def generate_seller_listing_contract(
+    request: Request,
+    listing_id: UUID,
+    payload: ContractGenerationRequest,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractGenerationService, Depends(get_contract_generation_service)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: OrganizationHeader = None,
+) -> SuccessEnvelope[ContractGenerationResponse]:
+    generated = await service.generate(listing_id, payload, actor, organization_id, idempotency_key)
+    return typed_envelope(request, generated)
+
+
+@router.post(
+    "/{listing_id}/analyses",
+    response_model=SuccessEnvelope[ContractReviewAccepted],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def analyze_seller_listing_contract(
+    request: Request,
+    listing_id: UUID,
+    payload: ContractReviewRequest,
+    background_tasks: BackgroundTasks,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractReviewService, Depends(get_contract_review_service)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: OrganizationHeader = None,
+) -> SuccessEnvelope[ContractReviewAccepted]:
+    started = await service.start_listing_review(
+        listing_id, payload, actor, organization_id, idempotency_key
+    )
+    if started.should_schedule:
+        background_tasks.add_task(
+            service.run,
+            job_id=started.response.job_id,
+            target=started.target,
+            viewer_role=started.viewer_role,
+        )
+    return typed_envelope(request, started.response)
+
+
+@router.post(
+    "/{listing_id}/localizations",
+    response_model=SuccessEnvelope[ListingLocalizationResponse],
+)
+async def localize_seller_listing(
+    request: Request,
+    listing_id: UUID,
+    payload: ListingLocalizationRequest,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[LocalizationService, Depends(get_localization_service)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: OrganizationHeader = None,
+) -> SuccessEnvelope[ListingLocalizationResponse]:
+    localized = await service.localize_listing(
+        listing_id, payload, actor, organization_id, idempotency_key
+    )
+    return typed_envelope(request, localized)
 
 
 @router.post(

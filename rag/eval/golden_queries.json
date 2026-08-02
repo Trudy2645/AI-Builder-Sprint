@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "queries": [
+    {"id":"vr-01","query":"자동차 사고 시 소비자가 모든 손해를 부담하는 조항","category":"vehicle_rental","expected_source_keys":["vehicle_rental_standard_terms"]},
+    {"id":"vr-02","query":"렌터카 자기부담금과 보험 적용 범위","category":"vehicle_rental","expected_source_keys":["vehicle_rental_standard_terms"]},
+    {"id":"vr-03","query":"자동차 수리비와 휴차료 산정 기준","category":"vehicle_rental","expected_source_keys":["vehicle_rental_standard_terms","consumer_dispute_resolution_standards_annex2"]},
+    {"id":"vr-04","query":"렌터카 연료 부족 반납 추가 비용","category":"vehicle_rental","expected_source_keys":["vehicle_rental_standard_terms"]},
+    {"id":"vr-05","query":"렌터카 계약의 불명확한 일방 면책","category":"vehicle_rental","expected_source_keys":["terms_regulation_act","vehicle_rental_standard_terms"]},
+    {"id":"ac-01","query":"수상레저 사고 시 사업자 전면 면책","category":"activity","activity_subtype":"water","expected_source_keys":["water_leisure_safety_act"]},
+    {"id":"ac-02","query":"요트 안전장비와 보험 의무","category":"activity","activity_subtype":"water","expected_source_keys":["water_leisure_safety_act"]},
+    {"id":"ac-03","query":"기상 악화 액티비티 취소와 환불","category":"activity","activity_subtype":"water","expected_source_keys":["consumer_dispute_resolution_standards_annex2"]},
+    {"id":"ac-04","query":"실내 체험에 수상레저법 적용","category":"activity","activity_subtype":"indoor","expected_source_keys":[],"expect_insufficient":true},
+    {"id":"ac-05","query":"액티비티 최소 운영 인원 미달 취소","category":"activity","activity_subtype":"water","expected_source_keys":["consumer_dispute_resolution_standards_annex2"]},
+    {"id":"to-01","query":"국내 여행 일정 변경 시 환불 불가","category":"tour","expected_source_keys":["domestic_travel_standard_terms"]},
+    {"id":"to-02","query":"투어 최소 인원 미달 계약 해제","category":"tour","expected_source_keys":["domestic_travel_standard_terms"]},
+    {"id":"to-03","query":"관광통역안내 서비스 변경과 취소","category":"tour","expected_source_keys":["tour_interpreter_standard_terms"]},
+    {"id":"to-04","query":"여행 중 추가 비용의 사전 고지","category":"tour","expected_source_keys":["domestic_travel_standard_terms","terms_regulation_act"]},
+    {"id":"to-05","query":"대표자 한 명이 단체 전체 법적 권한을 자동 보유","category":"tour","expected_source_keys":[],"expect_insufficient":true},
+    {"id":"ho-01","query":"숙박 체크인 전 취소 기준 누락","category":"accommodation","expected_source_keys":["consumer_dispute_resolution_standards_annex2"]},
+    {"id":"ho-02","query":"숙박 노쇼 위약금과 환불 기준","category":"accommodation","expected_source_keys":["consumer_dispute_resolution_standards_annex2"]},
+    {"id":"ho-03","query":"숙박 시설 위생과 안전 의무","category":"accommodation","expected_source_keys":["public_hygiene_control_act"]},
+    {"id":"ho-04","query":"온라인 숙박 환불불가 약관","category":"accommodation","expected_source_keys":["terms_regulation_act","ecommerce_consumer_protection_act"]},
+    {"id":"ho-05","query":"숙박 사업자의 모든 귀책을 소비자에게 전가","category":"accommodation","expected_source_keys":["terms_regulation_act"]}
+  ]
+}

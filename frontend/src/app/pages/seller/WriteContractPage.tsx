@@ -42,7 +42,35 @@ export function WriteContractPage() {
     }, 1400);
   };
 
+  const isBlank = (value: unknown) => !String(value ?? "").trim();
+  const validateCurrentStep = () => {
+    if (step === 0) {
+      if ([draft.productName, draft.category, draft.district].some(isBlank)) {
+        toast.error("다음 단계로 가기 전에 계약명, 상품 유형, 지역을 입력해주세요.");
+        return false;
+      }
+    }
+    if (step === 1) {
+      if ([draft.start, draft.end, draft.quantity, draft.priceUnit, draft.unitPrice].some(isBlank)) {
+        toast.error("다음 단계로 가기 전에 공급 기간, 공급 수량, 단가 기준, 단가를 입력해주세요.");
+        return false;
+      }
+      if ((parseInt(draft.unitPrice, 10) || 0) <= 0) {
+        toast.error("단가는 0원보다 큰 금액으로 입력해주세요.");
+        return false;
+      }
+    }
+    if (step === 2) {
+      if ([draft.cancellation, draft.noShow, draft.settlement, draft.liability, draft.termination].some(isBlank)) {
+        toast.error("다음 단계로 가기 전에 취소, 노쇼, 정산, 책임, 계약 해지 조건을 입력해주세요.");
+        return false;
+      }
+    }
+    return true;
+  };
+
   const goNext = () => {
+    if (!validateCurrentStep()) return;
     if (step === 3 && !generated) {
       runGenerate();
       return;

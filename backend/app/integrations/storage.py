@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -17,6 +18,8 @@ class StorageObjectNotFoundError(StorageProviderError):
 
 
 class StorageProvider(Protocol):
+    async def ensure_private_bucket(self, bucket: str) -> None: ...
+
     async def create_signed_upload_url(
         self, bucket: str, object_path: str
     ) -> tuple[str, datetime]: ...
@@ -36,6 +39,35 @@ class SupabaseStorageProvider:
     """Small Storage REST adapter; file bodies are consumed as an async stream."""
 
     _SIGNED_UPLOAD_LIFETIME_SECONDS = 2 * 60 * 60
+
+    async def ensure_private_bucket(self, bucket: str) -> None:
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            try:
+                response = await client.get(
+                    f"{self._base_url}/bucket/{quote(bucket, safe='')}", headers=self._headers
+                )
+                payload = _json_object(response)
+                bucket_missing = response.status_code == 404 or (
+                    response.status_code == 400
+                    and (
+                        payload.get("code") == "NoSuchBucket"
+                        or str(payload.get("statusCode")) == "404"
+                    )
+                )
+                if bucket_missing:
+                    response = await client.post(
+                        f"{self._base_url}/bucket",
+                        headers={**self._headers, "Content-Type": "application/json"},
+                        json={"id": bucket, "name": bucket, "public": False},
+                    )
+                response.raise_for_status()
+                payload = _json_object(response)
+                if payload.get("public") is True:
+                    raise StorageProviderError("RAG knowledge bucket must be private.")
+            except StorageProviderError:
+                raise
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                raise StorageProviderError from exc
 
     def __init__(
         self,
@@ -132,7 +164,8 @@ class SupabaseStorageProvider:
 
     @staticmethod
     def _encoded_path(bucket: str, object_path: str) -> str:
-        return f"{quote(bucket, safe='')}/{quote(object_path, safe='/')}"
+        safe_path = "/".join(_storage_safe_segment(part) for part in object_path.split("/"))
+        return f"{quote(bucket, safe='')}/{quote(safe_path, safe='/')}"
 
     def _absolute_url(self, value: str) -> str:
         if value.startswith("http://") or value.startswith("https://"):
@@ -142,12 +175,31 @@ class SupabaseStorageProvider:
         return f"{self._base_url}{value if value.startswith('/') else f'/{value}'}"
 
 
+def _json_object(response: httpx.Response) -> dict[str, object]:
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise TypeError("Storage response must be a JSON object.")
+    return payload
+
+
+def _storage_safe_segment(value: str) -> str:
+    if value.isascii():
+        return value
+    digest = hashlib.sha256(value.encode()).hexdigest()[:24]
+    return f"unicode-{digest}"
+
+
 class FakeStorageProvider:
     def __init__(self) -> None:
         self.objects: dict[tuple[str, str], bytes] = {}
         self.unavailable = False
         self.upload_url_calls = 0
         self.download_url_calls = 0
+        self.private_buckets: set[str] = set()
+
+    async def ensure_private_bucket(self, bucket: str) -> None:
+        self._check_available()
+        self.private_buckets.add(bucket)
 
     async def create_signed_upload_url(self, bucket: str, object_path: str) -> tuple[str, datetime]:
         self._check_available()

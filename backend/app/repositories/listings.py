@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import text
@@ -75,6 +75,7 @@ class PublicListingRecord:
     attention_required_count: int
     current_version_id: UUID | None
     sort_value: Decimal | int | datetime
+    current_version_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +90,7 @@ class PublicClauseRecord:
     clause_key: str | None
     title: str
     body: str
+    clause_order: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +100,15 @@ class PublicFindingRecord:
     explanation: str
     suggested_text: str | None
     disclaimer: str
+    id: UUID | None = None
+    evidence_numbers: list[int] | None = None
+    evidence_refs: list[dict[str, Any]] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PublicLocalizationRecord:
+    source_hash: str
+    content: dict[str, Any]
 
 
 class ListingRepositoryUnavailableError(Exception):
@@ -121,6 +132,14 @@ class PublicListingRepository(Protocol):
     async def list_public_clauses(self, version_id: UUID) -> list[PublicClauseRecord]: ...
 
     async def list_public_findings(self, version_id: UUID) -> list[PublicFindingRecord]: ...
+
+    async def get_localized_content(
+        self, version_id: UUID, locale: str
+    ) -> PublicLocalizationRecord | None: ...
+
+    async def list_localized_contents(
+        self, version_ids: list[UUID], locale: str
+    ) -> dict[UUID, PublicLocalizationRecord]: ...
 
 
 class SqlAlchemyPublicListingRepository:
@@ -164,6 +183,7 @@ class SqlAlchemyPublicListingRepository:
                 limit 1
             )
               and af.status in ('open', 'applied')
+              and af.is_public = true
               and af.listing_clause_id is not null
         ), 0)::integer
     """
@@ -260,10 +280,11 @@ class SqlAlchemyPublicListingRepository:
                    lt.liability_policy, lt.termination_policy, lt.special_terms,
                    lt.price_display_basis, lt.contract_availability_note,
                    {self._ATTENTION_REQUIRED_COUNT} as attention_required_count,
-                   l.current_version_id,
+                   l.current_version_id, lv.content_sha256 as current_version_hash,
                    {sort_expression} as sort_value
             from public.listings l
             join public.organizations o on o.id = l.seller_organization_id
+            left join public.listing_versions lv on lv.id = l.current_version_id
             left join public.listing_terms lt on lt.listing_id = l.id
             where {where_clause}
             order by sort_value {direction}, l.id {direction}
@@ -293,10 +314,11 @@ class SqlAlchemyPublicListingRepository:
                    lt.liability_policy, lt.termination_policy, lt.special_terms,
                    lt.price_display_basis, lt.contract_availability_note,
                    {self._ATTENTION_REQUIRED_COUNT} as attention_required_count,
-                   l.current_version_id,
+                   l.current_version_id, lv.content_sha256 as current_version_hash,
                    {self._RECOMMENDED_SCORE} as sort_value
             from public.listings l
             join public.organizations o on o.id = l.seller_organization_id
+            left join public.listing_versions lv on lv.id = l.current_version_id
             left join public.listing_terms lt on lt.listing_id = l.id
             where l.id = :listing_id
               and l.status in ('published', 'paused')
@@ -331,7 +353,7 @@ class SqlAlchemyPublicListingRepository:
             result = await self._session.execute(
                 text(
                     """
-                    select id, clause_key, title, body
+                    select id, clause_key, title, body, clause_order
                     from public.listing_clauses
                     where listing_version_id = :version_id
                     order by clause_order
@@ -357,11 +379,13 @@ class SqlAlchemyPublicListingRepository:
                         order by completed_at desc nulls last, created_at desc
                         limit 1
                     )
-                    select af.listing_clause_id as clause_id, af.severity::text as severity,
-                           af.explanation, af.suggested_text, af.disclaimer
+                    select af.id, af.listing_clause_id as clause_id,
+                           af.severity::text as severity, af.explanation,
+                           af.suggested_text, af.disclaimer, af.evidence
                     from public.ai_findings af
                     where af.analysis_run_id = (select id from latest_buyer_analysis)
                       and af.status in ('open', 'applied')
+                      and af.is_public = true
                     order by
                         case af.severity
                             when 'high' then 1 when 'medium' then 2
@@ -375,7 +399,70 @@ class SqlAlchemyPublicListingRepository:
             )
         except SQLAlchemyError as exc:
             raise ListingRepositoryUnavailableError from exc
-        return [PublicFindingRecord(**row) for row in result.mappings().all()]
+        records = []
+        for row in result.mappings().all():
+            values = dict(row)
+            evidence = values.pop("evidence") or []
+            values["evidence_numbers"] = list(range(1, len(evidence) + 1))
+            values["evidence_refs"] = [
+                item
+                for item in evidence
+                if isinstance(item, dict) and item.get("id") and item.get("label")
+            ]
+            records.append(PublicFindingRecord(**values))
+        return records
+
+    async def get_localized_content(
+        self, version_id: UUID, locale: str
+    ) -> PublicLocalizationRecord | None:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select source_hash, content from public.localized_contents
+                    where listing_version_id = :version_id
+                      and locale = cast(:locale as public.supported_locale)
+                      and content_type = 'public_listing'
+                      and numeric_validation_passed = true
+                    order by created_at desc limit 1
+                    """
+                ),
+                {"version_id": version_id, "locale": locale},
+            )
+        except SQLAlchemyError as exc:
+            raise ListingRepositoryUnavailableError from exc
+        row = result.mappings().one_or_none()
+        return PublicLocalizationRecord(**dict(row)) if row else None
+
+    async def list_localized_contents(
+        self, version_ids: list[UUID], locale: str
+    ) -> dict[UUID, PublicLocalizationRecord]:
+        if not version_ids:
+            return {}
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select distinct on (listing_version_id)
+                           listing_version_id, source_hash, content
+                    from public.localized_contents
+                    where listing_version_id = any(cast(:version_ids as uuid[]))
+                      and locale = cast(:locale as public.supported_locale)
+                      and content_type = 'public_listing'
+                      and numeric_validation_passed = true
+                    order by listing_version_id, created_at desc
+                    """
+                ),
+                {"version_ids": version_ids, "locale": locale},
+            )
+        except SQLAlchemyError as exc:
+            raise ListingRepositoryUnavailableError from exc
+        return {
+            row["listing_version_id"]: PublicLocalizationRecord(
+                source_hash=row["source_hash"], content=row["content"]
+            )
+            for row in result.mappings().all()
+        }
 
     async def _listing_records(
         self, query: object, params: dict[str, object]

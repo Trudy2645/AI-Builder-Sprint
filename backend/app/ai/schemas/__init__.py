@@ -1,3 +1,15 @@
+from app.ai.schemas.contract_generation import GeneratedContractClause, GeneratedContractDraft
+from app.ai.schemas.contract_review import (
+    ContractReviewFindingCandidate,
+    ContractReviewSubmission,
+    ContractReviewToolBatch,
+    ContractReviewToolCall,
+)
+from app.ai.schemas.localization import (
+    LocalizedClause,
+    LocalizedFinding,
+    LocalizedPublicContent,
+)
 from app.ai.schemas.providers import (
     BoundingBox,
     ContractExtraction,
@@ -8,16 +20,23 @@ from app.ai.schemas.providers import (
     FileSearchHit,
     FileSearchRequest,
     FileSearchResult,
+    KnowledgeFileRecord,
     LanguageModelRequest,
     ListingMapping,
     ParsedBlock,
     ParsedPage,
+    VectorStoreFileRecord,
+    VectorStoreRecord,
 )
 
 __all__ = [
     "BoundingBox",
     "ContractExtraction",
     "ListingMapping",
+    "ContractReviewFindingCandidate",
+    "ContractReviewSubmission",
+    "ContractReviewToolBatch",
+    "ContractReviewToolCall",
     "DocumentInput",
     "DocumentParseResult",
     "ExtractedSection",
@@ -25,7 +44,15 @@ __all__ = [
     "FileSearchHit",
     "FileSearchRequest",
     "FileSearchResult",
+    "KnowledgeFileRecord",
+    "GeneratedContractClause",
+    "GeneratedContractDraft",
     "LanguageModelRequest",
+    "VectorStoreFileRecord",
+    "VectorStoreRecord",
+    "LocalizedClause",
+    "LocalizedFinding",
+    "LocalizedPublicContent",
     "ParsedBlock",
     "ParsedPage",
 ]

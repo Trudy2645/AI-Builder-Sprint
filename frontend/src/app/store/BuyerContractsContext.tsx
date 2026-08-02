@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApp } from "../context/AppContext";
+import { getAccessToken, getMyContracts } from "../lib/api";
 
 export type BuyerContractStatus =
   | "draft"
@@ -28,11 +29,6 @@ export interface BuyerContract extends BuyerContractDraft {
   status: BuyerContractStatus;
   source: "upload" | "write";
   createdAt: string;
-  signedAt?: string;
-  modusignDocumentId?: string;
-  signatureStatus?: "draft" | "sent" | "buyer_signed" | "seller_signed" | "completed";
-  downloadUrl?: string;
-  auditTrailUrl?: string;
 }
 
 interface BuyerContractsContextValue {
@@ -42,35 +38,23 @@ interface BuyerContractsContextValue {
     draft: BuyerContractDraft,
     source: BuyerContract["source"],
   ) => BuyerContract;
-  updateContractStatus: (id: string, status: BuyerContractStatus) => void;
 }
 
 const BuyerContractsContext = createContext<BuyerContractsContextValue | null>(null);
 
 export const DEFAULT_BUYER_CONTRACT_DRAFT: BuyerContractDraft = {
-  title: "해운대 오션스테이 여름 객실 공급",
+  title: "해운대 오션스테이 단체 객실 공급",
   buyerName: "GlobalTrip Japan",
   sellerName: "해운대 오션스테이",
   category: "숙박",
   startDate: "2026-07-01",
   endDate: "2026-08-31",
   peopleCount: 30,
-  quantity: 30,
-  unitPrice: 145000,
+  quantity: 15,
+  unitPrice: 146000,
   cancellationPolicy: "체크인 7일 전까지 무료 취소",
   settlementPolicy: "월 마감 후 15일 이내",
 };
-
-const seed: BuyerContract[] = [
-  {
-    ...DEFAULT_BUYER_CONTRACT_DRAFT,
-    id: "BL-2026-001",
-    status: "seller_review",
-    source: "write",
-    createdAt: "2026-07-30",
-    signatureStatus: "sent",
-  },
-];
 
 function todayIso() {
   const now = new Date();
@@ -83,25 +67,45 @@ function nextId(count: number) {
   return `BL-2026-${String(count + 1).padStart(3, "0")}`;
 }
 
-function withSignatureMock(contract: BuyerContract, status: BuyerContractStatus): BuyerContract {
-  if (status !== "signed") return { ...contract, status };
-  return {
-    ...contract,
-    status,
-    signedAt: todayIso(),
-    modusignDocumentId: contract.modusignDocumentId ?? `modusign-${contract.id}`,
-    signatureStatus: "completed",
-    downloadUrl: contract.downloadUrl ?? `/mock/contracts/${contract.id}.pdf`,
-    auditTrailUrl: contract.auditTrailUrl ?? `/mock/contracts/${contract.id}/audit-trail`,
-  };
-}
-
 export function BuyerContractsProvider({ children }: { children: ReactNode }) {
   const { isDemoSession } = useApp();
   const [contracts, setContracts] = useState<BuyerContract[]>([]);
 
   useEffect(() => {
-    setContracts(isDemoSession ? seed : []);
+    if (isDemoSession) {
+      setContracts([]);
+      return;
+    }
+    if (!getAccessToken()) {
+      setContracts([]);
+      return;
+    }
+    let active = true;
+    getMyContracts()
+      .then((items) => {
+        if (!active) return;
+        setContracts(items.map((item) => ({
+          id: item.id,
+          title: item.listing_title,
+          buyerName: "",
+          sellerName: item.seller_name,
+          category: "",
+          startDate: item.service_start_date,
+          endDate: item.service_end_date,
+          peopleCount: item.requested_people,
+          quantity: 0,
+          unitPrice: item.amount_minor ?? 0,
+          cancellationPolicy: "",
+          settlementPolicy: "",
+          status: item.status,
+          source: "write",
+          createdAt: item.created_at,
+        })));
+      })
+      .catch(() => {
+        if (active) setContracts([]);
+      });
+    return () => { active = false; };
   }, [isDemoSession]);
 
   const createContractRequest: BuyerContractsContextValue["createContractRequest"] = (
@@ -114,21 +118,9 @@ export function BuyerContractsProvider({ children }: { children: ReactNode }) {
       status: "seller_review",
       source,
       createdAt: todayIso(),
-      signatureStatus: "sent",
     };
     setContracts((prev) => [contract, ...prev]);
     return contract;
-  };
-
-  const updateContractStatus: BuyerContractsContextValue["updateContractStatus"] = (
-    id,
-    status,
-  ) => {
-    setContracts((prev) =>
-      prev.map((contract) =>
-        contract.id === id ? withSignatureMock(contract, status) : contract,
-      ),
-    );
   };
 
   const value = useMemo(
@@ -136,7 +128,6 @@ export function BuyerContractsProvider({ children }: { children: ReactNode }) {
       contracts,
       latestContract: contracts[0],
       createContractRequest,
-      updateContractStatus,
     }),
     [contracts],
   );

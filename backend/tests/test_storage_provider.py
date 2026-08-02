@@ -6,8 +6,9 @@ from app.integrations.storage import SupabaseStorageProvider
 
 
 class StubResponse:
-    def __init__(self, payload: dict[str, str]) -> None:
+    def __init__(self, payload: dict[str, str], status_code: int = 200) -> None:
         self._payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self) -> None:
         return None
@@ -30,6 +31,10 @@ class StubAsyncClient:
         return None
 
     async def post(self, url: str, **kwargs: object) -> StubResponse:
+        self.calls.append((url, kwargs))
+        return self.responses.pop(0)
+
+    async def get(self, url: str, **kwargs: object) -> StubResponse:
         self.calls.append((url, kwargs))
         return self.responses.pop(0)
 
@@ -99,3 +104,43 @@ async def test_supabase_put_object_uses_private_storage_object_endpoint(
     assert kwargs["content"] == b'{"pages":[]}'
     assert kwargs["headers"]["Content-Type"] == "application/json"  # type: ignore[index]
     assert kwargs["headers"]["x-upsert"] == "false"  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_supabase_private_bucket_handles_nosuchbucket_400(
+    storage_provider: SupabaseStorageProvider,
+) -> None:
+    StubAsyncClient.responses.extend(
+        [
+            StubResponse(
+                {"statusCode": "404", "error": "Bucket not found", "code": "NoSuchBucket"},
+                status_code=400,
+            ),
+            StubResponse({"name": "rag-knowledge"}),
+        ]
+    )
+
+    await storage_provider.ensure_private_bucket("rag-knowledge")
+
+    assert StubAsyncClient.calls[0][0].endswith("/storage/v1/bucket/rag-knowledge")
+    assert StubAsyncClient.calls[1][1]["json"] == {
+        "id": "rag-knowledge",
+        "name": "rag-knowledge",
+        "public": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_supabase_storage_maps_unicode_key_segments_deterministically(
+    storage_provider: SupabaseStorageProvider,
+) -> None:
+    StubAsyncClient.responses.append(StubResponse({}))
+
+    await storage_provider.put_object(
+        "rag-knowledge", "case_reference/case_2002다27620/original.pdf", b"pdf", "application/pdf"
+    )
+
+    url = StubAsyncClient.calls[0][0]
+    assert "case_2002다27620" not in url
+    assert "/case_reference/unicode-" in url
+    assert url.endswith("/original.pdf")

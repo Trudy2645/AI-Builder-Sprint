@@ -1,13 +1,23 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, status
 
-from app.api.dependencies import get_contract_service
+from app.api.dependencies import (
+    get_contract_review_service,
+    get_contract_service,
+    get_modusign_client,
+    get_storage_provider,
+)
 from app.core.auth import get_current_user
+from app.core.config import Settings, get_settings
+from app.domain.contract_review.service import ContractReviewService
 from app.domain.contracts.service import ContractService
 from app.integrations.auth import AuthenticatedUser
+from app.integrations.modusign import ModusignClient
+from app.integrations.storage import StorageProvider
 from app.schemas.common import SuccessEnvelope, typed_envelope
+from app.schemas.contract_review import ContractReviewAccepted, ContractReviewRequest
 from app.schemas.contracts import (
     BuyerContractListItem,
     ContractBucket,
@@ -15,15 +25,45 @@ from app.schemas.contracts import (
     ContractDetail,
     ContractRequestCreate,
     ContractRequestCreated,
+    ContractSignatureRequestCreate,
     ContractVersionApprovalsResponse,
     ContractVersionApproveResponse,
     ContractVersionCompareResponse,
     ContractVersionListItem,
     SellerContractListItem,
     SellerDashboard,
+    SignatureRequestCreated,
 )
 
 router = APIRouter(tags=["contracts"])
+
+
+@router.post(
+    "/contracts/{contract_id}/analyses",
+    response_model=SuccessEnvelope[ContractReviewAccepted],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def analyze_contract_version(
+    request: Request,
+    contract_id: UUID,
+    payload: ContractReviewRequest,
+    background_tasks: BackgroundTasks,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractReviewService, Depends(get_contract_review_service)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[ContractReviewAccepted]:
+    started = await service.start_contract_review(
+        contract_id, payload, actor, organization_id, idempotency_key
+    )
+    if started.should_schedule:
+        background_tasks.add_task(
+            service.run,
+            job_id=started.response.job_id,
+            target=started.target,
+            viewer_role=started.viewer_role,
+        )
+    return typed_envelope(request, started.response)
 
 
 @router.post(
@@ -122,6 +162,72 @@ async def get_contract_version_approvals(
         contract_id, version_id, actor, organization_id
     )
     return typed_envelope(request, approvals)
+
+
+@router.post(
+    "/contracts/{contract_id}/versions/{version_id}/signature-requests",
+    response_model=SuccessEnvelope[SignatureRequestCreated],
+)
+async def create_contract_signature_request(
+    request: Request,
+    contract_id: UUID,
+    version_id: UUID,
+    payload: ContractSignatureRequestCreate,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractService, Depends(get_contract_service)],
+    client: Annotated[ModusignClient, Depends(get_modusign_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[SignatureRequestCreated]:
+    result = await service.create_signature_request(
+        contract_id,
+        version_id,
+        payload,
+        actor,
+        organization_id,
+        idempotency_key,
+        client,
+        settings.modusign_template_id,
+    )
+    return typed_envelope(request, result)
+
+
+@router.get(
+    "/signature-requests/{signature_request_id}",
+    response_model=SuccessEnvelope[SignatureRequestCreated],
+)
+async def get_contract_signature_request(
+    request: Request,
+    signature_request_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractService, Depends(get_contract_service)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[SignatureRequestCreated]:
+    return typed_envelope(
+        request, await service.get_signature_request(signature_request_id, actor, organization_id)
+    )
+
+
+@router.post(
+    "/signature-requests/{signature_request_id}/sync",
+    response_model=SuccessEnvelope[SignatureRequestCreated],
+)
+async def sync_contract_signature_request(
+    request: Request,
+    signature_request_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractService, Depends(get_contract_service)],
+    client: Annotated[ModusignClient, Depends(get_modusign_client)],
+    storage: Annotated[StorageProvider, Depends(get_storage_provider)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[SignatureRequestCreated]:
+    return typed_envelope(
+        request,
+        await service.sync_signature_request(
+            signature_request_id, actor, organization_id, client, storage
+        ),
+    )
 
 
 @router.get("/me/contracts", response_model=SuccessEnvelope[list[BuyerContractListItem]])

@@ -11,11 +11,12 @@ import {
 import { useEmailVerify } from "../../components/auth/useEmailVerify";
 import { Button } from "../../components/ui/button";
 import { useApp } from "../../context/AppContext";
+import { friendlyApiError, signup } from "../../lib/api";
 
 const STEPS = ["signup.step.role", "signup.step.account", "signup.step.business", "signup.step.done"];
 
 export function SellerSignupPage() {
-  const { t, setCompanyName } = useApp();
+  const { t, setCompanyName, loginWithSession } = useApp();
   const navigate = useNavigate();
   const email = useEmailVerify();
 
@@ -36,6 +37,8 @@ export function SellerSignupPage() {
   const [jobTitle, setJobTitle] = useState("");
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const supplyOptions = [
     { value: "vehicle_rental", label: t("cat.vehicleRental") },
@@ -75,11 +78,34 @@ export function SellerSignupPage() {
     }
   };
 
-  const onSubmit = (ev: React.FormEvent) => {
+  const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-    if (validateBusiness()) {
+    if (!validateBusiness()) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const result = await signup({
+        role: "seller",
+        email: email.email,
+        password,
+        password_confirmation: passwordConfirm,
+        display_name: contactName,
+        phone,
+        organization_name: company,
+        representative_name: repName,
+        business_registration_no: bizNumber,
+        business_address: address,
+        supply_categories: [supplyField],
+        job_title: jobTitle,
+      });
+      if (!result.session) throw new Error("Signup session was not returned.");
       setCompanyName(company.trim());
+      loginWithSession("seller", company.trim(), result.session.access_token);
       navigate("/signup/complete?role=seller");
+    } catch (error) {
+      setSubmitError(friendlyApiError(error));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -225,7 +251,8 @@ export function SellerSignupPage() {
             <Button type="button" variant="outline" className="flex-1" onClick={() => setStep(1)}>
               {t("common.back")}
             </Button>
-            <Button type="submit" className="flex-1" style={{ background: "var(--navy)" }}>
+            {submitError && <p className="w-full text-sm text-destructive">{submitError}</p>}
+            <Button type="submit" disabled={submitting} className="flex-1" style={{ background: "var(--navy)" }}>
               {t("signup.submit")}
             </Button>
           </div>

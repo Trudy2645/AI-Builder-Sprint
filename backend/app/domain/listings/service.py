@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import base64
 import json
+from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from fastapi import status
+from pydantic import ValidationError
 
+from app.ai.schemas import LocalizedPublicContent
+from app.ai.tasks.localize_explain import (
+    build_public_localization_source,
+    localization_source_hash,
+)
 from app.core.errors import AppError
 from app.repositories.listings import (
     ListingCursor,
@@ -67,7 +74,15 @@ class PublicListingService:
         if has_more and page:
             last = page[-1]
             next_cursor = self._encode_cursor(query.sort.value, last.sort_value, last.id)
-        return [self._card(record) for record in page], next_cursor, has_more
+        localized = await self._list_localized_cards(page, query.locale)
+        return (
+            [
+                self._card(record, query.locale, localized.get(record.current_version_id))
+                for record in page
+            ],
+            next_cursor,
+            has_more,
+        )
 
     async def get_listing(
         self, listing_id: UUID, requested_locale: SupportedLocale
@@ -81,9 +96,9 @@ class PublicListingService:
         except ListingRepositoryUnavailableError as exc:
             self._database_unavailable(exc)
 
-        content_locale, fallback_locale = self._locale_metadata(listing, requested_locale)
+        localized = await self._localized_content(listing, clauses, findings, requested_locale)
         return PublicListingDetail(
-            **self._card(listing).model_dump(),
+            **self._card(listing, requested_locale, localized).model_dump(),
             supply_quantity=listing.supply_quantity,
             supply_quantity_description=listing.supply_quantity_description,
             quantity_unit=listing.quantity_unit,
@@ -104,9 +119,7 @@ class PublicListingService:
             price_display_basis=listing.price_display_basis,
             contract_availability_note=listing.contract_availability_note,
             clauses=self._clauses(clauses, findings),
-            requested_locale=requested_locale,
-            content_locale=content_locale,
-            fallback_locale=fallback_locale,
+            localized_content=localized,
         )
 
     async def get_contract_preview(
@@ -126,28 +139,38 @@ class PublicListingService:
         except ListingRepositoryUnavailableError as exc:
             self._database_unavailable(exc)
 
-        content_locale, fallback_locale = self._locale_metadata(listing, requested_locale)
+        localized = await self._localized_content(listing, clauses, findings, requested_locale)
+        content_locale, fallback_locale = self._locale_metadata(
+            listing, requested_locale, localized is not None
+        )
         return PublicContractPreview(
             listing_version_id=version.id,
             body=version.body,
             clauses=self._clauses(clauses, findings),
             findings=[
                 PublicFinding(
+                    id=finding.id,
                     clause_id=finding.clause_id,
                     severity=finding.severity,  # type: ignore[arg-type]
                     explanation=finding.explanation,
                     suggested_text=finding.suggested_text,
                     disclaimer=finding.disclaimer,
+                    evidence_refs=finding.evidence_refs or [],
                 )
                 for finding in findings
             ],
             requested_locale=requested_locale,
             content_locale=content_locale,
             fallback_locale=fallback_locale,
+            localized_content=localized,
         )
 
     @staticmethod
-    def _card(record: PublicListingRecord) -> PublicListingCard:
+    def _card(
+        record: PublicListingRecord,
+        requested_locale: SupportedLocale = SupportedLocale.KO_KR,
+        localized: LocalizedPublicContent | None = None,
+    ) -> PublicListingCard:
         base_price = None
         if record.base_price_amount_minor is not None and record.currency is not None:
             base_price = Money(
@@ -163,12 +186,12 @@ class PublicListingService:
                 rating_count=record.rating_count,
                 verified=record.verification_status == "verified",
             ),
-            title=record.title,
+            title=localized.title if localized else record.title,
             district=record.district,
             category=record.category,  # type: ignore[arg-type]
             hero_image_url=None,
-            public_headline=record.public_headline,
-            ai_summary=record.ai_summary,
+            public_headline=(localized.public_headline if localized else record.public_headline),
+            ai_summary=localized.summary if localized else record.ai_summary,
             base_price=base_price,
             availability=Availability(
                 start_date=record.service_start_date,
@@ -177,6 +200,13 @@ class PublicListingService:
             status=record.status,  # type: ignore[arg-type]
             contract_available=record.status == "published",
             attention_required_count=record.attention_required_count,
+            requested_locale=requested_locale,
+            content_locale=(requested_locale if localized else SupportedLocale(record.language)),
+            fallback_locale=(
+                None
+                if localized or requested_locale == SupportedLocale(record.language)
+                else SupportedLocale(record.language)
+            ),
         )
 
     @classmethod
@@ -207,11 +237,101 @@ class PublicListingService:
 
     @staticmethod
     def _locale_metadata(
-        listing: PublicListingRecord, requested_locale: SupportedLocale
+        listing: PublicListingRecord,
+        requested_locale: SupportedLocale,
+        localized: bool,
     ) -> tuple[SupportedLocale, SupportedLocale | None]:
+        if localized:
+            return requested_locale, None
         content_locale = SupportedLocale(listing.language)
         fallback = None if content_locale == requested_locale else content_locale
         return content_locale, fallback
+
+    async def _localized_content(
+        self,
+        listing: PublicListingRecord,
+        clauses: list[PublicClauseRecord],
+        findings: list[PublicFindingRecord],
+        requested_locale: SupportedLocale,
+    ) -> LocalizedPublicContent | None:
+        getter = getattr(self._repository, "get_localized_content", None)
+        if getter is None or listing.current_version_id is None:
+            return None
+        try:
+            cached = await getter(listing.current_version_id, requested_locale.value)
+        except ListingRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        if cached is None or listing.current_version_hash is None:
+            return None
+        source_listing = asdict(listing)
+        source_listing["current_version_hash"] = listing.current_version_hash
+        source = build_public_localization_source(
+            source_listing,
+            [asdict(item) for item in clauses],
+            [
+                {
+                    **asdict(item),
+                    "evidence_numbers": item.evidence_numbers or [],
+                }
+                for item in findings
+                if item.id is not None
+            ],
+        )
+        if localization_source_hash(source) != cached.source_hash:
+            return None
+        try:
+            return LocalizedPublicContent.model_validate(cached.content)
+        except ValidationError:
+            return None
+
+    async def _list_localized_cards(
+        self,
+        records: list[PublicListingRecord],
+        requested_locale: SupportedLocale,
+    ) -> dict[UUID | None, LocalizedPublicContent]:
+        getter = getattr(self._repository, "list_localized_contents", None)
+        if getter is None:
+            return {}
+        version_ids = [
+            record.current_version_id for record in records if record.current_version_id is not None
+        ]
+        try:
+            cached = await getter(version_ids, requested_locale.value)
+        except ListingRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        localized: dict[UUID | None, LocalizedPublicContent] = {}
+        listings_by_version = {
+            record.current_version_id: record
+            for record in records
+            if record.current_version_id is not None
+        }
+        for version_id, cache_record in cached.items():
+            listing = listings_by_version.get(version_id)
+            if listing is None or listing.current_version_hash is None:
+                continue
+            try:
+                clauses = await self._repository.list_public_clauses(version_id)
+                findings = await self._repository.list_public_findings(version_id)
+                source = build_public_localization_source(
+                    asdict(listing),
+                    [asdict(item) for item in clauses],
+                    [
+                        {
+                            **asdict(item),
+                            "evidence_numbers": item.evidence_numbers or [],
+                        }
+                        for item in findings
+                        if item.id is not None
+                    ],
+                )
+                if localization_source_hash(source) != cache_record.source_hash:
+                    continue
+                localized[version_id] = LocalizedPublicContent.model_validate(cache_record.content)
+            except ListingRepositoryUnavailableError as exc:
+                self._database_unavailable(exc)
+            except ValidationError:
+                continue
+        return localized
 
     @staticmethod
     def _encode_cursor(sort: str, value: Decimal | int | datetime, listing_id: UUID) -> str:
