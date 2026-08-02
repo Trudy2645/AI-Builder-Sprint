@@ -183,6 +183,9 @@ class SignatureContactRecord:
 class SignatureSourceDocumentRecord:
     storage_bucket: str
     storage_object_path: str
+    extracted_data: dict[str, Any]
+    parsed_storage_bucket: str | None
+    parsed_storage_object_path: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -419,12 +422,18 @@ class SqlAlchemyContractRepository:
             result = await self._session.execute(
                 text(
                     """
-                    select d.storage_bucket, d.storage_object_path
+                    select d.storage_bucket, d.storage_object_path, d.extracted_data,
+                           parsed.storage_bucket as parsed_storage_bucket,
+                           parsed.storage_object_path as parsed_storage_object_path
                     from public.contracts c
                     join public.documents d
                       on d.listing_id = c.listing_id
                      and d.purpose = 'source_contract'
                      and d.status in ('uploaded', 'ready')
+                    left join public.documents parsed
+                      on parsed.id = cast(
+                          nullif(d.extracted_data ->> 'parsed_artifact_document_id', '') as uuid
+                      )
                     where c.id = :contract_id and c.current_version_id = :contract_version_id
                     order by d.created_at desc
                     limit 1

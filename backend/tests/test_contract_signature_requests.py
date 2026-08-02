@@ -5,10 +5,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.ai.schemas import BoundingBox, DocumentParseResult, ParsedBlock, ParsedPage
 from app.api.dependencies import get_contract_service, get_modusign_client, get_storage_provider
 from app.core.auth import get_current_user
 from app.core.config import Settings, get_settings
 from app.domain.contracts.service import ContractService
+from app.domain.contracts.signature_fields import signature_field_candidates
 from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.exchange_rates import FakeExchangeRateProvider
@@ -180,6 +182,63 @@ def _payload() -> dict[str, object]:
         "title": "Busan tour contract",
         "buyer": {"name": "Buyer", "email": "buyer@example.test"},
         "seller": {"name": "Seller", "email": "seller@example.test"},
+    }
+
+
+def test_source_pdf_fields_use_distinct_anchors_for_a_single_ocr_table_block() -> None:
+    parsed = DocumentParseResult(
+        pages=[
+            ParsedPage(
+                page_number=1,
+                blocks=[
+                    ParsedBlock(
+                        block_id="buyer-table",
+                        block_type="table",
+                        content=(
+                            "바이어 (예약자)\n성명/단체명: ______\n"
+                            "국적·여권번호(외국인): ______\n"
+                            "연락처: ______ | 이메일: ______\n"
+                            "계약 체결일\n이용 기간\n이용 인원\n바이어 서명"
+                        ),
+                        page_number=1,
+                        bbox=BoundingBox(x=0.1, y=0.2, width=0.8, height=0.5),
+                    )
+                ],
+            )
+        ]
+    )
+
+    fields = signature_field_candidates(parsed)
+    by_label = {field["data_label"]: field for field in fields}
+
+    assert by_label["buyer_name"]["position"]["page"] == 1
+    assert (
+        by_label["buyer_name"]["position"]["y"]
+        != by_label["buyer_passport_or_nationality"]["position"]["y"]
+    )
+    assert by_label["buyer_signature"]["field_type"] == "SIGNATURE"
+    assert by_label["buyer_phone"]["position"]["y"] != by_label["buyer_email"]["position"]["y"] or (
+        by_label["buyer_phone"]["position"]["x"] != by_label["buyer_email"]["position"]["x"]
+    )
+
+
+def test_source_pdf_text_fields_include_required_modusign_text_style() -> None:
+    fields = ContractService._source_pdf_fields(
+        [
+            {
+                "data_label": "buyer_name",
+                "field_type": "TEXT",
+                "position": {"page": 1, "x": 0.2, "y": 0.3},
+                "size": {"width": 0.3, "height": 0.04},
+            }
+        ],
+        1,
+    )
+
+    assert fields[0].as_payload()["textStyle"] == {
+        "size": 12,
+        "font": "NOTO_SANS",
+        "align": "LEFT",
     }
 
 

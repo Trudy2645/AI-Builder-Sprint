@@ -1,4 +1,3 @@
-import hashlib
 import hmac
 from typing import Annotated, Any
 
@@ -26,6 +25,7 @@ async def receive_modusign_webhook(
     storage: Annotated[StorageProvider, Depends(get_storage_provider)],
     settings: Annotated[Settings, Depends(get_settings)],
     signature: Annotated[str | None, Header(alias="X-Modusign-Signature")] = None,
+    webhook_token: Annotated[str | None, Header(alias="X-BusanLink-Webhook-Token")] = None,
 ) -> dict[str, bool]:
     webhook_secret = settings.effective_modusign_webhook_secret
     if not webhook_secret:
@@ -34,10 +34,12 @@ async def receive_modusign_webhook(
             code="MODUSIGN_WEBHOOK_NOT_CONFIGURED",
             message="Webhook secret is not configured.",
         )
-    body = await request.body()
-    expected = hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()
-    supplied = (signature or "").removeprefix("sha256=")
-    if not hmac.compare_digest(expected, supplied):
+    # Modusign webhooks do not generate an HMAC signature themselves.  The
+    # workspace webhook configuration sends the headers configured by the
+    # requester, so authenticate that fixed secret directly.  The legacy
+    # header is accepted for existing installations during the transition.
+    supplied = webhook_token or signature or ""
+    if not hmac.compare_digest(webhook_secret, supplied):
         raise AppError(
             status_code=401, code="INVALID_WEBHOOK_SIGNATURE", message="Invalid webhook signature."
         )

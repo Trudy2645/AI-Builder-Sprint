@@ -32,6 +32,7 @@ from app.ai.schemas import (
     ListingMapping,
 )
 from app.core.errors import AppError
+from app.domain.contracts.signature_fields import signature_field_candidates
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.storage import (
     StorageObjectNotFoundError,
@@ -332,6 +333,7 @@ class DocumentProcessingService:
                 "confirmation_required": confirmation_required,
                 "validation_warnings": warnings,
                 "listing_candidate": candidate,
+                "signature_field_candidates": self._signature_field_candidates(parsed),
                 "parsed_artifact_document_id": str(artifact_id),
             }
             await self._repository.save_extraction(
@@ -348,6 +350,10 @@ class DocumentProcessingService:
             )
         except Exception as exc:  # provider/storage/schema failures are normalized below
             await self._safe_fail(document.id, job_id, self._failure_code(exc))
+
+    @staticmethod
+    def _signature_field_candidates(parsed: DocumentParseResult) -> list[dict[str, Any]]:
+        return signature_field_candidates(parsed)
 
     async def _save_extraction_checkpoint(
         self,
