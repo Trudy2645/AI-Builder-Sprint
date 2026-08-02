@@ -119,57 +119,6 @@ interface ListingsContextValue {
 
 const ListingsContext = createContext<ListingsContextValue | null>(null);
 
-const seed: Listing[] = [
-  {
-    id: "lst-coastline-room",
-    productName: "2026 해운대 단체 객실 공급 계약",
-    category: "accommodation",
-    district: "해운대구",
-    start: "2026.07.01",
-    end: "2026.08.31",
-    unitPrice: 146000,
-    priceUnit: "객실당",
-    quantityLabel: "1일 최대 32실",
-    status: "public",
-    method: "write",
-    requests: 5,
-    updatedAt: "2026.07.20",
-    riskCount: 0,
-  },
-  {
-    id: "lst-bluewave-surf",
-    productName: "2026 송정 단체 서핑 강습 공급 계약",
-    category: "activity",
-    district: "해운대구",
-    start: "2026.06.01",
-    end: "2026.09.30",
-    unitPrice: 68000,
-    priceUnit: "1인당",
-    quantityLabel: "1일 최대 45명",
-    status: "public",
-    method: "write",
-    requests: 2,
-    updatedAt: "2026.07.11",
-    riskCount: 1,
-  },
-  {
-    id: "lst-route-rental",
-    productName: "2026 김해공항 단체 밴 렌탈 계약",
-    category: "vehicle_rental",
-    district: "강서구",
-    start: "2026.03.01",
-    end: "2026.12.31",
-    unitPrice: 132000,
-    priceUnit: "차량 1대·1일",
-    quantityLabel: "1일 최대 12대",
-    status: "needsReview",
-    method: "upload",
-    requests: 0,
-    updatedAt: "2026.07.25",
-    riskCount: 2,
-  },
-];
-
 export function ListingsProvider({ children }: { children: ReactNode }) {
   const { isDemoSession } = useApp();
   const [listings, setListings] = useState<Listing[]>([]);
@@ -178,12 +127,11 @@ export function ListingsProvider({ children }: { children: ReactNode }) {
     if (!isDemoSession) { setListings([]); return; }
     try {
       const saved = window.localStorage.getItem("busanlink.seller.listings");
-      setListings(saved ? JSON.parse(saved) as Listing[] : seed);
+      setListings(saved ? JSON.parse(saved) as Listing[] : []);
     } catch {
-      setListings(seed);
+      setListings([]);
     }
   }, [isDemoSession]);
-
   const addListing: ListingsContextValue["addListing"] = (l) => {
     const now = new Date();
     const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
