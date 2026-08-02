@@ -29,6 +29,7 @@ import { useApp } from "../../context/AppContext";
 import {
   CATEGORIES,
   DISTRICTS,
+  contracts,
   formatKRW,
   type Category,
   type Contract,
@@ -39,10 +40,10 @@ type Sort = "recommended" | "latest" | "popular" | "priceLow" | "priceHigh";
 const PRICE_MAX = 250000;
 
 const categoryByApiCategory: Record<PublicListing["category"], Category> = {
-  accommodation: "stay",
-  activity: "leisure",
-  tour: "package",
-  vehicle_rental: "sports",
+  accommodation: "accommodation",
+  activity: "activity",
+  tour: "tour",
+  vehicle_rental: "vehicle_rental",
 };
 
 function toContract(listing: PublicListing): Contract {
@@ -141,7 +142,8 @@ export function ExploreView({ base }: { base: string }) {
   };
 
   const results = useMemo(() => {
-    const list: Contract[] = serverContracts.filter((c) => {
+    const sourceContracts = loadError ? contracts : serverContracts;
+    const list: Contract[] = sourceContracts.filter((c) => {
       const keyword = search.trim().toLocaleLowerCase();
       if (keyword && !`${c.seller} ${c.title}`.toLocaleLowerCase().includes(keyword)) return false;
       if (category !== "all" && c.category !== category) return false;
@@ -163,7 +165,7 @@ export function ExploreView({ base }: { base: string }) {
       priceHigh: (a, b) => b.unitPrice - a.unitPrice,
     };
     return [...list].sort(sorters[sort]);
-  }, [search, category, district, guests, from, to, price, availableOnly, sort, serverContracts]);
+  }, [search, category, district, guests, from, to, price, availableOnly, sort, serverContracts, loadError]);
 
   const categoryLabel = CATEGORIES.find((c) => c.value === category);
   const hasPriceFilter = price[0] > 0 || price[1] < PRICE_MAX;
