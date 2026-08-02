@@ -109,6 +109,7 @@ export function friendlyApiError(error: unknown): string {
       QUANTITY_REQUIRED: "객실·차량 등 필요한 수량을 입력해 주세요.",
       UNSUPPORTED_DISPLAY_CURRENCY: "현재는 상품 기준 통화로만 예상 금액을 계산할 수 있습니다.",
       DATABASE_UNAVAILABLE: "서비스 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      INVALID_STATE_TRANSITION: "이미 처리되었거나 현재 상태에서는 변경할 수 없는 요청입니다.",
     };
     return messages[error.code] ?? error.message;
   }
@@ -655,6 +656,30 @@ export function generateRevisionSuggestion(payload: {
   });
 }
 
+export type RevisionGuidanceItem = {
+  id: string;
+  impact: string;
+  recommendation: string;
+  rejection_reason: string;
+};
+
+export function generateRevisionGuidance(items: Array<{
+  id: string;
+  clause_title: string;
+  original_text: string;
+  requested_text: string;
+  reason: string;
+}>): Promise<{ items: RevisionGuidanceItem[] }> {
+  return apiFetch<{ items: RevisionGuidanceItem[] }>("/ai-guidance/revision-impact", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("revision-impact"),
+    },
+    body: JSON.stringify({ items }),
+  });
+}
+
 export type RevisionRequestResponse = {
   id: string;
   contract_id: string;
@@ -733,6 +758,7 @@ export function decideRevisionRequest(
   return apiFetch(`/revision-requests/${revisionRequestId}/decide`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-decide") },
+    body: JSON.stringify(payload),
   });
 }
 

@@ -25,6 +25,7 @@ class RevisionGuidanceItemOutput(BaseModel):
     id: str
     impact: str = Field(min_length=1, max_length=4000)
     recommendation: str = Field(min_length=1, max_length=8000)
+    rejection_reason: str = Field(min_length=1, max_length=4000)
 
 
 class RevisionGuidanceOutput(BaseModel):

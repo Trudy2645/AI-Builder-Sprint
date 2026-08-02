@@ -114,7 +114,15 @@ def get_ai_guidance_service(
     provider: Annotated[FakeAIProvider | UpstageAIProvider, Depends(get_ai_provider)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AIGuidanceService:
-    return AIGuidanceService(provider, prompt_version=settings.ai_prompt_version)
+    return AIGuidanceService(
+        provider,
+        prompt_version=settings.ai_prompt_version,
+        file_search_provider=provider,
+        official_vector_store_id=settings.upstage_official_vector_store_id,
+        template_vector_store_id=settings.upstage_template_vector_store_id,
+        case_vector_store_id=settings.upstage_case_vector_store_id,
+        minimum_evidence_score=settings.rag_min_evidence_score,
+    )
 
 
 def get_document_processing_repository(

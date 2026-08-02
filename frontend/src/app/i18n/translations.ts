@@ -633,6 +633,13 @@ const strings: Record<string, Dict> = {
   "rvw.counterReasonPh": { ko: "왜 이 대안을 제시하는지 설명하세요.", en: "Explain your counter-offer.", ja: "代案の理由を説明してください。", zh: "请说明替代方案的理由。" },
   "rvw.aiRecommend": { ko: "AI 추천 문구", en: "AI recommended wording", ja: "AI推奨文言", zh: "AI 建议措辞" },
   "rvw.applyAi": { ko: "추천 문구 적용", en: "Apply suggestion", ja: "推奨を適用", zh: "应用建议" },
+  "rvw.regenerateFromReason": { ko: "제안 이유로 다시 추천", en: "Regenerate from reason", ja: "提案理由から再生成", zh: "根据提议原因重新生成" },
+  "rvw.needCounterReason": { ko: "제안 이유를 먼저 입력해 주세요.", en: "Enter a proposal reason first.", ja: "提案理由を先に入力してください。", zh: "请先输入提议原因。" },
+  "rvw.aiRegenerated": { ko: "제안 이유를 반영해 추천 문구를 다시 만들었습니다.", en: "The suggestion was regenerated from your reason.", ja: "提案理由を反映して再生成しました。", zh: "已根据提议原因重新生成建议。" },
+  "rvw.aiRejectReason": { ko: "AI 추천 거절 이유", en: "AI suggested rejection reason", ja: "AI推奨の拒否理由", zh: "AI 建议拒绝理由" },
+  "rvw.applyRejectReason": { ko: "추천 거절 이유 적용", en: "Apply rejection reason", ja: "拒否理由を適用", zh: "应用拒绝理由" },
+  "rvw.aiLoading": { ko: "AI가 계약 조항과 참고 자료를 분석하고 있습니다…", en: "AI is analyzing the clause and references…", ja: "AIが条項と参考資料を分析しています…", zh: "AI 正在分析条款和参考资料…" },
+  "rvw.aiFailed": { ko: "AI 분석을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.", en: "AI analysis could not be loaded. Please refresh shortly.", ja: "AI分析を読み込めませんでした。しばらくしてから更新してください。", zh: "无法加载 AI 分析，请稍后刷新。" },
   "rvw.message": { ko: "바이어에게 남길 메시지", en: "Message to buyer", ja: "バイヤーへのメッセージ", zh: "给买家的留言" },
   "rvw.messagePh": { ko: "협상 배경이나 추가 설명을 남기세요.", en: "Add negotiation context or notes.", ja: "交渉の背景や補足を残してください。", zh: "补充协商背景或说明。" },
 

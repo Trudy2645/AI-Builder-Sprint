@@ -25,13 +25,17 @@ async def generate_revision_guidance(
     provider: LanguageModelProvider,
     payload: RevisionGuidanceRequest,
     prompt_version: str,
+    rag_context: list[dict[str, object]] | None = None,
 ) -> RevisionGuidanceOutput:
     return await provider.generate_structured(
         LanguageModelRequest(
             task_type="revision_draft",
             system_prompt=REVISION_GUIDANCE_SYSTEM_PROMPT,
-            input_data=payload.model_dump(mode="json"),
-            prompt_version=prompt_version,
+            input_data={
+                **payload.model_dump(mode="json"),
+                "rag_context": rag_context or [],
+            },
+            prompt_version=f"{prompt_version}:seller-revision-guidance-v2",
             reasoning_effort="medium",
         ),
         RevisionGuidanceOutput,

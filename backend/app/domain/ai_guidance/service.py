@@ -6,6 +6,7 @@ from app.ai.providers.base import (
     AIProviderRateLimitError,
     AIProviderTemporaryError,
     AIProviderTimeoutError,
+    FileSearchProvider,
     LanguageModelProvider,
 )
 from app.ai.schemas.guidance import (
@@ -19,6 +20,7 @@ from app.ai.schemas.guidance import (
     RevisionSuggestionOutput,
     RevisionSuggestionRequest,
 )
+from app.ai.schemas.providers import FileSearchRequest
 from app.ai.schemas.public_summary import PublicSummaryOutput
 from app.ai.tasks.guidance import (
     generate_change_summary,
@@ -31,15 +33,78 @@ from app.core.errors import AppError
 
 
 class AIGuidanceService:
-    def __init__(self, provider: LanguageModelProvider, *, prompt_version: str) -> None:
+    def __init__(
+        self,
+        provider: LanguageModelProvider,
+        *,
+        prompt_version: str,
+        file_search_provider: FileSearchProvider | None = None,
+        official_vector_store_id: str | None = None,
+        template_vector_store_id: str | None = None,
+        case_vector_store_id: str | None = None,
+        minimum_evidence_score: float = 0.3,
+    ) -> None:
         self._provider = provider
         self._prompt_version = prompt_version
+        self._file_search_provider = file_search_provider
+        self._revision_vector_stores = (
+            ("official", official_vector_store_id),
+            ("template", template_vector_store_id),
+            ("case", case_vector_store_id),
+        )
+        self._minimum_evidence_score = minimum_evidence_score
 
     async def revision_guidance(self, payload: RevisionGuidanceRequest) -> RevisionGuidanceOutput:
         try:
-            return await generate_revision_guidance(self._provider, payload, self._prompt_version)
+            result = await generate_revision_guidance(
+                self._provider,
+                payload,
+                self._prompt_version,
+                await self._revision_rag_context(payload),
+            )
+            source_ids = [item.id for item in payload.items]
+            result_ids = [item.id for item in result.items]
+            if result_ids != source_ids:
+                raise ValueError("The revision guidance changed or reordered item references.")
+            return result
         except Exception as exc:
             self._raise_provider_error(exc)
+
+    async def _revision_rag_context(
+        self, payload: RevisionGuidanceRequest
+    ) -> list[dict[str, object]]:
+        if self._file_search_provider is None:
+            return []
+        query = "\n".join(
+            f"{item.clause_title}: {item.reason}\n요청 문구: {item.requested_text}"
+            for item in payload.items
+        )[:2000]
+        context: list[dict[str, object]] = []
+        for corpus, vector_store_id in self._revision_vector_stores:
+            if not vector_store_id:
+                continue
+            try:
+                result = await self._file_search_provider.search_files(
+                    FileSearchRequest(
+                        query=query,
+                        vector_store_id=vector_store_id,
+                        top_k=3,
+                    )
+                )
+            except Exception:
+                # Retrieval is supporting context; guidance should survive one failed store.
+                continue
+            for hit in result.hits:
+                if hit.score is not None and hit.score < self._minimum_evidence_score:
+                    continue
+                context.append(
+                    {
+                        "corpus": corpus,
+                        "score": hit.score,
+                        "excerpt": hit.excerpt[:1200],
+                    }
+                )
+        return context[:9]
 
     async def revision_suggestion(
         self, payload: RevisionSuggestionRequest

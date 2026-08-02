@@ -8,7 +8,7 @@ import { Badge } from "../../components/ui/badge";
 import { ContractStepper } from "../../components/contract/ContractStepper";
 import { ReviewClauseCard, emptyDecision, type Decision, type ReceivedRevision } from "../../components/received/ReviewClauseCard";
 import { useApp } from "../../context/AppContext";
-import { decideRevisionRequest, friendlyApiError, getContractDetail, getRevisionRequest, patchRevisionItem, type ContractDetail, type RevisionRequestResponse } from "../../lib/api";
+import { decideRevisionRequest, friendlyApiError, generateRevisionGuidance, getContractDetail, getRevisionRequest, patchRevisionItem, type ContractDetail, type RevisionGuidanceItem, type RevisionRequestResponse } from "../../lib/api";
 
 export function RevisionReviewPage() {
   const { t } = useApp();
@@ -19,21 +19,47 @@ export function RevisionReviewPage() {
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [previewOpen, setPreviewOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [guidance, setGuidance] = useState<Record<string, RevisionGuidanceItem>>({});
+  const [guidanceLoading, setGuidanceLoading] = useState(true);
+  const [guidanceError, setGuidanceError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     let active = true;
-    void getRevisionRequest(id)
-      .then(async (nextRevision) => {
+    void (async () => {
+      try {
+        const nextRevision = await getRevisionRequest(id);
         const nextContract = await getContractDetail(nextRevision.contract_id);
         if (!active) return;
         setRevision(nextRevision);
         setContract(nextContract);
         setDecisions(Object.fromEntries(nextRevision.items.map((item) => [item.id, emptyDecision()])));
-      })
-      .catch((error) => toast.error(friendlyApiError(error)))
-      .finally(() => setLoading(false));
+        setLoading(false);
+        try {
+          const result = await generateRevisionGuidance(nextRevision.items.map((item) => {
+            const clause = nextContract.current_version.clauses.find((candidate) => candidate.id === item.clause_id);
+            return {
+              id: item.id,
+              clause_title: clause?.title ?? "추가 조항",
+              original_text: clause?.body ?? "기존 조항 없음",
+              requested_text: item.requested_text ?? "이 조항을 삭제해 달라는 요청",
+              reason: item.reason,
+            };
+          }));
+          if (active) setGuidance(Object.fromEntries(result.items.map((item) => [item.id, item])));
+        } catch (error) {
+          if (active) setGuidanceError(friendlyApiError(error));
+        } finally {
+          if (active) setGuidanceLoading(false);
+        }
+      } catch (error) {
+        if (!active) return;
+        toast.error(friendlyApiError(error));
+        setLoading(false);
+        setGuidanceLoading(false);
+      }
+    })();
     return () => { active = false; };
   }, [id]);
 
@@ -48,14 +74,21 @@ export function RevisionReviewPage() {
         original: clause?.body ?? "기존 조항 없음",
         requested: item.requested_text ?? "삭제 요청",
         reason: item.reason,
-        aiImpact: "서버의 현재 계약 버전과 수정 요청을 기준으로 검토해 주세요.",
-        aiRecommend: item.requested_text ?? "",
+        aiImpact: guidance[item.id]?.impact ?? "",
+        aiRecommend: guidance[item.id]?.recommendation ?? "",
+        aiRejectReason: guidance[item.id]?.rejection_reason ?? "",
+        aiLoading: guidanceLoading,
+        aiError: guidanceError,
       };
     });
-  }, [revision, contract]);
+  }, [revision, contract, guidance, guidanceLoading, guidanceError]);
 
   if (loading) return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">수정 요청을 불러오는 중입니다…</div>;
   if (!revision || !contract) return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">수정 요청을 찾을 수 없습니다.</div>;
+  if (revision.status !== "sent") {
+    const statusLabel = revision.status === "accepted" ? "수락 완료" : revision.status === "rejected" ? "거절 완료" : revision.status === "countered" ? "대안 전송 완료" : "처리 완료";
+    return <div className="mx-auto max-w-[720px] rounded-xl border border-border bg-card p-10 text-center"><h1 className="text-xl font-semibold">이미 처리된 수정 요청입니다</h1><p className="mt-2 text-muted-foreground">현재 상태: {statusLabel}</p><Button className="mt-6" onClick={() => navigate("/seller/received")}>받은 요청으로 돌아가기</Button></div>;
+  }
 
   const decidedCount = Object.values(decisions).filter((decision) => decision.kind).length;
   const allDecided = rows.length > 0 && decidedCount === rows.length;
@@ -65,10 +98,16 @@ export function RevisionReviewPage() {
     if (Object.values(decisions).some((decision) => decision.kind === "counter" && !decision.counterText.trim())) { toast.error(t("rvw.needCounterText")); return; }
     setSubmitting(true);
     try {
-      let latest = revision;
-      for (const item of revision.items) {
+      const current = await getRevisionRequest(revision.id);
+      if (current.status !== "sent") {
+        setRevision(current);
+        toast.error("이미 처리된 수정 요청입니다.");
+        return;
+      }
+      let latest = current;
+      for (const item of current.items) {
         const decision = decisions[item.id];
-        latest = await patchRevisionItem(revision.id, item.id, {
+        latest = await patchRevisionItem(current.id, item.id, {
           decision: decision.kind === "accept" ? "accepted" : decision.kind === "reject" ? "rejected" : "countered",
           seller_reason: [decision.counterReason, decision.message].filter(Boolean).join("\n") || undefined,
           counter_text: decision.kind === "counter" ? decision.counterText : undefined,
