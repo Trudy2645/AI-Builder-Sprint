@@ -6,7 +6,11 @@ from uuid import UUID
 from fastapi import status
 
 from app.core.errors import AppError
-from app.domain.pricing.units import PRICE_UNIT_RULES, SUPPORTED_QUANTITY_UNITS
+from app.domain.pricing.units import (
+    PRICE_UNIT_RULES,
+    SUPPORTED_QUANTITY_UNITS,
+    canonical_price_unit,
+)
 from app.integrations.exchange_rates import (
     ExchangeRateProvider,
     ExchangeRateProviderError,
@@ -166,13 +170,14 @@ class PriceCalculator:
                 "UNSUPPORTED_QUANTITY_UNIT",
                 "The requested quantity unit is not supported.",
             )
-        if terms.price_unit not in PRICE_UNIT_RULES:
+        price_unit = canonical_price_unit(terms.price_unit)
+        if price_unit not in PRICE_UNIT_RULES:
             cls._raise(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
                 "UNSUPPORTED_PRICE_UNIT",
                 "The listing price unit is not supported.",
             )
-        expected_quantity_unit, uses_nights = PRICE_UNIT_RULES[terms.price_unit]
+        expected_quantity_unit, uses_nights = PRICE_UNIT_RULES[price_unit]
         if terms.quantity_unit != expected_quantity_unit:
             cls._raise(
                 status.HTTP_422_UNPROCESSABLE_CONTENT,

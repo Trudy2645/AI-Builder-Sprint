@@ -77,6 +77,10 @@ class DocumentProcessingRepository(Protocol):
 
     async def mark_job_processing(self, job_id: UUID) -> None: ...
 
+    async def update_job_result_metadata(
+        self, job_id: UUID, result_metadata: dict[str, Any]
+    ) -> None: ...
+
     async def create_parse_artifact(
         self,
         *,
@@ -256,6 +260,19 @@ class SqlAlchemyDocumentProcessingRepository:
             where id = :job_id and status = 'queued'
             """,
             {"job_id": job_id},
+        )
+
+    async def update_job_result_metadata(
+        self, job_id: UUID, result_metadata: dict[str, Any]
+    ) -> None:
+        await self._execute_commit(
+            """
+            update public.ai_jobs
+            set result_metadata = result_metadata || cast(:result_metadata as jsonb),
+                provider_status = 'succeeded'
+            where id = :job_id and status in ('queued', 'processing')
+            """,
+            {"job_id": job_id, "result_metadata": json.dumps(result_metadata)},
         )
 
     async def create_parse_artifact(

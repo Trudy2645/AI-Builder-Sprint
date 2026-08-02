@@ -1,77 +1,201 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, FilePenLine } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FilePenLine, ArrowRight } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
 import { useApp } from "../../context/AppContext";
-import { friendlyApiError, getReceivedContracts, getSellerRevisionRequests, type SellerContractListItem, type SellerRevisionRequestListItem } from "../../lib/api";
+import { receivedRequests, type ReceivedRequest } from "../../data/receivedRequests";
+import { friendlyApiError, getContractDetail, getSellerReceivedContracts, getSellerRevisionRequests } from "../../lib/api";
 
-type RequestTab = "all" | "new" | "negotiating" | "signing" | "signed";
+type RequestTab = "all" | ReceivedRequest["status"];
 const TABS: RequestTab[] = ["all", "new", "negotiating", "signing", "signed"];
-const statusLabel: Record<RequestTab, string> = { all: "전체", new: "새 요청", negotiating: "협상 중", signing: "서명 대기", signed: "체결 완료" };
-const statusTone: Record<Exclude<RequestTab, "all">, { bg: string; color: string; label: string }> = {
+const statusLabel: Record<RequestTab, string> = {
+  all: "전체",
+  new: "새 요청",
+  negotiating: "협상 중",
+  signing: "서명 대기",
+  signed: "체결 완료",
+};
+const statusTone: Record<ReceivedRequest["status"], { bg: string; color: string; label: string }> = {
   new: { bg: "var(--info-soft)", color: "var(--ocean)", label: "새 요청" },
   negotiating: { bg: "var(--warning-soft)", color: "var(--warning)", label: "협상 중" },
   signing: { bg: "var(--success-soft)", color: "var(--teal)", label: "서명 대기" },
   signed: { bg: "var(--success-soft)", color: "var(--success)", label: "체결 완료" },
 };
 
-type Row = {
-  id: string;
-  contractId: string;
-  buyer: string;
-  title: string;
-  status: Exclude<RequestTab, "all">;
-  count: number;
-  createdAt: string;
-  revision: boolean;
-};
-
-function contractStatus(status: string): Row["status"] {
-  if (status === "revision_requested") return "negotiating";
-  if (status === "signing") return "signing";
-  if (status === "signed") return "signed";
-  return "new";
-}
-
 export function ReceivedRequestsPage() {
   const { t } = useApp();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const [contracts, setContracts] = useState<SellerContractListItem[]>([]);
-  const [revisions, setRevisions] = useState<SellerRevisionRequestListItem[]>([]);
-  const [error, setError] = useState<string>();
   const selected = params.get("status") as RequestTab | null;
-  const tab = selected && TABS.includes(selected) ? selected : "all";
-
+  const tab: RequestTab = selected && TABS.includes(selected) ? selected : "all";
+  const [serverRows, setServerRows] = useState<ReceivedRequest[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   useEffect(() => {
-    Promise.all([getReceivedContracts(), getSellerRevisionRequests()])
-      .then(([nextContracts, nextRevisions]) => { setContracts(nextContracts); setRevisions(nextRevisions); })
-      .catch((reason) => setError(friendlyApiError(reason)));
+    void Promise.all([getSellerReceivedContracts(), getSellerRevisionRequests()]).then(([items, revisions]) => {
+      const revisionContractIds = new Set(revisions.map((item) => item.contract_id));
+      setServerRows([
+      ...items.filter((item) => !revisionContractIds.has(item.contract_id)).map((item) => ({
+      id: item.contract_id, buyer: item.buyer_name, contractId: item.contract_id, contractTitle: item.listing_title,
+      status: item.status === "signed" ? "signed" : item.status === "signing" ? "signing" : item.status === "revision_requested" ? "negotiating" : "new",
+      createdAt: item.requested_at.slice(0, 10).replaceAll("-", "."), period: `${item.service_start_date} ~ ${item.service_end_date}`,
+      estimatedAmount: item.amount_minor == null ? "계산 중" : `${item.amount_minor.toLocaleString("ko-KR")} ${item.currency ?? "KRW"}`,
+      currentVersion: "v1", revisions: [],
+      })),
+      ...revisions.map((item) => ({
+        id: item.id, buyer: item.buyer_name, contractId: item.contract_id, contractTitle: item.listing_title,
+        status: "negotiating" as const, createdAt: (item.sent_at ?? item.updated_at).slice(0, 10).replaceAll("-", "."),
+        period: "계약 조건에서 확인", estimatedAmount: "계약 조건에서 확인", currentVersion: "v1", revisions: [],
+      })),
+      ]);
+    }).catch((error: unknown) => setLoadError(friendlyApiError(error)));
   }, []);
+  const sourceRows = serverRows.length ? serverRows : receivedRequests;
+  const rows = tab === "all" ? sourceRows : sourceRows.filter((r) => r.status === tab);
+  const counts = TABS.reduce<Record<string, number>>((acc, current) => {
+    acc[current] = current === "all" ? sourceRows.length : sourceRows.filter((r) => r.status === current).length;
+    return acc;
+  }, {});
 
-  const rows = useMemo<Row[]>(() => {
-    const revisionByContract = new Map(revisions.map((revision) => [revision.contract_id, revision]));
-    return contracts.map((contract) => {
-      const revision = revisionByContract.get(contract.contract_id);
-      return {
-        id: revision?.id ?? contract.contract_id,
-        contractId: contract.contract_id,
-        buyer: contract.buyer_name,
-        title: contract.listing_title,
-        status: revision ? "negotiating" : contractStatus(contract.status),
-        count: revision?.item_count ?? 0,
-        createdAt: (revision?.sent_at ?? contract.requested_at).slice(0, 10).replace(/-/g, "."),
-        revision: Boolean(revision),
-      };
-    });
-  }, [contracts, revisions]);
-  const filteredRows = tab === "all" ? rows : rows.filter((row) => row.status === tab);
-  const counts = TABS.reduce<Record<string, number>>((result, current) => { result[current] = current === "all" ? rows.length : rows.filter((row) => row.status === current).length; return result; }, {});
+  const openRequest = async (request: ReceivedRequest) => {
+    if (request.revisions.length > 0) {
+      navigate(`/seller/received/${request.id}`);
+      return;
+    }
+    if (request.status === "signed") { navigate("/seller/contracts"); return; }
+    try {
+      const detail = await getContractDetail(request.contractId);
+      navigate(`/seller/signing?contractId=${detail.id}&versionId=${detail.current_version.id}`);
+    } catch (error) { setLoadError(friendlyApiError(error)); }
+  };
 
-  const openRow = (row: Row) => row.revision ? navigate(`/seller/received/${row.id}`) : navigate(`/seller/contracts?contractId=${row.contractId}`);
+  return (
+    <div>
+      <PageHeader title={t("recv.title")} description={t("recv.subtitle")} />
+      {loadError && <div className="mb-4 rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{loadError}</div>}
 
-  return <div><PageHeader title={t("recv.title")} description={t("recv.subtitle")} />{error && <div className="mb-4 rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{error}</div>}<div className="mb-4 flex flex-wrap gap-2">{TABS.map((current) => <button key={current} type="button" onClick={() => current === "all" ? setParams({}) : setParams({ status: current })} className="rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: tab === current ? "var(--navy)" : "var(--border)", background: tab === current ? "var(--navy)" : "var(--card)", color: tab === current ? "#fff" : "var(--foreground)" }}>{statusLabel[current]} <span className="ml-1 rounded-full px-1.5 text-xs" style={{ background: tab === current ? "rgba(255,255,255,.25)" : "var(--muted)" }}>{counts[current] ?? 0}</span></button>)}</div><div className="overflow-hidden rounded-xl border border-border bg-card">{filteredRows.length === 0 ? <div className="p-16 text-center text-muted-foreground">{t("recv.empty")}</div> : <Table><TableHeader><TableRow><TableHead>{t("recv.col.buyer")}</TableHead><TableHead>{t("recv.col.contract")}</TableHead><TableHead>{t("recv.col.type")}</TableHead><TableHead>{t("recv.col.count")}</TableHead><TableHead>{t("recv.col.date")}</TableHead><TableHead>{t("recv.review")}</TableHead></TableRow></TableHeader><TableBody>{filteredRows.map((row) => <TableRow key={row.id}><TableCell className="font-semibold">{row.buyer}</TableCell><TableCell>{row.title}</TableCell><TableCell><Badge className="border-transparent" style={{ background: statusTone[row.status].bg, color: statusTone[row.status].color }}><FilePenLine className="mr-1 size-3" />{statusTone[row.status].label}</Badge></TableCell><TableCell>{row.revision ? `${row.count}${t("recv.countUnit")}` : "조건 그대로"}</TableCell><TableCell>{row.createdAt}</TableCell><TableCell><Button size="sm" className="gap-1.5" style={{ background: "var(--navy)" }} onClick={() => openRow(row)}>상세 보기<ArrowRight className="size-4" /></Button></TableCell></TableRow>)}</TableBody></Table>}</div></div>;
+      <div className="mb-4 flex flex-wrap gap-2">
+        {TABS.map((tb) => {
+          const active = tab === tb;
+          return (
+            <button
+              key={tb}
+              type="button"
+              onClick={() => (tb === "all" ? setParams({}) : setParams({ status: tb }))}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 transition-colors"
+              style={{
+                fontSize: "13px",
+                borderColor: active ? "var(--navy)" : "var(--border)",
+                background: active ? "var(--navy)" : "var(--card)",
+                color: active ? "#fff" : "var(--foreground)",
+              }}
+            >
+              {statusLabel[tb]}
+              <span
+                className="rounded-full px-1.5"
+                style={{
+                  fontSize: "11px",
+                  background: active ? "rgba(255,255,255,0.25)" : "var(--muted)",
+                  color: active ? "#fff" : "var(--muted-foreground)",
+                }}
+              >
+                {counts[tb] ?? 0}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {rows.length === 0 && (
+        <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground lg:hidden">{t("recv.empty")}</div>
+      )}
+      {rows.length > 0 && (
+        <div className="space-y-3 lg:hidden">
+          {rows.map((r) => (
+            <div key={r.id} className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="line-clamp-2 text-base" style={{ color: "var(--navy)" }}>{r.contractTitle}</h3>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">{r.buyer}</p>
+                </div>
+                <Badge className="shrink-0 gap-1 whitespace-nowrap border-transparent" style={{ background: statusTone[r.status].bg, color: statusTone[r.status].color }}>
+                  <FilePenLine className="size-3" />
+                  {statusTone[r.status].label}
+                </Badge>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 border-y border-border py-3 text-sm">
+                <div><div className="text-xs text-muted-foreground">{t("recv.col.count")}</div><div className="mt-1">{r.revisions.length > 0 ? `${r.revisions.length}${t("recv.countUnit")}` : "조건 그대로"}</div></div>
+                <div className="text-right"><div className="text-xs text-muted-foreground">{t("recv.col.date")}</div><div className="mt-1 whitespace-nowrap">{r.createdAt}</div></div>
+              </div>
+              <Button className="mt-3 w-full gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => openRequest(r)}>
+                상세 보기
+                <ArrowRight className="size-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="hidden overflow-hidden rounded-xl border border-border bg-card lg:block">
+        {rows.length === 0 ? (
+          <div className="p-16 text-center text-muted-foreground">{t("recv.empty")}</div>
+        ) : (
+          <Table className="table-fixed">
+            <colgroup>
+              <col className="w-[18%]" />
+              <col className="w-[30%]" />
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+            </colgroup>
+            <TableHeader className="bg-muted/20">
+              <TableRow>
+                <TableHead className="h-12 whitespace-nowrap px-3">{t("recv.col.buyer")}</TableHead>
+                <TableHead className="h-12 whitespace-nowrap px-3">{t("recv.col.contract")}</TableHead>
+                <TableHead className="h-12 whitespace-nowrap px-3 text-center">{t("recv.col.type")}</TableHead>
+                <TableHead className="h-12 whitespace-nowrap px-3 text-center">{t("recv.col.count")}</TableHead>
+                <TableHead className="h-12 whitespace-nowrap px-3 text-center">{t("recv.col.date")}</TableHead>
+                <TableHead className="h-12 whitespace-nowrap px-3 text-center">{t("recv.review")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.id} className="h-16">
+                  <TableCell className="whitespace-nowrap px-3 py-3" style={{ fontWeight: 600 }}>{r.buyer}</TableCell>
+                  <TableCell className="min-w-0 px-3 py-3">
+                    <span className="block truncate">{r.contractTitle}</span>
+                  </TableCell>
+                  <TableCell className="px-3 py-3 text-center">
+                    <Badge className="gap-1 whitespace-nowrap border-transparent" style={{ background: statusTone[r.status].bg, color: statusTone[r.status].color }}>
+                      <FilePenLine className="size-3" />
+                      {statusTone[r.status].label}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap px-3 py-3 text-center">
+                    {r.revisions.length > 0 ? `${r.revisions.length}${t("recv.countUnit")}` : "조건 그대로"}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap px-3 py-3 text-center text-muted-foreground">{r.createdAt}</TableCell>
+                  <TableCell className="px-3 py-3 text-center">
+                    <Button size="sm" className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => openRequest(r)}>
+                      상세 보기
+                      <ArrowRight className="size-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </div>
+  );
 }

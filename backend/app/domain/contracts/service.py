@@ -1,22 +1,33 @@
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from datetime import date
+from io import BytesIO
 from typing import Any
 from uuid import UUID
 
 from fastapi import status
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
+from app.ai.schemas import DocumentParseResult
 from app.core.errors import AppError
+from app.domain.contracts.signature_fields import signature_field_candidates
 from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.modusign import (
     ModusignClient,
     ModusignParticipant,
+    ModusignParticipantField,
     ModusignRequestError,
     ModusignUnavailableError,
 )
-from app.integrations.storage import StorageProvider, StorageProviderError
+from app.integrations.storage import (
+    StorageObjectNotFoundError,
+    StorageProvider,
+    StorageProviderError,
+)
 from app.repositories.contracts import (
     ContractCreatedRecord,
     ContractRecord,
@@ -81,6 +92,7 @@ _STATUS_LABELS = {
     "cancelled": "종료",
 }
 _REQUEST_KIND_LABELS = {"as_is": "조건 그대로", "revision": "수정 요청"}
+logger = logging.getLogger(__name__)
 
 
 class ContractService:
@@ -88,11 +100,13 @@ class ContractService:
         self,
         repository: ContractRepository,
         price_calculator: PriceCalculator,
+        storage: StorageProvider | None = None,
         *,
         today: Callable[[], date] | None = None,
     ) -> None:
         self._repository = repository
         self._price_calculator = price_calculator
+        self._storage = storage
         self._today = today or date.today
 
     async def create_request(
@@ -429,8 +443,11 @@ class ContractService:
         idempotency_key: str,
         client: ModusignClient,
         template_id: str | None,
+        source_pdf: bytes | None = None,
+        source_page_count: int | None = None,
+        source_field_candidates: list[dict[str, Any]] | None = None,
     ) -> SignatureRequestCreated:
-        if not template_id:
+        if source_pdf is None and not template_id:
             self._raise(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "MODUSIGN_TEMPLATE_NOT_CONFIGURED",
@@ -450,7 +467,7 @@ class ContractService:
                 contract_version_id=contract_version_id,
                 requested_by=actor.id,
                 idempotency_key=idempotency_key,
-                provider_template_id=template_id,
+                provider_template_id=template_id or "source-pdf",
                 buyer_name=payload.buyer.name,
                 buyer_email=payload.buyer.email,
                 seller_name=payload.seller.name,
@@ -488,18 +505,27 @@ class ContractService:
         if signature_request.reused:
             return self._signature_response(signature_request, reused=True)
         try:
-            provider_document = await client.create_signature_request(
-                template_id=template_id,
-                title=payload.title,
-                participants=[
-                    ModusignParticipant(
+            if source_pdf is not None:
+                provider_document = await client.create_signature_request_from_pdf(
+                    title=payload.title,
+                    pdf_bytes=source_pdf,
+                    buyer=ModusignParticipant(
                         role="바이어", name=payload.buyer.name, email=payload.buyer.email
                     ),
-                    ModusignParticipant(
-                        role="셀러", name=payload.seller.name, email=payload.seller.email
+                    buyer_fields=self._source_pdf_fields(
+                        source_field_candidates, source_page_count
                     ),
-                ],
-            )
+                )
+            else:
+                provider_document = await client.create_signature_request(
+                    template_id=template_id or "",
+                    title=payload.title,
+                    participants=[
+                        ModusignParticipant(
+                            role="바이어", name=payload.buyer.name, email=payload.buyer.email
+                        )
+                    ],
+                )
             provider_document_id = provider_document.get("id")
             if not isinstance(provider_document_id, str) or not provider_document_id:
                 raise ModusignUnavailableError
@@ -511,6 +537,10 @@ class ContractService:
         except (ModusignRequestError, ModusignUnavailableError) as exc:
             await self._mark_signature_failed(signature_request.id)
             if isinstance(exc, ModusignRequestError):
+                logger.warning(
+                    "Modusign signature request rejected: status=%s",
+                    exc.status_code,
+                )
                 self._raise(
                     status.HTTP_502_BAD_GATEWAY,
                     "MODUSIGN_REQUEST_REJECTED",
@@ -524,6 +554,145 @@ class ContractService:
         except (ContractStateConflictError, ContractRepositoryUnavailableError) as exc:
             self._database_unavailable(exc)
         return self._signature_response(signature_request)
+
+    @staticmethod
+    def _source_pdf_fields(
+        candidates: list[dict[str, Any]] | None, page_count: int | None
+    ) -> list[ModusignParticipantField]:
+        fields: list[ModusignParticipantField] = []
+        for candidate in candidates or []:
+            if not isinstance(candidate.get("position"), dict):
+                continue
+            fields.append(
+                ModusignParticipantField(
+                    field_type=str(candidate.get("field_type", "TEXT")),
+                    data_label=str(candidate.get("data_label")),
+                    position=candidate["position"],
+                    size=candidate.get("size"),
+                    required=bool(candidate.get("required", False)),
+                    signature_types=["SIGN"]
+                    if candidate.get("field_type") == "SIGNATURE"
+                    else None,
+                    text_style={"size": 12, "font": "NOTO_SANS", "align": "LEFT"}
+                    if candidate.get("field_type") == "TEXT"
+                    else None,
+                )
+            )
+        if any(field.field_type == "SIGNATURE" for field in fields):
+            return fields
+        fields.append(
+            ModusignParticipantField(
+                field_type="SIGNATURE",
+                data_label="buyer_signature",
+                position={"page": page_count or 1, "x": 0.56, "y": 0.76},
+                size={"width": 0.30, "height": 0.06},
+                signature_types=["SIGN"],
+            )
+        )
+        return fields
+
+    async def dispatch_signature_request_from_snapshots(
+        self,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+        idempotency_key: str,
+        client: ModusignClient,
+        template_id: str | None,
+        storage: StorageProvider,
+    ) -> SignatureRequestCreated:
+        try:
+            contacts = await self._repository.get_signature_contacts(
+                contract_id, contract_version_id
+            )
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        if contacts is None:
+            self._raise(
+                status.HTTP_404_NOT_FOUND,
+                "CONTRACT_VERSION_NOT_FOUND",
+                "Contract version was not found.",
+            )
+        if not contacts.buyer_email or not contacts.seller_email:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "SIGNING_EMAIL_MISSING",
+                "A buyer or seller signing email is missing from the contract snapshot.",
+            )
+        record = await self._get_record(contract_id)
+        try:
+            source = await self._repository.get_signature_source_document(
+                contract_id, contract_version_id
+            )
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        if source is None:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "SOURCE_CONTRACT_MISSING",
+                "The seller's original PDF is not available for signing.",
+            )
+        try:
+            source_pdf = b"".join(
+                [
+                    chunk
+                    async for chunk in storage.iter_object(
+                        source.storage_bucket, source.storage_object_path
+                    )
+                ]
+            )
+        except (StorageObjectNotFoundError, StorageProviderError):
+            logger.exception("original contract PDF could not be read for signature dispatch")
+            self._raise(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "SOURCE_CONTRACT_UNAVAILABLE",
+                "The original PDF could not be prepared for signing.",
+            )
+        candidates = source.extracted_data.get("signature_field_candidates")
+        if not candidates and source.parsed_storage_bucket and source.parsed_storage_object_path:
+            try:
+                parsed_bytes = b"".join(
+                    [
+                        chunk
+                        async for chunk in storage.iter_object(
+                            source.parsed_storage_bucket, source.parsed_storage_object_path
+                        )
+                    ]
+                )
+                candidates = self._signature_field_candidates(
+                    DocumentParseResult.model_validate_json(parsed_bytes)
+                )
+            except (StorageProviderError, ValueError):
+                candidates = []
+        try:
+            source_page_count = len(PdfReader(BytesIO(source_pdf), strict=False).pages)
+        except (PdfReadError, ValueError):
+            # Modusign still receives the untouched original.  A page-one
+            # fallback is safer than rejecting an otherwise valid PDF merely
+            # because local metadata parsing was incomplete.
+            source_page_count = 1
+        return await self.create_signature_request(
+            contract_id,
+            contract_version_id,
+            ContractSignatureRequestCreate(
+                title=record.version_title or record.listing_title,
+                buyer={"name": contacts.buyer_name, "email": contacts.buyer_email},
+                seller={"name": contacts.seller_name, "email": contacts.seller_email},
+            ),
+            actor,
+            header_organization_id,
+            idempotency_key,
+            client,
+            template_id,
+            source_pdf,
+            source_page_count,
+            candidates if isinstance(candidates, list) else [],
+        )
+
+    @staticmethod
+    def _signature_field_candidates(parsed: DocumentParseResult) -> list[dict[str, Any]]:
+        return signature_field_candidates(parsed)
 
     async def _mark_signature_failed(self, signature_request_id: UUID) -> None:
         try:

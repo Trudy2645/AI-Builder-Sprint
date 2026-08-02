@@ -410,6 +410,7 @@ def test_public_listings_are_available_without_authentication(
         str(ACTIVITY_ID),
     ]
     assert payload["data"][0]["contract_available"] is True
+    assert payload["data"][0]["supply_quantity_description"] == "주말 객실 최대 30실"
     assert payload["data"][0]["attention_required_count"] == 1
     assert payload["data"][1]["status"] == "paused"
     assert payload["data"][1]["contract_available"] is False

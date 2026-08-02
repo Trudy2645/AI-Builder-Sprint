@@ -49,7 +49,10 @@ export function SentRequestsPage() {
       return;
     }
     if (status === "signing") {
-      navigate(type === "asis" ? "/buyer/signing/sign" : "/buyer/signing");
+      // 계약 ID를 잃고 서명 화면을 직접 열면 전자서명 페이지가
+      // "계약을 선택해 주세요" 상태로 렌더링된다. 계약 상태 화면에서
+      // 서버의 현재 버전 ID를 확인한 뒤 서명 화면으로 이동한다.
+      navigate(`/buyer/contracts/${contractId}/status`);
       return;
     }
     if (status === "completed") {

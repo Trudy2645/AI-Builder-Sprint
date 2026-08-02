@@ -3,10 +3,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.api.dependencies import get_price_estimate_service, get_public_listing_service
+from app.api.dependencies import (
+    get_document_service,
+    get_price_estimate_service,
+    get_public_listing_service,
+)
+from app.core.auth import get_current_user
+from app.domain.documents.service import DocumentService
 from app.domain.listings.service import PublicListingService
 from app.domain.pricing.service import PriceEstimateService
+from app.integrations.auth import AuthenticatedUser
 from app.schemas.common import SuccessEnvelope, typed_envelope
+from app.schemas.documents import DocumentDownloadUrl
 from app.schemas.listings import (
     PublicContractPreview,
     PublicListingDetail,
@@ -58,6 +66,22 @@ async def get_public_listing(
     locale: Annotated[SupportedLocale, Query()] = SupportedLocale.KO_KR,
 ) -> SuccessEnvelope[PublicListingDetail]:
     return typed_envelope(request, await service.get_listing(listing_id, locale))
+
+
+@router.get(
+    "/{listing_id}/source-document-url",
+    response_model=SuccessEnvelope[DocumentDownloadUrl],
+)
+async def get_public_source_document_url(
+    request: Request,
+    listing_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[DocumentService, Depends(get_document_service)],
+) -> SuccessEnvelope[DocumentDownloadUrl]:
+    return typed_envelope(
+        request,
+        await service.create_buyer_listing_download_url(listing_id, actor.id),
+    )
 
 
 @router.get(

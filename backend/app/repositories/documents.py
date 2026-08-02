@@ -86,6 +86,10 @@ class DocumentRepository(Protocol):
 
     async def get_document(self, document_id: UUID) -> DocumentRecord | None: ...
 
+    async def get_buyer_listing_document(
+        self, listing_id: UUID, buyer_user_id: UUID
+    ) -> DocumentRecord | None: ...
+
     async def mark_uploaded(
         self,
         document_id: UUID,
@@ -244,6 +248,41 @@ class SqlAlchemyDocumentRepository:
     async def get_document(self, document_id: UUID) -> DocumentRecord | None:
         try:
             return await self._get_document(document_id)
+        except SQLAlchemyError as exc:
+            raise DocumentRepositoryError from exc
+
+    async def get_buyer_listing_document(
+        self, listing_id: UUID, buyer_user_id: UUID
+    ) -> DocumentRecord | None:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select d.id, d.organization_id, d.listing_id, d.contract_id,
+                           d.purpose::text, d.status::text, d.storage_bucket,
+                           d.storage_object_path, d.original_filename, d.mime_type,
+                           d.size_bytes, d.content_sha256, d.expected_mime_type,
+                           d.expected_size_bytes, d.expected_content_sha256,
+                           d.failure_code, d.created_at, d.updated_at
+                    from public.listings l
+                    join public.documents d on d.listing_id = l.id
+                    join public.contracts c on c.listing_id = l.id
+                    where l.id = :listing_id
+                      and l.status = 'published'
+                      and d.purpose = 'source_contract'
+                      -- The original upload is safe to download as soon as it
+                      -- passes upload verification.  AI processing changes its
+                      -- analysis state, not the validity of the stored PDF.
+                      and d.status in ('uploaded', 'ready')
+                      and c.buyer_user_id = :buyer_user_id
+                    order by d.created_at desc
+                    limit 1
+                    """
+                ),
+                {"listing_id": listing_id, "buyer_user_id": buyer_user_id},
+            )
+            row = result.mappings().one_or_none()
+            return DocumentRecord(**row) if row else None
         except SQLAlchemyError as exc:
             raise DocumentRepositoryError from exc
 

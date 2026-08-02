@@ -162,7 +162,7 @@ export async function uploadAndProcessSourceContract(
     .join("");
   const headers = authenticatedHeaders(session, { "Content-Type": "application/json" });
 
-  const listing = await apiFetch<{ listing_id: string }>("/seller/listings", {
+  const listing = await apiFetch<{ listing_id: string; version_no: number }>("/seller/listings", {
     method: "POST",
     headers: new Headers([
       ...headers.entries(),
@@ -392,6 +392,29 @@ export async function finalizeSellerListing(
   if (publish) await publishSellerListing(listingId);
 }
 
+export async function registerPublishedSellerListing(input: SellerListingDraftInput & {
+  listingId?: string;
+  baseVersionNo?: number;
+  sourceDocumentId?: string;
+  method: "write" | "upload";
+}): Promise<SellerListingSummary> {
+  const draft: SellerListingDraftInput = { ...input, available: true };
+  let listingId = input.listingId;
+  if (listingId) await finalizeSellerListing(listingId, draft, true, input.baseVersionNo ?? 1);
+  else listingId = (await saveSellerListing(draft, true)).listingId;
+  if (input.sourceDocumentId) {
+    const session = getApiSession();
+    await apiFetch(`/seller/listings/${listingId}/presentation`, {
+      method: "PATCH",
+      headers: authenticatedHeaders(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ hero_document_id: input.sourceDocumentId }),
+    });
+  }
+  const listing = (await getSellerListings()).find((item) => item.id === listingId);
+  if (!listing || listing.status !== "published") throw new Error("공고 공개 상태를 확인하지 못했습니다.");
+  return listing;
+}
+
 export async function publishSellerListing(listingId: string): Promise<void> {
   const session = getApiSession();
   await apiFetch(`/seller/listings/${listingId}/complete`, { method: "POST", headers: authenticatedHeaders(session) });
@@ -412,6 +435,12 @@ export async function archiveSellerListing(listingId: string): Promise<void> {
     method: "POST",
     headers: authenticatedHeaders(session),
   });
+}
+
+export async function changeSellerListingStatus(listingId: string, action: "publish" | "pause" | "archive"): Promise<void> {
+  if (action === "publish") return publishSellerListing(listingId);
+  if (action === "pause") return pauseSellerListing(listingId);
+  return archiveSellerListing(listingId);
 }
 export type Role = "buyer" | "seller";
 
@@ -477,6 +506,8 @@ export function getReceivedContracts(): Promise<SellerContractListItem[]> {
     headers: authenticatedHeaders(session),
   });
 }
+
+export const getSellerReceivedContracts = getReceivedContracts;
 
 export type SellerDashboard = {
   stats: {
@@ -631,6 +662,8 @@ export function createContractRequest(
   });
 }
 
+export const createPublicContractRequest = createContractRequest;
+
 export type RevisionItemPayload = {
   request_type: "modify" | "delete" | "add";
   clause_id?: string;
@@ -774,6 +807,8 @@ export function patchRevisionItem(
   });
 }
 
+export const decideRevisionItem = patchRevisionItem;
+
 export type MeProfile = {
   id: string;
   email: string | null;
@@ -910,6 +945,13 @@ export function createSignatureRequest(
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(payload),
+  });
+}
+
+export function dispatchSignatureRequest(contractId: string, versionId: string): Promise<SignatureRequest> {
+  return apiFetch<SignatureRequest>(`/contracts/${contractId}/versions/${versionId}/signature-requests/dispatch`, {
+    method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
   });
 }
 
@@ -1171,6 +1213,24 @@ export function generatePublicListingSummary(
       ].join("\n"),
     },
   ]);
+export function getPublicSourceDocumentUrl(listingId: string): Promise<{ document_id: string; download_url: string; expires_at: string }> {
+  const token = getAccessToken();
+  if (!token) throw new ApiError({ code: "AUTH_REQUIRED", message: "Login required." });
+  return apiFetch(`/public/listings/${encodeURIComponent(listingId)}/source-document-url`, { headers: { Authorization: `Bearer ${token}` } });
+}
+
+export async function getPublicListingAsContract(listingId: string): Promise<import("../data/contracts").Contract> {
+  const listing = await getPublicListing(listingId);
+  return {
+    id: listing.id, seller: listing.seller.name, title: listing.title, category: listing.category,
+    district: listing.district, start: listing.availability.start_date ?? "미정", end: listing.availability.end_date ?? "미정",
+    unitPrice: listing.base_price?.amount_minor ?? 0, priceUnit: listing.base_price?.unit ?? "기준 단가", quantityUnit: listing.quantity_unit ?? undefined,
+    quantityLabel: listing.supply_quantity_description ?? "미정", capacity: Number.MAX_SAFE_INTEGER,
+    available: listing.contract_available, popularity: 0, createdOrder: 0, recommendScore: 0,
+    image: listing.hero_image_url ?? "", aiSummary: listing.ai_summary?.split("\n") ?? ["AI 요약이 아직 준비되지 않았습니다."],
+    details: { period: `${listing.availability.start_date ?? "미정"} ~ ${listing.availability.end_date ?? "미정"}`, supplyQuantity: listing.supply_quantity_description ?? "미정", unitPrice: `${(listing.base_price?.amount_minor ?? 0).toLocaleString("ko-KR")} ${listing.base_price?.currency ?? "KRW"}`, cancellation: listing.cancellation_policy ?? "미정", noShow: listing.no_show_policy ?? "미정", settlement: listing.settlement_policy ?? "미정" },
+    clauses: listing.clauses.map((clause, index) => ({ id: clause.id, no: `제${index + 1}조`, title: clause.title, text: clause.body })),
+  };
 }
 
 export type AuthenticatedDemoSession = {

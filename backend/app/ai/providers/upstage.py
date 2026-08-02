@@ -26,6 +26,7 @@ from app.ai.schemas import (
     FileSearchHit,
     FileSearchRequest,
     FileSearchResult,
+    InformationExtractionResult,
     KnowledgeFileRecord,
     LanguageModelRequest,
     ParsedBlock,
@@ -157,9 +158,9 @@ class UpstageAIProvider:
         payload = self._json(response)
         return self._parse_document_response(payload, response.headers.get("x-request-id"))
 
-    async def extract_information(
-        self, document: DocumentInput, parsed: DocumentParseResult
-    ) -> ContractExtraction:
+    async def request_information_extraction(
+        self, document: DocumentInput
+    ) -> InformationExtractionResult:
         # Universal Extraction is mapped only here; the domain task remains
         # `information_extract` regardless of the provider product name.
         encoded_document = base64.b64encode(document.content).decode("ascii")
@@ -205,17 +206,45 @@ class UpstageAIProvider:
             message = payload["choices"][0]["message"]
             values = self._json_value(message["content"])
             additional_values = self._additional_values(message)
-            return self._map_contract_extraction(
-                values,
-                additional_values,
-                parsed,
-                response.headers.get("x-request-id"),
+            return InformationExtractionResult(
+                values=values,
+                additional_values=additional_values,
+                provider_request_id=response.headers.get("x-request-id"),
             )
         except (KeyError, IndexError, TypeError, ValidationError) as exc:
             raise AIProviderInvalidResponseError from exc
 
+    def map_information_extraction(
+        self, result: InformationExtractionResult, parsed: DocumentParseResult
+    ) -> ContractExtraction:
+        try:
+            return self._map_contract_extraction(
+                result.values,
+                result.additional_values,
+                parsed,
+                result.provider_request_id,
+            )
+        except ValidationError as exc:
+            raise AIProviderInvalidResponseError from exc
+
+    async def extract_information(
+        self, document: DocumentInput, parsed: DocumentParseResult
+    ) -> ContractExtraction:
+        result = await self.request_information_extraction(document)
+        return self.map_information_extraction(result, parsed)
+
     @staticmethod
     def _json_value(value: Any) -> dict[str, Any]:
+        # Some OpenAI-compatible responses return content as typed text parts
+        # instead of a single string.  Treat that representation exactly like
+        # the plain text form rather than failing the whole document.
+        if isinstance(value, list):
+            text_parts = [
+                part.get("text")
+                for part in value
+                if isinstance(part, dict) and isinstance(part.get("text"), str)
+            ]
+            value = "".join(text_parts) if text_parts else value
         if isinstance(value, str):
             try:
                 value = json.loads(value)
@@ -259,12 +288,21 @@ class UpstageAIProvider:
             )
         }
         for provider_field, (section_name, field_name, _, _) in _EXTRACTION_FIELDS.items():
-            value = values.get(provider_field)
+            value = cls._normalize_extracted_value(provider_field, values.get(provider_field))
             if value is None or value == "":
                 continue
             metadata = additional_values.get(provider_field)
             metadata = metadata if isinstance(metadata, dict) else {}
             source_page = cls._source_page(metadata)
+            # Location metadata is auxiliary.  A provider can omit it, use a
+            # zero-based page index, or point at a page not represented in the
+            # parse result.  Keep the extracted value and ask the seller to
+            # confirm it instead of discarding the entire OCR run.
+            page_numbers = {page.page_number for page in parsed.pages}
+            if source_page == 0 and page_numbers:
+                source_page = min(page_numbers)
+            elif source_page not in page_numbers:
+                source_page = None
             bbox = cls._bounding_box(metadata)
             sections[section_name]["missing"] = False
             sections[section_name]["fields"][field_name] = {
@@ -282,6 +320,41 @@ class UpstageAIProvider:
                 "model_name": "information-extract",
             }
         )
+
+    @staticmethod
+    def _normalize_extracted_value(provider_field: str, value: Any) -> Any:
+        """Normalize common provider representations without inventing data."""
+        if value is None or isinstance(value, bool):
+            return None
+        if provider_field == "price_amount_minor":
+            if isinstance(value, (int, float)):
+                return int(value) if value >= 0 else None
+            if isinstance(value, str):
+                match = re.search(r"\d[\d,\s]*", value)
+                if match:
+                    try:
+                        return int(re.sub(r"[,\s]", "", match.group(0)))
+                    except ValueError:
+                        return None
+            return None
+        if provider_field in {"service_start_date", "service_end_date"}:
+            if not isinstance(value, str):
+                return None
+            matched = re.search(
+                r"(\d{4})\s*(?:[-./년])\s*(\d{1,2})\s*(?:[-./월])\s*(\d{1,2})",
+                value,
+            )
+            if not matched:
+                return None
+            try:
+                year, month, day = (int(part) for part in matched.groups())
+                return f"{year:04d}-{month:02d}-{day:02d}"
+            except ValueError:
+                return None
+        if provider_field == "price_currency":
+            normalized = str(value).strip().upper()
+            return normalized if re.fullmatch(r"[A-Z]{3}", normalized) else None
+        return value
 
     @staticmethod
     def _confidence(value: Any) -> float | None:
@@ -310,27 +383,30 @@ class UpstageAIProvider:
         location = metadata.get("location")
         location = location if isinstance(location, dict) else metadata
         coordinates = location.get("coordinates") or location.get("bounding_box")
-        if isinstance(coordinates, dict):
-            if all(key in coordinates for key in ("x", "y", "width", "height")):
-                return {key: float(coordinates[key]) for key in ("x", "y", "width", "height")}
-            coordinates = coordinates.get("vertices") or coordinates.get("points")
-        if not isinstance(coordinates, list):
+        try:
+            if isinstance(coordinates, dict):
+                if all(key in coordinates for key in ("x", "y", "width", "height")):
+                    return {key: float(coordinates[key]) for key in ("x", "y", "width", "height")}
+                coordinates = coordinates.get("vertices") or coordinates.get("points")
+            if not isinstance(coordinates, list):
+                return None
+            points: list[tuple[float, float]] = []
+            for point in coordinates:
+                if isinstance(point, dict) and "x" in point and "y" in point:
+                    points.append((float(point["x"]), float(point["y"])))
+                elif isinstance(point, (list, tuple)) and len(point) >= 2:
+                    points.append((float(point[0]), float(point[1])))
+            if not points:
+                return None
+            xs, ys = zip(*points, strict=True)
+            return {
+                "x": min(xs),
+                "y": min(ys),
+                "width": max(xs) - min(xs),
+                "height": max(ys) - min(ys),
+            }
+        except (TypeError, ValueError):
             return None
-        points: list[tuple[float, float]] = []
-        for point in coordinates:
-            if isinstance(point, dict) and "x" in point and "y" in point:
-                points.append((float(point["x"]), float(point["y"])))
-            elif isinstance(point, (list, tuple)) and len(point) >= 2:
-                points.append((float(point[0]), float(point[1])))
-        if not points:
-            return None
-        xs, ys = zip(*points, strict=True)
-        return {
-            "x": min(xs),
-            "y": min(ys),
-            "width": max(xs) - min(xs),
-            "height": max(ys) - min(ys),
-        }
 
     @staticmethod
     def _source_quote(
