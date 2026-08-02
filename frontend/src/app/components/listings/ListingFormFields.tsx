@@ -36,7 +36,7 @@ export function ProductFields({ draft, onChange, errors = {} }: { draft: Listing
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <Field label={t("lf.productName")} required error={errors.productName}>
-          <Input aria-invalid={!!errors.productName} className={errors.productName ? "border-destructive" : ""} value={draft.productName} placeholder={t("lf.productNamePh")} onChange={(e) => onChange({ productName: e.target.value })} />
+          <Textarea aria-invalid={!!errors.productName} className={`min-h-0 ${errors.productName ? "border-destructive" : ""}`} rows={1} value={draft.productName} placeholder={t("lf.productNamePh")} onChange={(e) => onChange({ productName: e.target.value })} />
         </Field>
       </div>
       <Field label={t("lf.category")} required error={errors.category}>
@@ -75,7 +75,7 @@ export function SupplyFields({ draft, onChange, errors = {} }: { draft: ListingD
       </Field>
       <div className="sm:col-span-2">
         <Field label={t("lf.quantity")} required error={errors.quantity}>
-          <Input aria-invalid={!!errors.quantity} className={errors.quantity ? "border-destructive" : ""} value={draft.quantity} placeholder={t("lf.quantityPh")} onChange={(e) => onChange({ quantity: e.target.value })} />
+          <Textarea aria-invalid={!!errors.quantity} className={`min-h-0 ${errors.quantity ? "border-destructive" : ""}`} rows={1} value={draft.quantity} placeholder={t("lf.quantityPh")} onChange={(e) => onChange({ quantity: e.target.value })} />
         </Field>
       </div>
       <Field label={t("lf.unitPrice")} required error={errors.unitPrice}>
@@ -104,33 +104,25 @@ export function SupplyFields({ draft, onChange, errors = {} }: { draft: ListingD
 export function TermsFields({ draft, onChange, errors = {} }: { draft: ListingDraft; onChange: (p: Patch) => void; errors?: FieldErrors }) {
   const { t } = useApp();
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4">
       <Field label={t("lf.cancellation")} required error={errors.cancellation}>
         <Textarea aria-invalid={!!errors.cancellation} className={errors.cancellation ? "border-destructive" : ""} rows={4} value={draft.cancellation} placeholder={t("lf.cancellationPh")} onChange={(e) => onChange({ cancellation: e.target.value })} />
       </Field>
       <Field label={t("lf.noShow")} required error={errors.noShow}>
         <Textarea aria-invalid={!!errors.noShow} className={errors.noShow ? "border-destructive" : ""} rows={4} value={draft.noShow} placeholder={t("lf.noShowPh")} onChange={(e) => onChange({ noShow: e.target.value })} />
       </Field>
-      <div className="sm:col-span-2">
-        <Field label={t("lf.settlement")} required error={errors.settlement}>
-          <Textarea aria-invalid={!!errors.settlement} className={errors.settlement ? "border-destructive" : ""} rows={3} value={draft.settlement} placeholder={t("lf.settlementPh")} onChange={(e) => onChange({ settlement: e.target.value })} />
-        </Field>
-      </div>
-      <div className="sm:col-span-2">
-        <Field label={t("lf.liability")} required error={errors.liability}>
-          <Textarea aria-invalid={!!errors.liability} className={errors.liability ? "border-destructive" : ""} rows={2} value={draft.liability} placeholder={t("lf.liabilityPh")} onChange={(e) => onChange({ liability: e.target.value })} />
-        </Field>
-      </div>
-      <div className="sm:col-span-2">
-        <Field label={t("lf.termination")} required error={errors.termination}>
-          <Input aria-invalid={!!errors.termination} className={errors.termination ? "border-destructive" : ""} value={draft.termination} placeholder={t("lf.terminationPh")} onChange={(e) => onChange({ termination: e.target.value })} />
-        </Field>
-      </div>
-      <div className="sm:col-span-2">
-        <Field label={t("lf.special")}>
-          <Textarea rows={2} value={draft.special} placeholder={t("lf.specialPh")} onChange={(e) => onChange({ special: e.target.value })} />
-        </Field>
-      </div>
+      <Field label={t("lf.settlement")} required error={errors.settlement}>
+        <Textarea aria-invalid={!!errors.settlement} className={errors.settlement ? "border-destructive" : ""} rows={3} value={draft.settlement} placeholder={t("lf.settlementPh")} onChange={(e) => onChange({ settlement: e.target.value })} />
+      </Field>
+      <Field label={t("lf.liability")} required error={errors.liability}>
+        <Textarea aria-invalid={!!errors.liability} className={errors.liability ? "border-destructive" : ""} rows={2} value={draft.liability} placeholder={t("lf.liabilityPh")} onChange={(e) => onChange({ liability: e.target.value })} />
+      </Field>
+      <Field label={t("lf.termination")} required error={errors.termination}>
+        <Textarea aria-invalid={!!errors.termination} className={errors.termination ? "border-destructive" : ""} rows={2} value={draft.termination} placeholder={t("lf.terminationPh")} onChange={(e) => onChange({ termination: e.target.value })} />
+      </Field>
+      <Field label={t("lf.special")}>
+        <Textarea rows={2} value={draft.special} placeholder={t("lf.specialPh")} onChange={(e) => onChange({ special: e.target.value })} />
+      </Field>
     </div>
   );
 }
