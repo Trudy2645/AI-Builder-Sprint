@@ -23,7 +23,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const PRICE_UNITS = ["객실당", "1인당", "1동당", "1좌석당", "1팀당"];
+const PRICE_UNITS = ["객실당", "1인당", "차량 1대·1일", "1동당", "1좌석당", "1팀당"];
 
 export function ProductFields({ draft, onChange }: { draft: ListingDraft; onChange: (p: Patch) => void }) {
   const { t } = useApp();

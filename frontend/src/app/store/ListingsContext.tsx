@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApp } from "../context/AppContext";
 import type { Category } from "../data/contracts";
+import { listSellerListings, type SellerListingSummary } from "../lib/sellerAi";
 
 // 계약 공고 상태: 임시저장 / AI 검토 필요 / 공개 중 / 공개 중지 / 기간 만료
 export type ListingStatus = "draft" | "needsReview" | "public" | "paused" | "expired";
@@ -106,6 +107,7 @@ export function draftToListing(
 interface ListingsContextValue {
   listings: Listing[];
   addListing: (l: Omit<Listing, "id" | "updatedAt">) => void;
+  refreshListings: () => Promise<void>;
   publicCount: number;
 }
 
@@ -163,12 +165,48 @@ const seed: Listing[] = [
 ];
 
 export function ListingsProvider({ children }: { children: ReactNode }) {
-  const { isDemoSession } = useApp();
+  const { isDemoSession, currentRole, organizationId } = useApp();
   const [listings, setListings] = useState<Listing[]>([]);
 
+  const fromApi = (listing: SellerListingSummary): Listing => ({
+    id: listing.id,
+    productName: listing.display_title || listing.title,
+    category: listing.category,
+    district: listing.district,
+    start: listing.service_start_date?.replaceAll("-", ".") ?? "",
+    end: listing.service_end_date?.replaceAll("-", ".") ?? "",
+    unitPrice: listing.base_price?.amount_minor ?? 0,
+    priceUnit: listing.base_price?.unit ?? "",
+    quantityLabel: listing.supply_quantity_description ?? "미정",
+    status: listing.status === "published"
+      ? "public"
+      : listing.status === "ready" || listing.status === "processing"
+        ? "needsReview"
+        : listing.status === "archived"
+          ? "expired"
+          : listing.status,
+    method: listing.creation_method === "manual" ? "write" : "upload",
+    requests: listing.contract_request_count,
+    updatedAt: listing.updated_at.slice(0, 10).replaceAll("-", "."),
+    riskCount: listing.attention_required_count,
+  });
+
+  const refreshListings = async () => {
+    if (isDemoSession) {
+      setListings(seed);
+      return;
+    }
+    if (currentRole !== "seller" || !organizationId) {
+      setListings([]);
+      return;
+    }
+    const rows = await listSellerListings(organizationId);
+    setListings(rows.map(fromApi));
+  };
+
   useEffect(() => {
-    setListings(isDemoSession ? seed : []);
-  }, [isDemoSession]);
+    void refreshListings().catch(() => setListings([]));
+  }, [isDemoSession, currentRole, organizationId]);
 
   const addListing: ListingsContextValue["addListing"] = (l) => {
     const now = new Date();
@@ -180,6 +218,7 @@ export function ListingsProvider({ children }: { children: ReactNode }) {
     () => ({
       listings,
       addListing,
+      refreshListings,
       publicCount: listings.filter((l) => l.status === "public").length,
     }),
     [listings],

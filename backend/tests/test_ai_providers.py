@@ -13,9 +13,11 @@ from app.ai.providers.base import (
 from app.ai.providers.fake import FakeAIProvider
 from app.ai.providers.upstage import UpstageAIProvider
 from app.ai.schemas import (
+    ContractReviewToolBatch,
     DocumentInput,
     DocumentParseResult,
     FileSearchRequest,
+    GeneratedContractDraft,
     LanguageModelRequest,
     ParsedBlock,
     ParsedPage,
@@ -96,6 +98,51 @@ async def test_fake_provider_is_deterministic_and_validates_structured_output() 
         ("information_extract", "contract.pdf"),
         ("language_model", "public_summary"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_fake_provider_supports_local_contract_flow_without_queued_outputs() -> None:
+    fake = FakeAIProvider(enable_default_outputs=True)
+    generated = await fake.generate_structured(
+        LanguageModelRequest(
+            task_type="contract_generate",
+            system_prompt="Generate a contract.",
+            input_data={
+                "terms": {
+                    "service_start_date": "2026-08-01",
+                    "base_price_amount_minor": 145000,
+                    "currency": "KRW",
+                }
+            },
+            prompt_version="busan-link-v1",
+        ),
+        GeneratedContractDraft,
+    )
+    reviewed = await fake.generate_structured(
+        LanguageModelRequest(
+            task_type="contract_review",
+            system_prompt="Review a contract.",
+            input_data={
+                "rule_findings": [
+                    {
+                        "category": "liability",
+                        "severity": "medium",
+                        "importance": "high",
+                        "title": "책임 조건 확인이 필요합니다",
+                        "explanation": "책임 범위를 당사자가 확인해야 합니다.",
+                        "suggested_text": "귀책 사유에 따른 책임 범위를 기재하세요.",
+                    }
+                ]
+            },
+            prompt_version="busan-link-v1",
+        ),
+        ContractReviewToolBatch,
+    )
+
+    assert generated.clauses[0].body == "공급 시작일: 2026-08-01"
+    assert any("145000" in clause.body for clause in generated.clauses)
+    assert reviewed.tool_calls[0].name == "submit_review"
+    assert reviewed.tool_calls[0].arguments["findings"][0]["category"] == "liability"
 
 
 @pytest.mark.asyncio

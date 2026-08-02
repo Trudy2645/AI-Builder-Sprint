@@ -25,7 +25,8 @@ from app.ai.schemas import (
 class FakeAIProvider:
     """Deterministic provider used by every AI workflow test."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, enable_default_outputs: bool = False) -> None:
+        self._enable_default_outputs = enable_default_outputs
         self.calls: list[tuple[str, str]] = []
         self._failures: dict[str, deque[AIProviderError]] = defaultdict(deque)
         self._structured_outputs: dict[str, deque[dict[str, Any] | BaseModel]] = defaultdict(deque)
@@ -93,12 +94,125 @@ class FakeAIProvider:
         self._raise_queued(request.task_type)
         queue = self._structured_outputs[request.task_type]
         if not queue:
-            raise RuntimeError(f"No fake output configured for {request.task_type}.")
-        output = queue.popleft()
+            if not self._enable_default_outputs:
+                raise RuntimeError(f"No fake output configured for {request.task_type}.")
+            output = self._default_structured_output(request)
+        else:
+            output = queue.popleft()
         if isinstance(output, response_model):
             return output
         raw = output.model_dump(mode="json") if isinstance(output, BaseModel) else output
         return response_model.model_validate(raw)
+
+    @staticmethod
+    def _default_structured_output(request: LanguageModelRequest) -> dict[str, Any]:
+        """Return deterministic local-dev output while preserving explicit test queues."""
+        if request.task_type == "contract_generate":
+            terms = request.input_data.get("terms", {})
+            if not isinstance(terms, dict):
+                terms = {}
+            labels = {
+                "service_start_date": "공급 시작일",
+                "service_end_date": "공급 종료일",
+                "supply_quantity": "공급 수량",
+                "supply_quantity_description": "공급 수량 설명",
+                "quantity_unit": "수량 단위",
+                "minimum_quantity": "최소 수량",
+                "maximum_quantity": "최대 수량",
+                "people_per_unit": "단위당 인원",
+                "base_price_amount_minor": "기준 단가",
+                "currency": "통화",
+                "price_unit": "가격 단위",
+                "minimum_people": "최소 인원",
+                "maximum_people": "최대 인원",
+                "cancellation_policy": "취소 조건",
+                "no_show_policy": "노쇼 조건",
+                "refund_policy": "환불 조건",
+                "settlement_policy": "정산 조건",
+                "safety_policy": "안전 조건",
+                "compensation_policy": "보상 조건",
+                "liability_policy": "책임 조건",
+                "termination_policy": "계약 해지 조건",
+                "special_terms": "특약",
+            }
+            clauses = [
+                {
+                    "clause_key": key,
+                    "title": labels.get(key, key.replace("_", " ")),
+                    "body": f"{labels.get(key, key)}: {value}",
+                }
+                for key, value in terms.items()
+                if value is not None and (not isinstance(value, str) or value.strip())
+            ]
+            return {"clauses": clauses}
+        if request.task_type == "contract_review":
+            raw_findings = request.input_data.get("rule_findings", [])
+            findings = []
+            if isinstance(raw_findings, list):
+                for item in raw_findings:
+                    if not isinstance(item, dict):
+                        continue
+                    findings.append(
+                        {
+                            "clause_id": item.get("clause_id"),
+                            "category": item.get("category", "contract_terms"),
+                            "severity": item.get("severity", "medium"),
+                            "importance": item.get("importance", "medium"),
+                            "title": item.get("title", "계약 조건 확인이 필요합니다"),
+                            "explanation": item.get(
+                                "explanation", "당사자가 계약 조건을 확인해야 합니다."
+                            ),
+                            "suggested_text": item.get("suggested_text"),
+                            "grounding_status": "insufficient_evidence",
+                            "confidence": None,
+                            "source_location": item.get("source_location", {}),
+                            "evidence_ids": [],
+                            "disclaimer": "법률 자문이 아닌 계약 검토 보조 의견입니다.",
+                            "is_public": False,
+                        }
+                    )
+            return {"tool_calls": [{"name": "submit_review", "arguments": {"findings": findings}}]}
+        if request.task_type == "localize_explain":
+            source = request.input_data.get("source", {})
+            target_locale = request.input_data.get("target_locale", "ko-KR")
+            if not isinstance(source, dict):
+                source = {}
+            return {
+                "locale": target_locale,
+                "title": source.get("title") or "계약 안내",
+                "public_headline": source.get("public_headline"),
+                "summary": source.get("summary") or "계약 조건을 확인해 주세요.",
+                "easy_explanation": source.get("easy_explanation")
+                or "계약의 주요 조건을 확인해 주세요.",
+                "terms": source.get("terms", {}),
+                "clauses": [
+                    {
+                        "clause_id": item["clause_id"],
+                        "clause_no": item["clause_no"],
+                        "title": item["title"],
+                        "body": item["body"],
+                        "easy_explanation": item["body"],
+                    }
+                    for item in source.get("clauses", [])
+                ],
+                "findings": [
+                    {
+                        "finding_id": item["finding_id"],
+                        "clause_id": item.get("clause_id"),
+                        "severity": item["severity"],
+                        "explanation": item["explanation"],
+                        "suggested_text": item.get("suggested_text"),
+                        "disclaimer": item["disclaimer"],
+                        "evidence_numbers": item.get("evidence_numbers", []),
+                    }
+                    for item in source.get("findings", [])
+                ],
+                "preserved_facts": source.get("preserved_facts", {}),
+                "preserved_names": source.get("preserved_names", []),
+                "disclaimer": source.get("disclaimer")
+                or "법률 자문이 아닌 계약 검토 보조 의견입니다.",
+            }
+        raise RuntimeError(f"No fake output configured for {request.task_type}.")
 
     async def search_files(self, request: FileSearchRequest) -> FileSearchResult:
         self.calls.append(("file_search", request.query))

@@ -10,17 +10,18 @@ interface AppContextValue {
   t: (key: string) => string;
   companyName: string;
   setCompanyName: (name: string) => void;
+  organizationId: string | null;
   currentRole: Role | null;
   isDemoSession: boolean;
   login: (role: Role, company?: string, isDemo?: boolean) => void;
-  loginWithSession: (role: Role, company: string, accessToken: string) => void;
+  loginWithSession: (role: Role, company: string, accessToken: string, organizationId?: string | null) => void;
   logout: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 const sessionKey = "busan-link-session";
 
-type StoredSession = { role: Role; companyName: string };
+type StoredSession = { role: Role; companyName: string; organizationId?: string | null };
 
 function readStoredSession(): StoredSession | null {
   try {
@@ -42,12 +43,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const storedSession = readStoredSession();
   const [lang, setLang] = useState<Lang>("ko");
   const [companyName, setCompanyName] = useState<string>(storedSession?.companyName ?? "");
+  const [organizationId, setOrganizationId] = useState<string | null>(storedSession?.organizationId ?? null);
   const [currentRole, setCurrentRole] = useState<Role | null>(storedSession?.role ?? null);
   const [isDemoSession, setIsDemoSession] = useState(false);
 
   const login = (role: Role, company?: string, isDemo = false) => {
     setCurrentRole(role);
     setCompanyName(company ?? "");
+    setOrganizationId(null);
     setIsDemoSession(isDemo);
     if (!isDemo) {
       window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
@@ -59,12 +62,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.localStorage.removeItem(sessionKey);
     setCurrentRole(null);
     setCompanyName("");
+    setOrganizationId(null);
     setIsDemoSession(false);
   };
 
-  const loginWithSession = (role: Role, company: string, accessToken: string) => {
+  const loginWithSession = (role: Role, company: string, accessToken: string, nextOrganizationId?: string | null) => {
     setAccessToken(accessToken);
-    login(role, company, false);
+    setCurrentRole(role);
+    setCompanyName(company);
+    setOrganizationId(nextOrganizationId ?? null);
+    setIsDemoSession(false);
+    window.localStorage.setItem(
+      sessionKey,
+      JSON.stringify({ role, companyName: company, organizationId: nextOrganizationId ?? null }),
+    );
   };
 
   const value = useMemo<AppContextValue>(
@@ -74,13 +85,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       t: (key: string) => translate(key, lang),
       companyName,
       setCompanyName,
+      organizationId,
       currentRole,
       isDemoSession,
       login,
       loginWithSession,
       logout,
     }),
-    [lang, companyName, currentRole, isDemoSession],
+    [lang, companyName, organizationId, currentRole, isDemoSession],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

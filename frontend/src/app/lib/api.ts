@@ -37,6 +37,8 @@ export function friendlyApiError(error: unknown): string {
   if (error instanceof ApiError) {
     const messages: Record<string, string> = {
       AUTH_REQUIRED: "로그인이 필요합니다. 로그인한 뒤 다시 시도해 주세요.",
+      ORGANIZATION_HEADER_REQUIRED: "셀러 조직 정보를 찾을 수 없습니다. 다시 로그인해 주세요.",
+      ORG_ACCESS_DENIED: "이 셀러 조직의 공고를 변경할 권한이 없습니다.",
       LISTING_NOT_FOUND: "요청한 공고를 찾을 수 없거나 더 이상 공개되지 않았습니다.",
       LISTING_NOT_AVAILABLE: "이 공고는 현재 계약을 받을 수 없습니다. 다른 공고를 선택해 주세요.",
       SERVICE_PERIOD_UNAVAILABLE: "선택한 이용 기간에는 이 상품을 이용할 수 없습니다.",
@@ -44,6 +46,13 @@ export function friendlyApiError(error: unknown): string {
       QUANTITY_REQUIRED: "객실·차량 등 필요한 수량을 입력해 주세요.",
       UNSUPPORTED_DISPLAY_CURRENCY: "현재는 상품 기준 통화로만 예상 금액을 계산할 수 있습니다.",
       DATABASE_UNAVAILABLE: "서비스 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      AI_INPUT_INSUFFICIENT: "AI 작업에 필요한 계약 조건이 부족합니다. 필수 항목을 확인해 주세요.",
+      AI_PROVIDER_TIMEOUT: "AI 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.",
+      AI_PROVIDER_RATE_LIMITED: "AI 요청이 많습니다. 잠시 후 다시 시도해 주세요.",
+      AI_PROVIDER_TEMPORARY_FAILURE: "AI 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해 주세요.",
+      AI_SCHEMA_INVALID: "AI가 문서를 올바른 형식으로 분석하지 못했습니다. 내용을 확인한 뒤 다시 시도해 주세요.",
+      VERSION_CONFLICT: "다른 곳에서 공고가 변경되었습니다. 목록을 새로고침한 뒤 다시 시도해 주세요.",
+      STORAGE_PROVIDER_UNAVAILABLE: "파일 저장소에 연결하지 못했습니다. 서버 설정을 확인해 주세요.",
     };
     return messages[error.code] ?? error.message;
   }

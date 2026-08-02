@@ -42,8 +42,8 @@ export function LoginPage() {
     try {
       const result = await loginWithPassword(email, password);
       if (!result.session) throw new Error("Login session was not returned.");
-      const role = inferDemoRole(email);
-      loginWithSession(role, email, result.session.access_token);
+      const role = result.role ?? inferDemoRole(email);
+      loginWithSession(role, email, result.session.access_token, result.organization_id);
       navigate(`/${role}`);
     } catch (error) {
       if (error instanceof TypeError && isDemoEmail(email)) {

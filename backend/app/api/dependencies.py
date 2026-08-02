@@ -90,7 +90,7 @@ def get_ai_provider(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> FakeAIProvider | UpstageAIProvider:
     if settings.ai_provider == "fake":
-        return FakeAIProvider()
+        return FakeAIProvider(enable_default_outputs=True)
     if not settings.upstage_api_key:
         raise AppError(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
