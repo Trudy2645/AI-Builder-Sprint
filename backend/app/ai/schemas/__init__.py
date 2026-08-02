@@ -9,6 +9,7 @@ from app.ai.schemas.providers import (
     FileSearchRequest,
     FileSearchResult,
     LanguageModelRequest,
+    ListingMapping,
     ParsedBlock,
     ParsedPage,
 )
@@ -16,6 +17,7 @@ from app.ai.schemas.providers import (
 __all__ = [
     "BoundingBox",
     "ContractExtraction",
+    "ListingMapping",
     "DocumentInput",
     "DocumentParseResult",
     "ExtractedSection",
