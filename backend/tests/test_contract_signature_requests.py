@@ -9,8 +9,12 @@ from app.ai.schemas import BoundingBox, DocumentParseResult, ParsedBlock, Parsed
 from app.api.dependencies import get_contract_service, get_modusign_client, get_storage_provider
 from app.core.auth import get_current_user
 from app.core.config import Settings, get_settings
+from app.core.errors import AppError
 from app.domain.contracts.service import ContractService
-from app.domain.contracts.signature_fields import signature_field_candidates
+from app.domain.contracts.signature_fields import (
+    SignatureFieldPositionError,
+    signature_field_candidates,
+)
 from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.exchange_rates import FakeExchangeRateProvider
@@ -21,7 +25,9 @@ from app.repositories.contracts import (
     ContractVersionApprovalContextRecord,
     ContractVersionConflictError,
     SignatureRequestRecord,
+    SqlAlchemyContractRepository,
 )
+from app.schemas.contracts import ContractSignatureRequestCreate
 
 CONTRACT_ID = UUID("b1000000-0000-0000-0000-000000000001")
 VERSION_ID = UUID("b2000000-0000-0000-0000-000000000001")
@@ -153,6 +159,25 @@ class FakeModusignClient:
         return (b"signed" if url.endswith("signed") else b"audit", "application/pdf")
 
 
+class EmptyOneMappingResult:
+    def mappings(self) -> "EmptyOneMappingResult":
+        return self
+
+    def one_or_none(self) -> None:
+        return None
+
+
+class CapturingSession:
+    def __init__(self) -> None:
+        self.statement: object | None = None
+        self.params: dict[str, object] | None = None
+
+    async def execute(self, statement: object, params: dict[str, object]) -> EmptyOneMappingResult:
+        self.statement = statement
+        self.params = params
+        return EmptyOneMappingResult()
+
+
 @pytest.fixture
 def signature_repository() -> FakeSignatureRepository:
     return FakeSignatureRepository()
@@ -185,7 +210,46 @@ def _payload() -> dict[str, object]:
     }
 
 
-def test_source_pdf_fields_use_distinct_anchors_for_a_single_ocr_table_block() -> None:
+@pytest.mark.asyncio
+async def test_signature_source_prefers_exact_contract_version_pdf() -> None:
+    session = CapturingSession()
+    repository = SqlAlchemyContractRepository(session)  # type: ignore[arg-type]
+
+    assert await repository.get_signature_source_document(CONTRACT_ID, VERSION_ID) is None
+
+    sql = " ".join(str(session.statement).split())
+    assert "d.contract_id = :contract_id" in sql
+    assert "d.contract_version_id = :contract_version_id" in sql
+    assert "d.purpose = 'draft_pdf'" in sql
+    assert "d.status = 'ready'" in sql
+    assert "c.initial_request_kind = 'as_is'" in sql
+    assert "order by d.priority, d.created_at desc" in sql
+
+
+def test_text_pdf_uses_unique_modusign_signature_anchor() -> None:
+    fields = ContractService._source_pdf_fields(
+        candidates=[],
+        page_count=2,
+        page_texts=["계약 내용", "바이어 서명"],
+    )
+
+    assert len(fields) == 1
+    assert fields[0].as_payload() == {
+        "type": "SIGNATURE",
+        "dataLabel": "buyer_signature",
+        "required": True,
+        "position": {
+            "anchor": {
+                "text": "바이어 서명",
+                "offset": {"x": 0.01, "y": 0.005},
+            }
+        },
+        "size": {"width": 0.15, "height": 0.05},
+        "signatureTypes": ["SIGN"],
+    }
+
+
+def test_table_level_ocr_bbox_is_not_used_as_a_signature_coordinate() -> None:
     parsed = DocumentParseResult(
         pages=[
             ParsedPage(
@@ -208,38 +272,105 @@ def test_source_pdf_fields_use_distinct_anchors_for_a_single_ocr_table_block() -
         ]
     )
 
-    fields = signature_field_candidates(parsed)
-    by_label = {field["data_label"]: field for field in fields}
+    assert signature_field_candidates(parsed) == []
+    with pytest.raises(SignatureFieldPositionError):
+        ContractService._source_pdf_fields([], 1, [])
 
-    assert by_label["buyer_name"]["position"]["page"] == 1
-    assert (
-        by_label["buyer_name"]["position"]["y"]
-        != by_label["buyer_passport_or_nationality"]["position"]["y"]
+
+def test_isolated_ocr_marker_uses_its_real_bbox() -> None:
+    parsed = DocumentParseResult(
+        pages=[
+            ParsedPage(
+                page_number=2,
+                blocks=[
+                    ParsedBlock(
+                        block_id="buyer-signature-label",
+                        block_type="paragraph",
+                        content="바이어 서명 (인)",
+                        page_number=2,
+                        bbox=BoundingBox(x=0.50, y=0.80, width=0.12, height=0.03),
+                    )
+                ],
+            )
+        ]
     )
-    assert by_label["buyer_signature"]["field_type"] == "SIGNATURE"
-    assert by_label["buyer_phone"]["position"]["y"] != by_label["buyer_email"]["position"]["y"] or (
-        by_label["buyer_phone"]["position"]["x"] != by_label["buyer_email"]["position"]["x"]
-    )
+
+    candidates = signature_field_candidates(parsed)
+    fields = ContractService._source_pdf_fields(candidates, 2, [])
+
+    assert candidates[0]["placement_strategy"] == "ocr_marker_bbox"
+    assert fields[0].position == {"page": 2, "x": pytest.approx(0.63), "y": 0.785}
+    assert fields[0].size == {"width": 0.20, "height": 0.06}
 
 
-def test_source_pdf_text_fields_include_required_modusign_text_style() -> None:
+def test_manual_coordinate_is_validated_and_used() -> None:
     fields = ContractService._source_pdf_fields(
         [
             {
-                "data_label": "buyer_name",
-                "field_type": "TEXT",
-                "position": {"page": 1, "x": 0.2, "y": 0.3},
-                "size": {"width": 0.3, "height": 0.04},
+                "data_label": "buyer_signature",
+                "field_type": "SIGNATURE",
+                "position": {"page": 2, "x": 0.55, "y": 0.75},
+                "size": {"width": 0.20, "height": 0.06},
+                "placement_strategy": "manual_coordinate",
             }
         ],
-        1,
+        2,
+        [],
     )
 
-    assert fields[0].as_payload()["textStyle"] == {
-        "size": 12,
-        "font": "NOTO_SANS",
-        "align": "LEFT",
-    }
+    assert fields[0].position == {"page": 2, "x": 0.55, "y": 0.75}
+
+
+def test_legacy_guessed_or_out_of_bounds_coordinate_is_rejected() -> None:
+    candidates = [
+        {
+            "data_label": "buyer_signature",
+            "field_type": "SIGNATURE",
+            "position": {"page": 1, "x": 0.94, "y": 0.64},
+            "size": {"width": 0.04, "height": 0.06},
+        },
+        {
+            "data_label": "buyer_signature",
+            "field_type": "SIGNATURE",
+            "position": {"page": 1, "x": 0.90, "y": 0.64},
+            "size": {"width": 0.20, "height": 0.06},
+            "placement_strategy": "manual_coordinate",
+        },
+    ]
+
+    with pytest.raises(SignatureFieldPositionError):
+        ContractService._source_pdf_fields(candidates, 1, [])
+
+
+@pytest.mark.asyncio
+async def test_source_pdf_without_trustworthy_position_fails_before_request_is_persisted(
+    signature_repository: FakeSignatureRepository,
+) -> None:
+    service = ContractService(
+        signature_repository,  # type: ignore[arg-type]
+        PriceCalculator(FakeExchangeRateProvider()),
+    )
+    provider = FakeModusignClient()
+
+    with pytest.raises(AppError) as error:
+        await service.create_signature_request(
+            CONTRACT_ID,
+            VERSION_ID,
+            ContractSignatureRequestCreate.model_validate(_payload()),
+            AuthenticatedUser(id=BUYER_ID, email="buyer@example.test"),
+            None,
+            "missing-position",
+            provider,  # type: ignore[arg-type]
+            "template-1",
+            source_pdf=b"%PDF-1.7\n",
+            source_page_count=1,
+            source_field_candidates=[],
+            source_page_texts=[],
+        )
+
+    assert error.value.code == "SIGNATURE_FIELD_POSITION_REQUIRED"
+    assert signature_repository.requests == {}
+    assert provider.calls == 0
 
 
 def test_creates_persisted_signature_request(

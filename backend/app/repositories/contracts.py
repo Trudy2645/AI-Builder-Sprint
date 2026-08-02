@@ -422,20 +422,37 @@ class SqlAlchemyContractRepository:
             result = await self._session.execute(
                 text(
                     """
+                    with candidate_documents as (
+                        select d.id, d.storage_bucket, d.storage_object_path,
+                               d.extracted_data, d.created_at, 0 as priority
+                        from public.documents d
+                        where d.contract_id = :contract_id
+                          and d.contract_version_id = :contract_version_id
+                          and d.purpose = 'draft_pdf'
+                          and d.status = 'ready'
+
+                        union all
+
+                        select d.id, d.storage_bucket, d.storage_object_path,
+                               d.extracted_data, d.created_at, 1 as priority
+                        from public.contracts c
+                        join public.documents d
+                          on d.listing_id = c.listing_id
+                         and d.purpose = 'source_contract'
+                         and d.status in ('uploaded', 'ready')
+                        where c.id = :contract_id
+                          and c.current_version_id = :contract_version_id
+                          and c.initial_request_kind = 'as_is'
+                    )
                     select d.storage_bucket, d.storage_object_path, d.extracted_data,
                            parsed.storage_bucket as parsed_storage_bucket,
                            parsed.storage_object_path as parsed_storage_object_path
-                    from public.contracts c
-                    join public.documents d
-                      on d.listing_id = c.listing_id
-                     and d.purpose = 'source_contract'
-                     and d.status in ('uploaded', 'ready')
+                    from candidate_documents d
                     left join public.documents parsed
                       on parsed.id = cast(
                           nullif(d.extracted_data ->> 'parsed_artifact_document_id', '') as uuid
                       )
-                    where c.id = :contract_id and c.current_version_id = :contract_version_id
-                    order by d.created_at desc
+                    order by d.priority, d.created_at desc
                     limit 1
                     """
                 ),

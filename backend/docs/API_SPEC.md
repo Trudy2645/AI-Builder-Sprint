@@ -1144,7 +1144,7 @@ Figma의 최종 합의 화면을 유지하므로 buyer와 seller가 동일한 �
 
 승인 상태 응답은 `version_no`, `is_current_version`, buyer/seller별 `approved`, `approved_by_user_id`, `approved_at`, `all_approved`를 포함한다. 승인 요청 응답에는 추가로 `approved_role`, `already_approved`, `contract_status`를 반환한다. 존재하지 않거나 다른 계약에 속한 version은 `CONTRACT_VERSION_NOT_FOUND`, 당사자가 아니면 `CONTRACT_ACCESS_DENIED`, 승인 불가능한 계약 상태는 `INVALID_STATE_TRANSITION`으로 처리한다.
 
-### `POST /contracts/{contract_id}/signature-requests`
+### `POST /contracts/{contract_id}/versions/{version_id}/signature-requests/dispatch`
 
 합의된 현재 버전을 대상으로 모두싸인 템플릿의 `바이어`, `셀러` participant를 매핑한다. 바이어 participant는 로그인한 외국인 개인의 이름과 이메일을 사용한다.
 
@@ -1174,6 +1174,20 @@ MODUSIGN_API_EMAIL=<api-auth-email>
 MODUSIGN_API_KEY=<api-key>
 MODUSIGN_TEMPLATE_ID=<busan-link-template-id>
 ```
+
+발송 PDF와 서명 위치는 다음 규칙을 따른다.
+
+- 수정 계약은 해당 `contract_version_id`에 연결된 `ready` 상태의 `draft_pdf`만 발송한다.
+- `as_is` 계약만 공고의 `source_contract` 원본 PDF로 fallback할 수 있다.
+- 최종 PDF에 `바이어 서명` 또는 `예약자 서명` 텍스트가 한 번 존재하면 모두싸인
+  `position.anchor`를 우선 사용한다.
+- 이미지 PDF는 셀러가 저장한 정규화 수동 좌표 또는 단일 OCR 서명 마커의 bounding box만
+  사용한다. 표 전체 bounding box에서 문자열 길이로 위치를 추정하지 않는다.
+- 좌표는 `page >= 1`, `0 <= x,y <= 1`, `width,height >= 0.01`이고 전체 영역이 페이지 안에
+  들어와야 한다.
+- 신뢰 가능한 위치가 없으면 `SIGNATURE_FIELD_POSITION_REQUIRED`, 승인 버전의 최종 PDF가
+  없으면 `FINAL_CONTRACT_PDF_MISSING`, 파일을 읽을 수 없으면
+  `FINAL_CONTRACT_PDF_UNAVAILABLE`을 반환하며 모두싸인 요청을 만들지 않는다.
 
 ### `GET /signature-requests/{id}` / `POST /signature-requests/{id}/sync`
 
