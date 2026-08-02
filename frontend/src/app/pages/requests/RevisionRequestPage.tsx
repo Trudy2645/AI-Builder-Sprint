@@ -43,7 +43,7 @@ function toContract(listing: PublicListingDetail): Contract {
       noShow: listing.no_show_policy ?? "",
       settlement: listing.settlement_policy ?? "",
     },
-    clauses: listing.clauses.map((clause) => ({ no: String(clause.id), title: clause.title, text: clause.body })),
+    clauses: listing.clauses.map((clause, index) => ({ id: String(clause.id), no: String(index + 1), title: clause.title, text: clause.body })),
   };
 }
 
@@ -75,7 +75,12 @@ export function RevisionRequestPage() {
   const remove = (draftId: string) => setDrafts((previous) => previous.length > 1 ? previous.filter((item) => item.id !== draftId) : previous);
 
   const createServerRevision = async (send: boolean) => {
-    const valid = drafts.filter((draft) => draft.clauseNo && draft.reason.trim() && (draft.changeType === "delete" || draft.requested.trim()));
+    const valid = drafts.filter((draft) => {
+      if (!draft.reason.trim()) return false;
+      if (draft.changeType === "add") return Boolean(draft.requested.trim());
+      if (!draft.clauseNo) return false;
+      return draft.changeType === "delete" || Boolean(draft.requested.trim());
+    });
     if (!valid.length) {
       toast.error(t("rev.needOne"));
       return;

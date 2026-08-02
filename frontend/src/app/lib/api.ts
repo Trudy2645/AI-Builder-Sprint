@@ -637,6 +637,23 @@ export type RevisionItemPayload = {
   document_ids?: string[];
 };
 
+export function generateRevisionSuggestion(payload: {
+  request_type: "modify" | "add";
+  clause_id?: string;
+  clause_title?: string;
+  original_text?: string;
+  reason: string;
+}): Promise<{ suggestion: string }> {
+  return apiFetch<{ suggestion: string }>("/ai-guidance/revision-suggestion", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("revision-suggestion"),
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export type RevisionRequestResponse = {
   id: string;
   contract_id: string;
@@ -1021,6 +1038,55 @@ export function getPublicListing(
   return apiFetch<PublicListingDetail>(
     `/public/listings/${encodeURIComponent(listingId)}?locale=${encodeURIComponent(locale)}`,
   );
+}
+
+export type ContractTranslationLocale = "en-US" | "ja-JP" | "zh-CN";
+
+export type ContractTranslation = {
+  locale: ContractTranslationLocale;
+  title: string;
+  clauses: Array<{ id: string; title: string; body: string }>;
+};
+
+export function translatePublicContract(
+  listing: PublicListingDetail,
+  targetLocale: ContractTranslationLocale,
+): Promise<ContractTranslation> {
+  return apiFetch<ContractTranslation>("/ai-guidance/contract-translation", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey(`contract-translation-${targetLocale}`),
+    },
+    body: JSON.stringify({
+      target_locale: targetLocale,
+      title: listing.title,
+      clauses: listing.clauses.map(({ id, title, body }) => ({ id, title, body })),
+    }),
+  });
+}
+
+export type ContractAssistantFinding = {
+  clause_id: string;
+  severity: "high" | "medium" | "low";
+  explanation: string;
+  suggested_text: string | null;
+};
+
+export function analyzePublicContract(
+  listing: PublicListingDetail,
+): Promise<{ findings: ContractAssistantFinding[] }> {
+  return apiFetch<{ findings: ContractAssistantFinding[] }>("/ai-guidance/contract-assistant", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("buyer-contract-assistant"),
+    },
+    body: JSON.stringify({
+      title: listing.title,
+      clauses: listing.clauses.map(({ id, title, body }) => ({ id, title, body })),
+    }),
+  });
 }
 
 export function generateChangeSummary(

@@ -6,6 +6,7 @@ export interface RiskInfo {
 }
 
 export interface Clause {
+  id: string;
   no: string;
   title: string;
   text: string;
