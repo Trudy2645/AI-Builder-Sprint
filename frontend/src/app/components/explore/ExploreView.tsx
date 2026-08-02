@@ -29,7 +29,6 @@ import { useApp } from "../../context/AppContext";
 import {
   CATEGORIES,
   DISTRICTS,
-  contracts,
   formatKRW,
   type Category,
   type Contract,
@@ -142,8 +141,7 @@ export function ExploreView({ base }: { base: string }) {
   };
 
   const results = useMemo(() => {
-    const sourceContracts = loadError ? contracts : serverContracts;
-    const list: Contract[] = sourceContracts.filter((c) => {
+    const list: Contract[] = serverContracts.filter((c) => {
       const keyword = search.trim().toLocaleLowerCase();
       if (keyword && !`${c.seller} ${c.title}`.toLocaleLowerCase().includes(keyword)) return false;
       if (category !== "all" && c.category !== category) return false;
@@ -165,7 +163,7 @@ export function ExploreView({ base }: { base: string }) {
       priceHigh: (a, b) => b.unitPrice - a.unitPrice,
     };
     return [...list].sort(sorters[sort]);
-  }, [search, category, district, guests, from, to, price, availableOnly, sort, serverContracts, loadError]);
+  }, [search, category, district, guests, from, to, price, availableOnly, sort, serverContracts]);
 
   const categoryLabel = CATEGORIES.find((c) => c.value === category);
   const hasPriceFilter = price[0] > 0 || price[1] < PRICE_MAX;
