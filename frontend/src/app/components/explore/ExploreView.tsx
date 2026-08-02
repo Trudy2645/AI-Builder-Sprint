@@ -37,6 +37,7 @@ import {
   type Contract,
 } from "../../data/contracts";
 import { friendlyApiError, getPublicListings, type PublicListing } from "../../lib/api";
+import type { Listing } from "../../store/ListingsContext";
 
 type Sort = "recommended" | "latest" | "popular" | "priceLow" | "priceHigh";
 const PRICE_MAX = 250000;
@@ -83,6 +84,37 @@ function toContract(listing: PublicListing): Contract {
   };
 }
 
+function localListingToContract(listing: Listing, index: number): Contract {
+  return {
+    id: listing.id,
+    seller: "해운대 오션스테이",
+    title: listing.productName,
+    category: listing.category,
+    district: listing.district,
+    start: listing.start || "미정",
+    end: listing.end || "미정",
+    unitPrice: listing.unitPrice,
+    priceUnit: listing.priceUnit,
+    quantityLabel: listing.quantityLabel,
+    capacity: Number.MAX_SAFE_INTEGER,
+    available: listing.status === "public",
+    popularity: listing.requests,
+    createdOrder: index,
+    recommendScore: 0,
+    image: "",
+    aiSummary: ["셀러가 등록한 공개 공고입니다."],
+    details: {
+      period: `${listing.start || "미정"} ~ ${listing.end || "미정"}`,
+      supplyQuantity: listing.quantityLabel,
+      unitPrice: `${listing.unitPrice.toLocaleString("ko-KR")} KRW`,
+      cancellation: "상세 페이지에서 확인",
+      noShow: "상세 페이지에서 확인",
+      settlement: "상세 페이지에서 확인",
+    },
+    clauses: [],
+  };
+}
+
 function toDate(s: string) {
   return new Date(s.replace(/\./g, "-"));
 }
@@ -115,6 +147,7 @@ export function ExploreView({ base }: { base: string }) {
   const [availableOnly, setAvailableOnly] = useState(false);
   const [sort, setSort] = useState<Sort>("recommended");
   const [serverContracts, setServerContracts] = useState<Contract[]>([]);
+  const [localPublicContracts, setLocalPublicContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -122,7 +155,14 @@ export function ExploreView({ base }: { base: string }) {
     let active = true;
     const refresh = () => getPublicListings()
       .then((listings) => {
-        if (active) { setServerContracts(listings.map(toContract)); setLoadError(null); }
+        if (active) {
+          setServerContracts(listings.map(toContract));
+          try {
+            const saved = JSON.parse(window.localStorage.getItem("busanlink.seller.listings") || "[]") as Listing[];
+            setLocalPublicContracts(saved.filter((item) => item.status === "public").map(localListingToContract));
+          } catch { setLocalPublicContracts([]); }
+          setLoadError(null);
+        }
       })
       .catch((error: unknown) => { if (active) setLoadError(friendlyApiError(error)); })
       .finally(() => { if (active) setLoading(false); });
@@ -144,7 +184,7 @@ export function ExploreView({ base }: { base: string }) {
   };
 
   const results = useMemo(() => {
-    const sourceContracts = loadError ? contracts : serverContracts;
+    const sourceContracts = loadError ? [...contracts, ...localPublicContracts] : [...serverContracts, ...localPublicContracts.filter((local) => !serverContracts.some((server) => server.id === local.id))];
     const list: Contract[] = sourceContracts.filter((c) => {
       const keyword = search.trim().toLocaleLowerCase();
       if (keyword && !`${c.seller} ${c.title}`.toLocaleLowerCase().includes(keyword)) return false;
@@ -167,7 +207,7 @@ export function ExploreView({ base }: { base: string }) {
       priceHigh: (a, b) => b.unitPrice - a.unitPrice,
     };
     return [...list].sort(sorters[sort]);
-  }, [search, category, district, guests, from, to, price, availableOnly, sort, serverContracts, loadError]);
+  }, [search, category, district, guests, from, to, price, availableOnly, sort, serverContracts, localPublicContracts, loadError]);
 
   const categoryLabel = CATEGORIES.find((c) => c.value === category);
   const hasPriceFilter = price[0] > 0 || price[1] < PRICE_MAX;
