@@ -15,6 +15,7 @@ from app.domain.contracts.service import ContractService
 from app.domain.document_processing.service import DocumentProcessingService
 from app.domain.documents.service import DocumentService
 from app.domain.listings.service import PublicListingService
+from app.domain.modusign.service import ModusignService
 from app.domain.notifications.service import NotificationService
 from app.domain.pricing.service import PriceCalculator, PriceEstimateService
 from app.domain.profiles.service import ProfileService
@@ -291,3 +292,13 @@ def get_modusign_client(
         auth_email=settings.modusign_auth_email,
         timeout_seconds=settings.modusign_timeout_seconds,
     )
+
+
+def get_modusign_service(
+    repository: Annotated[
+        DocumentProcessingRepository, Depends(get_document_processing_repository)
+    ],
+    storage: Annotated[StorageProvider, Depends(get_storage_provider)],
+    client: Annotated[ModusignClient, Depends(get_modusign_client)],
+) -> ModusignService:
+    return ModusignService(repository, storage, client)

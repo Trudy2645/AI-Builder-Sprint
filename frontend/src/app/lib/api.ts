@@ -196,3 +196,34 @@ export type PublicListing = {
 export function getPublicListings(): Promise<PublicListing[]> {
   return apiFetch<PublicListing[]>("/public/listings");
 }
+
+export type BuyerSigningField = {
+  field_type: "TEXT" | "SIGNATURE" | "CHECKBOX";
+  data_label: string;
+  position: Record<string, unknown>;
+  size?: { width: number; height: number };
+  required?: boolean;
+};
+
+/** Sends the seller's original source PDF to Modusign; no second PDF is generated. */
+export function requestSigningFromSourceDocument(input: {
+  documentId: string;
+  title: string;
+  buyer: { name: string; email: string };
+  fields: BuyerSigningField[];
+}): Promise<{ document_id: string; title: string; status: string }> {
+  const session = getApiSession();
+  return apiFetch("/modusign/requests/from-document", {
+    method: "POST",
+    headers: new Headers([
+      ...authenticatedHeaders(session).entries(),
+      ["Idempotency-Key", requestIdempotencyKey("modusign-signing")],
+    ]),
+    body: JSON.stringify({
+      document_id: input.documentId,
+      title: input.title,
+      buyer: { role: "바이어", ...input.buyer },
+      fields: input.fields,
+    }),
+  });
+}

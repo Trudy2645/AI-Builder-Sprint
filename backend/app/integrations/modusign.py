@@ -35,6 +35,28 @@ class ModusignParticipant:
     email: str
 
 
+@dataclass(frozen=True, slots=True)
+class ModusignParticipantField:
+    """A signer-controlled field placed on an already-final PDF."""
+
+    field_type: str
+    data_label: str
+    position: dict[str, Any]
+    size: dict[str, float] | None = None
+    required: bool = True
+
+    def as_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": self.field_type,
+            "dataLabel": self.data_label,
+            "required": self.required,
+            "position": self.position,
+        }
+        if self.size is not None:
+            payload["size"] = self.size
+        return payload
+
+
 def build_accommodation_template_payload(
     *,
     title: str,
@@ -112,6 +134,46 @@ class ModusignClient:
             "POST",
             "/templates",
             json=build_accommodation_template_payload(title=title, pdf_bytes=pdf_bytes),
+        )
+
+    async def create_signature_request_from_pdf(
+        self,
+        *,
+        title: str,
+        pdf_bytes: bytes,
+        buyer: ModusignParticipant,
+        buyer_fields: list[ModusignParticipantField],
+    ) -> dict[str, Any]:
+        """Request one buyer signature on the immutable contract source PDF.
+
+        This is used for an ``as_is`` contract: the uploaded source PDF is
+        preserved and only signer-controlled fields are overlaid by Modusign.
+        """
+        if not pdf_bytes.startswith(b"%PDF"):
+            raise ValueError("The signature source must be a PDF.")
+        return await self._request(
+            "POST",
+            "/documents",
+            json={
+                "title": title,
+                "file": {
+                    "base64": base64.b64encode(pdf_bytes).decode("ascii"),
+                    "extension": "pdf",
+                },
+                "participants": [
+                    {
+                        "type": "SIGNER",
+                        "role": buyer.role,
+                        "name": buyer.name,
+                        "signingOrder": 1,
+                        "signingMethod": {"type": "EMAIL", "value": buyer.email},
+                        "fields": [field.as_payload() for field in buyer_fields],
+                    }
+                ],
+                "metadatas": [
+                    {"key": "busanlink_flow", "value": "as_is_source_pdf"},
+                ],
+            },
         )
 
     async def create_signature_request(

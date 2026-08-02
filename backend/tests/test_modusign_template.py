@@ -6,6 +6,8 @@ import pytest
 
 from app.integrations.modusign import (
     ModusignClient,
+    ModusignParticipant,
+    ModusignParticipantField,
     build_accommodation_template_payload,
 )
 
@@ -66,3 +68,47 @@ async def test_client_posts_accommodation_template() -> None:
     assert captured["payload"] == build_accommodation_template_payload(
         title="숙박 계약서", pdf_bytes=b"%PDF-1.7\nexample"
     )
+
+
+@pytest.mark.asyncio
+async def test_client_sends_original_pdf_with_buyer_fields() -> None:
+    captured: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(201, json={"id": "document-1"})
+
+    client = ModusignClient(
+        base_url="https://modusign.test",
+        api_key="test-key",
+        auth_email="seller@example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.create_signature_request_from_pdf(
+        title="원문 숙박 계약서",
+        pdf_bytes=b"%PDF-1.7\nsource",
+        buyer=ModusignParticipant("바이어", "Aiko", "aiko@example.test"),
+        buyer_fields=[
+            ModusignParticipantField(
+                field_type="SIGNATURE",
+                data_label="buyer_signature",
+                position={"anchor": {"text": "바이어 서명"}},
+                size={"width": 0.3, "height": 0.06},
+            ),
+            ModusignParticipantField(
+                field_type="TEXT",
+                data_label="buyer_group_name",
+                position={"x": 0.2, "y": 0.7, "page": 2},
+                size={"width": 0.3, "height": 0.04},
+                required=False,
+            ),
+        ],
+    )
+
+    assert result == {"id": "document-1"}
+    assert captured["path"] == "/documents"
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["participants"][0]["fields"][0]["dataLabel"] == "buyer_signature"
+    assert payload["participants"][0]["fields"][1]["required"] is False
