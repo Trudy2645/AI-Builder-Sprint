@@ -26,6 +26,7 @@ import { RevisionReviewPage } from "./pages/seller/RevisionReviewPage";
 import { SellerNegotiatingPage } from "./pages/seller/SellerNegotiatingPage";
 import { SellerContractsPage } from "./pages/seller/SellerContractsPage";
 import { SellerMyPage } from "./pages/seller/SellerMyPage";
+import { BuyerContractsHomePage, BuyerContractStatusPage, BuyerContractCompletePage } from "./pages/buyer/BuyerContractFlowPages";
 import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { FinalApprovePage } from "./pages/negotiation/FinalApprovePage";
 import { ESignaturePage } from "./pages/negotiation/ESignaturePage";
@@ -74,6 +75,7 @@ const signingRoutes = [
 const buyerRealPages: Record<string, ReactNode> = {
   "/buyer/sent": <SentRequestsPage />,
   "/buyer/mypage": <BuyerMyPage />,
+  "/buyer/contracts": <BuyerContractsHomePage />,
 };
 
 // Build child routes from the nav config so sidebar and routing stay in sync.
@@ -89,6 +91,11 @@ const buyerChildren = buyerNav
     path: item.path.replace("/buyer/", ""),
     element: buyerRealPages[item.path] ?? <PlaceholderPage titleKey={item.labelKey} />,
   }));
+
+buyerChildren.push(
+  { path: "contracts/:id/status", element: <BuyerContractStatusPage /> },
+  { path: "contracts/:id/complete", element: <BuyerContractCompletePage /> },
+);
 
 // Seller listing creation flow (dashboard + listings + create wizards).
 const sellerListingRoutes = [

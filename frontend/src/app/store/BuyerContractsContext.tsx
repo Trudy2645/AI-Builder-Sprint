@@ -72,10 +72,6 @@ export function BuyerContractsProvider({ children }: { children: ReactNode }) {
   const [contracts, setContracts] = useState<BuyerContract[]>([]);
 
   useEffect(() => {
-    if (isDemoSession) {
-      setContracts([]);
-      return;
-    }
     if (!getAccessToken()) {
       setContracts([]);
       return;

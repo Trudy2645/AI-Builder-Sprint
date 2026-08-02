@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Sparkles,
@@ -21,7 +21,8 @@ import { ContractStepper } from "../../components/contract/ContractStepper";
 import { VersionBadge } from "../../components/contract/VersionBadge";
 import { useApp } from "../../context/AppContext";
 import { useExploreCtx } from "../../hooks/useExploreCtx";
-import { getContract } from "../../data/contracts";
+import { getContract, type Contract } from "../../data/contracts";
+import { friendlyApiError, getPublicListingAsContract } from "../../lib/api";
 
 type DocLang = "ko" | "en" | "ja" | "zh";
 type ClauseTranslation = [title: string, text: string, reason?: string, recommendation?: string];
@@ -140,7 +141,14 @@ export function ContractDocumentPage() {
   const { base, isGuest } = useExploreCtx();
   const { id } = useParams();
   const navigate = useNavigate();
-  const contract = getContract(id);
+  const demoContract = getContract(id);
+  const [serverContract, setServerContract] = useState<Contract | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    if (demoContract || !id) return;
+    void getPublicListingAsContract(id).then(setServerContract).catch((error: unknown) => setLoadError(friendlyApiError(error)));
+  }, [demoContract, id]);
+  const contract = demoContract ?? serverContract;
   const [activeClause, setActiveClause] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
   const [documentLanguage, setDocumentLanguage] = useState<DocLang>("ko");
@@ -148,7 +156,7 @@ export function ContractDocumentPage() {
   if (!contract) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card p-16 text-center text-muted-foreground">
-        {t("explore.empty")}
+        {loadError ?? "계약서 원문을 불러오는 중입니다…"}
       </div>
     );
   }

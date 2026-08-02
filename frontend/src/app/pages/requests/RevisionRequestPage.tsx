@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Save, Send, Plus } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import { ContractStepper } from "../../components/contract/ContractStepper";
 import { RevisionCard, type RevisionDraft } from "../../components/requests/RevisionCard";
 import { useApp } from "../../context/AppContext";
-import { getContract } from "../../data/contracts";
+import { getContract, type Contract } from "../../data/contracts";
+import { createPublicContractRequest, friendlyApiError, getPublicListingAsContract } from "../../lib/api";
 import { useRequests } from "../../store/RequestsContext";
 
 let counter = 0;
@@ -30,8 +32,17 @@ export function RevisionRequestPage() {
   const { t } = useApp();
   const { id } = useParams();
   const navigate = useNavigate();
-  const contract = getContract(id);
+  const demoContract = getContract(id);
+  const [serverContract, setServerContract] = useState<Contract | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    if (demoContract || !id) return;
+    void getPublicListingAsContract(id).then(setServerContract).catch((error: unknown) => setLoadError(friendlyApiError(error)));
+  }, [demoContract, id]);
+  const contract = demoContract ?? serverContract;
   const { addRequest } = useRequests();
+  const [startDate, setStartDate] = useState(contract?.start !== "미정" ? contract?.start ?? "" : "");
+  const [endDate, setEndDate] = useState(contract?.end !== "미정" ? contract?.end ?? "" : "");
 
   // Pre-seed with one card targeting the first risky clause if any.
   const [drafts, setDrafts] = useState<RevisionDraft[]>(() => {
@@ -42,20 +53,27 @@ export function RevisionRequestPage() {
   });
 
   if (!contract) {
-    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">Not found</div>;
+    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">{loadError ?? "계약 조건을 불러오는 중입니다…"}</div>;
   }
 
   const update = (d: RevisionDraft) => setDrafts((prev) => prev.map((x) => (x.id === d.id ? d : x)));
   const remove = (rid: string) => setDrafts((prev) => (prev.length > 1 ? prev.filter((x) => x.id !== rid) : prev));
   const add = () => setDrafts((prev) => [...prev, newDraft()]);
 
-  const send = () => {
+  const send = async () => {
     const valid = drafts.filter((d) => d.clauseNo && d.requested.trim());
     if (valid.length === 0) {
       toast.error(t("rev.needOne"));
       return;
     }
-    addRequest({
+    if (!startDate || !endDate || endDate <= startDate) { toast.error("이용 시작일과 종료일을 올바르게 입력해 주세요."); return; }
+    try {
+      const created = await createPublicContractRequest(contract.id, {
+        people: 1, quantity: 1, quantity_unit: contract.category === "accommodation" ? "room" : "person", nights: 1,
+        start_date: startDate, end_date: endDate, currency: "KRW", initial_request_kind: "revision",
+        request_message: valid.map((d) => `${d.clauseNo}: ${d.requested}${d.reason ? ` (사유: ${d.reason})` : ""}`).join("\n"),
+      });
+      addRequest({
       contractId: contract.id,
       seller: contract.seller,
       title: contract.title,
@@ -75,8 +93,9 @@ export function RevisionRequestPage() {
         };
       }),
     });
-    toast.success(t("rev.sent"));
-    navigate("/buyer/sent");
+      toast.success(t("rev.sent"));
+      navigate(`/buyer/contracts/${created.contract_id}/status`);
+    } catch (error) { toast.error(friendlyApiError(error)); }
   };
 
   const saveDraft = () => {
@@ -124,6 +143,7 @@ export function RevisionRequestPage() {
         <div className="whitespace-nowrap text-muted-foreground" style={{ fontSize: "13px" }}>{t("asis.contract")}</div>
         <div style={{ color: "var(--navy)", fontWeight: 600 }}>{contract.seller} · {contract.title}</div>
       </div>
+      <div className="mb-4 grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2"><div><label className="text-sm">이용 시작일 *</label><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div><div><label className="text-sm">이용 종료일 *</label><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div></div>
 
       <div className="flex flex-col gap-4">
         {drafts.map((d, i) => (

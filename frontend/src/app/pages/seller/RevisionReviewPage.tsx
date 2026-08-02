@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, X, GitBranch, Eye, Save, Send, XCircle } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -28,15 +28,28 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { useApp } from "../../context/AppContext";
-import { getReceivedRequest } from "../../data/receivedRequests";
+import { getReceivedRequest, type ReceivedRequest } from "../../data/receivedRequests";
 import { useRequests } from "../../store/RequestsContext";
+import { decideRevisionItem, decideRevisionRequest, friendlyApiError, getRevisionRequest } from "../../lib/api";
 
 export function RevisionReviewPage() {
   const { t } = useApp();
   const { id } = useParams();
   const navigate = useNavigate();
   const { updateRequestStatus } = useRequests();
-  const request = getReceivedRequest(id);
+  const [serverRequest, setServerRequest] = useState<ReceivedRequest | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const demoRequest = getReceivedRequest(id);
+  useEffect(() => {
+    if (demoRequest || !id) return;
+    void getRevisionRequest(id).then((item) => setServerRequest({
+      id: item.id, buyer: "바이어", contractId: item.contract_id, contractTitle: "계약 수정 요청",
+      status: "negotiating", createdAt: new Date().toISOString().slice(0, 10).replaceAll("-", "."),
+      period: "계약 조건에서 확인", estimatedAmount: "계약 조건에서 확인", currentVersion: `v${item.base_version_no}`,
+      revisions: item.items.map((revision) => ({ id: revision.id, clauseNo: revision.clause_id ?? "조항", clauseTitle: revision.request_type, original: "현재 계약 조항", requested: revision.requested_text ?? "조항 추가/삭제 요청", reason: revision.reason, aiImpact: "", aiRecommend: "" })),
+    })).catch((error: unknown) => setLoadError(friendlyApiError(error)));
+  }, [demoRequest, id]);
+  const request = demoRequest ?? serverRequest;
 
   const [decisions, setDecisions] = useState<Record<string, Decision>>(() => {
     const init: Record<string, Decision> = {};
@@ -61,7 +74,7 @@ export function RevisionReviewPage() {
   }, [decisions]);
 
   if (!request) {
-    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">{t("recv.empty")}</div>;
+    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">{loadError ?? t("recv.empty")}</div>;
   }
 
   const update = (rid: string, d: Decision) => setDecisions((prev) => ({ ...prev, [rid]: d }));
@@ -79,7 +92,7 @@ export function RevisionReviewPage() {
     setPreviewOpen(true);
   };
 
-  const send = () => {
+  const send = async () => {
     if (!allDecided) {
       toast.error(t("rvw.needAll"));
       return;
@@ -93,6 +106,18 @@ export function RevisionReviewPage() {
       return;
     }
     setPreviewOpen(false);
+    if (id && !demoRequest) {
+      try {
+        for (const item of request.revisions) {
+          const decision = decisions[item.id];
+          if (decision.kind) await decideRevisionItem(id, item.id, { decision: decision.kind === "accept" ? "accepted" : decision.kind === "reject" ? "rejected" : "countered", seller_reason: decision.kind === "reject" ? "기존 조건 유지" : undefined, counter_text: decision.kind === "counter" ? decision.counterText : undefined });
+        }
+        await decideRevisionRequest(id, "셀러가 요청 조항을 검토했습니다.");
+        toast.success(t("rvw.sent"));
+        navigate("/seller/received");
+        return;
+      } catch (error) { toast.error(friendlyApiError(error)); return; }
+    }
     // 조항별 검토 결과(수락/거절/대안)를 셀러 응답 문구와 함께 요청 상태에 반영해
     // 협상 중 화면에서 바이어 원안 vs 셀러 제안안을 그대로 이어 볼 수 있게 한다.
     const revisedRevisions = request.revisions.map((r) => {

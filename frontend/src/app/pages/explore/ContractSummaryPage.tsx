@@ -14,7 +14,7 @@ import {
   UsersRound,
   Star,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { Button } from "../../components/ui/button";
@@ -27,7 +27,8 @@ import {
 } from "../../components/ui/accordion";
 import { useApp } from "../../context/AppContext";
 import { useExploreCtx } from "../../hooks/useExploreCtx";
-import { CATEGORIES, getContract, riskCount } from "../../data/contracts";
+import { CATEGORIES, getContract, riskCount, type Contract } from "../../data/contracts";
+import { friendlyApiError, getPublicListing } from "../../lib/api";
 
 function DetailRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
@@ -46,12 +47,47 @@ export function ContractSummaryPage() {
   const { base } = useExploreCtx();
   const { id } = useParams();
   const navigate = useNavigate();
-  const contract = getContract(id);
+  const [serverContract, setServerContract] = useState<Contract | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const demoContract = getContract(id);
+
+  useEffect(() => {
+    if (demoContract || !id) return;
+    void getPublicListing(id).then((listing) => setServerContract({
+      id: listing.id,
+      seller: listing.seller.name,
+      title: listing.title,
+      category: listing.category,
+      district: listing.district,
+      start: listing.availability.start_date ?? "미정",
+      end: listing.availability.end_date ?? "미정",
+      unitPrice: listing.base_price?.amount_minor ?? 0,
+      priceUnit: listing.base_price?.unit ?? "기준 단가",
+      quantityLabel: listing.supply_quantity_description ?? "미정",
+      capacity: Number.MAX_SAFE_INTEGER,
+      available: listing.contract_available,
+      popularity: 0,
+      createdOrder: 0,
+      recommendScore: 0,
+      image: listing.hero_image_url ?? "",
+      aiSummary: listing.ai_summary?.split("\n") ?? ["AI 요약이 아직 준비되지 않았습니다."],
+      details: {
+        period: `${listing.availability.start_date ?? "미정"} ~ ${listing.availability.end_date ?? "미정"}`,
+        supplyQuantity: listing.supply_quantity_description ?? "미정",
+        unitPrice: `${(listing.base_price?.amount_minor ?? 0).toLocaleString("ko-KR")} ${listing.base_price?.currency ?? "KRW"}`,
+        cancellation: listing.cancellation_policy ?? "미정",
+        noShow: listing.no_show_policy ?? "미정",
+        settlement: listing.settlement_policy ?? "미정",
+      },
+      clauses: listing.clauses.map((clause) => ({ no: `제${clause.clause_order}조`, title: clause.title, text: clause.body })),
+    })).catch((error: unknown) => setLoadError(friendlyApiError(error)));
+  }, [demoContract, id]);
+  const contract = demoContract ?? serverContract;
 
   if (!contract) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card p-16 text-center text-muted-foreground">
-        {t("explore.empty")}
+        {loadError ?? "계약 조건을 불러오는 중입니다…"}
       </div>
     );
   }

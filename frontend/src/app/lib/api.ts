@@ -22,7 +22,7 @@ export class ApiError extends Error {
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
-const accessTokenKey = "busan-link-access-token";
+const accessTokenKey = "busanlink.access_token";
 
 export function setAccessToken(token: string | null): void {
   if (token) window.localStorage.setItem(accessTokenKey, token);
@@ -42,6 +42,7 @@ let activeSession: ApiSession | null = null;
 
 type UploadedDocumentProcessingResult = {
   listingId: string;
+  sourceDocumentId: string;
   listingVersionNo: number;
   listingCandidate: {
     title?: string;
@@ -195,16 +196,9 @@ export async function uploadAndProcessSourceContract(
     });
     if (result.status === "ready") {
       onStage?.("finalizing");
-      // OCR 결과 확인은 외부 저장/게시와 분리한다. 모두싸인·DB가 잠시
-      // 불안정해도 셀러가 추출값을 확인하고 공고를 계속 만들 수 있어야 한다.
-      try {
-        await updateSellerListingTerms(listing.listing_id, result.listing_candidate?.terms);
-        await publishSellerListing(listing.listing_id);
-      } catch {
-        // 프론트의 데모 저장은 아래 결과로 계속 진행한다.
-      }
       return {
         listingId: listing.listing_id,
+        sourceDocumentId: upload.document.id,
         listingVersionNo: listing.version_no,
         listingCandidate: result.listing_candidate,
         confirmationRequired: result.confirmation_required,
@@ -223,6 +217,118 @@ export async function publishSellerListing(listingId: string): Promise<void> {
   const session = getApiSession();
   await apiFetch(`/seller/listings/${listingId}/complete`, { method: "POST", headers: authenticatedHeaders(session) });
   await apiFetch(`/seller/listings/${listingId}/publish`, { method: "POST", headers: authenticatedHeaders(session) });
+}
+
+export type SellerListingSummary = {
+  id: string;
+  title: string;
+  category: "vehicle_rental" | "activity" | "tour" | "accommodation";
+  district: string;
+  status: "draft" | "processing" | "ready" | "published" | "paused" | "expired" | "archived";
+  creation_method: "manual" | "upload";
+  service_start_date: string | null;
+  service_end_date: string | null;
+  supply_quantity_description: string | null;
+  base_price: { amount_minor: number; currency: string; unit: string | null } | null;
+  contract_request_count: number;
+  attention_required_count: number;
+  updated_at: string;
+};
+
+export function getSellerListings(): Promise<SellerListingSummary[]> {
+  const session = getApiSession();
+  return apiFetch<SellerListingSummary[]>("/seller/listings", { headers: authenticatedHeaders(session) });
+}
+
+export async function changeSellerListingStatus(listingId: string, action: "publish" | "pause" | "archive"): Promise<void> {
+  const session = getApiSession();
+  await apiFetch(`/seller/listings/${listingId}/${action}`, { method: "POST", headers: authenticatedHeaders(session) });
+}
+
+function apiPriceUnit(label: string): { priceUnit: string; quantityUnit: string } {
+  if (label.includes("좌석")) return { priceUnit: "seat", quantityUnit: "seat" };
+  if (label.includes("차량") || label.includes("동")) return { priceUnit: "vehicle", quantityUnit: "vehicle" };
+  if (label.includes("인")) return { priceUnit: "person", quantityUnit: "person" };
+  return { priceUnit: "room_night", quantityUnit: "room" };
+}
+
+/** Persist the reviewed seller input before exposing it to buyers. */
+export async function registerPublishedSellerListing(input: {
+  listingId?: string;
+  baseVersionNo?: number;
+  sourceDocumentId?: string;
+  method: "write" | "upload";
+  productName: string;
+  category: "vehicle_rental" | "activity" | "tour" | "accommodation";
+  district: string;
+  availabilityStart: string;
+  availabilityEnd: string;
+  quantity: string;
+  unitPrice: string;
+  priceUnit: string;
+  minQty: string;
+  maxQty: string;
+  cancellation: string;
+  noShow: string;
+  settlement: string;
+  liability: string;
+  termination: string;
+  special: string;
+  headline: string;
+}): Promise<SellerListingSummary> {
+  const session = getApiSession();
+  const headers = authenticatedHeaders(session, { "Content-Type": "application/json" });
+  const created = input.listingId
+    ? { listing_id: input.listingId, version_no: input.baseVersionNo ?? 1 }
+    : await apiFetch<{ listing_id: string; version_no: number }>("/seller/listings", {
+      method: "POST",
+      headers: new Headers([...headers.entries(), ["Idempotency-Key", requestIdempotencyKey("listing-register")]]),
+      body: JSON.stringify({
+        creation_method: input.method === "write" ? "manual" : "upload",
+        title: input.productName,
+        category: input.category,
+        district: input.district,
+        language: "ko-KR",
+      }),
+    });
+  const units = apiPriceUnit(input.priceUnit);
+  const minimumQuantity = Number(input.minQty) || undefined;
+  const maximumQuantity = Number(input.maxQty) || undefined;
+  await apiFetch(`/seller/listings/${created.listing_id}/terms`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      base_version_no: created.version_no,
+      terms: {
+        service_start_date: input.availabilityStart || undefined,
+        service_end_date: input.availabilityEnd || undefined,
+        supply_quantity_description: input.quantity,
+        quantity_unit: units.quantityUnit,
+        minimum_quantity: minimumQuantity,
+        maximum_quantity: maximumQuantity,
+        base_price_amount_minor: Number(input.unitPrice),
+        currency: "KRW",
+        price_unit: units.priceUnit,
+        cancellation_policy: input.cancellation,
+        no_show_policy: input.noShow,
+        settlement_policy: input.settlement,
+        liability_policy: input.liability,
+        termination_policy: input.termination,
+        special_terms: input.special || undefined,
+      },
+    }),
+  });
+  if (input.headline.trim() || input.sourceDocumentId) {
+    await apiFetch(`/seller/listings/${created.listing_id}/presentation`, {
+      method: "PATCH", headers,
+      body: JSON.stringify({ public_headline: input.headline.trim() || undefined, hero_document_id: input.sourceDocumentId || undefined }),
+    });
+  }
+  await publishSellerListing(created.listing_id);
+  const listings = await getSellerListings();
+  const listing = listings.find((item) => item.id === created.listing_id);
+  if (!listing || listing.status !== "published") throw new Error("공고 공개 상태를 확인하지 못했습니다.");
+  return listing;
 }
 
 export async function updateSellerListingTerms(listingId: string, terms: Record<string, unknown> = {}): Promise<void> {
@@ -278,6 +384,37 @@ export type ContractListItem = {
 
 export function getMyContracts(): Promise<ContractListItem[]> {
   return apiFetch<ContractListItem[]>("/me/contracts");
+}
+
+export type SellerReceivedContract = {
+  contract_id: string; listing_id: string | null; listing_title: string; buyer_name: string;
+  requested_people: number; service_start_date: string; service_end_date: string;
+  amount_minor: number | null; currency: string | null; initial_request_kind: "as_is" | "revision"; status: string; requested_at: string;
+};
+
+export function getSellerReceivedContracts(): Promise<SellerReceivedContract[]> {
+  const session = getApiSession();
+  return apiFetch<SellerReceivedContract[]>("/seller/contracts/received", { headers: authenticatedHeaders(session) });
+}
+
+export type SellerRevisionSummary = { id: string; contract_id: string; listing_title: string; buyer_name: string; status: string; message: string | null; item_count: number; sent_at: string | null; updated_at: string };
+export type RevisionDetail = { id: string; contract_id: string; base_version_no: number; status: string; message: string | null; items: Array<{ id: string; item_order: number; request_type: "modify" | "delete" | "add"; clause_id: string | null; reason: string; requested_text: string | null; decision: "pending" | "accepted" | "rejected" | "countered"; seller_reason: string | null; counter_text: string | null }> };
+
+export function getSellerRevisionRequests(): Promise<SellerRevisionSummary[]> {
+  const session = getApiSession();
+  return apiFetch<SellerRevisionSummary[]>("/seller/revision-requests", { headers: authenticatedHeaders(session) });
+}
+export function getRevisionRequest(id: string): Promise<RevisionDetail> {
+  const session = getApiSession();
+  return apiFetch<RevisionDetail>(`/revision-requests/${id}`, { headers: authenticatedHeaders(session) });
+}
+export function decideRevisionItem(revisionId: string, itemId: string, payload: { decision: "accepted" | "rejected" | "countered"; seller_reason?: string; counter_text?: string }): Promise<RevisionDetail> {
+  const session = getApiSession();
+  return apiFetch<RevisionDetail>(`/revision-requests/${revisionId}/items/${itemId}`, { method: "PATCH", headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("revision-item-decide")]]), body: JSON.stringify(payload) });
+}
+export function decideRevisionRequest(id: string, sellerMessage?: string): Promise<unknown> {
+  const session = getApiSession();
+  return apiFetch(`/revision-requests/${id}/decide`, { method: "POST", headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("revision-decide")]]), body: JSON.stringify({ seller_message: sellerMessage }) });
 }
 
 export type ContractDetail = {
@@ -373,6 +510,50 @@ export type PublicListing = {
 
 export function getPublicListings(): Promise<PublicListing[]> {
   return apiFetch<PublicListing[]>("/public/listings");
+}
+
+export type PublicListingDetail = PublicListing & {
+  supply_quantity_description: string | null;
+  cancellation_policy: string | null;
+  no_show_policy: string | null;
+  settlement_policy: string | null;
+  clauses: Array<{ clause_order: number; title: string; body: string }>;
+};
+
+export function getPublicListing(listingId: string): Promise<PublicListingDetail> {
+  return apiFetch<PublicListingDetail>(`/public/listings/${listingId}`);
+}
+
+export async function getPublicListingAsContract(listingId: string): Promise<import("../data/contracts").Contract> {
+  const listing = await getPublicListing(listingId);
+  return {
+    id: listing.id, seller: listing.seller.name, title: listing.title, category: listing.category,
+    district: listing.district, start: listing.availability.start_date ?? "미정", end: listing.availability.end_date ?? "미정",
+    unitPrice: listing.base_price?.amount_minor ?? 0, priceUnit: listing.base_price?.unit ?? "기준 단가",
+    quantityLabel: listing.supply_quantity_description ?? "미정", capacity: Number.MAX_SAFE_INTEGER,
+    available: listing.contract_available, popularity: 0, createdOrder: 0, recommendScore: 0,
+    image: listing.hero_image_url ?? "", aiSummary: listing.ai_summary?.split("\n") ?? ["AI 요약이 아직 준비되지 않았습니다."],
+    details: {
+      period: `${listing.availability.start_date ?? "미정"} ~ ${listing.availability.end_date ?? "미정"}`,
+      supplyQuantity: listing.supply_quantity_description ?? "미정",
+      unitPrice: `${(listing.base_price?.amount_minor ?? 0).toLocaleString("ko-KR")} ${listing.base_price?.currency ?? "KRW"}`,
+      cancellation: listing.cancellation_policy ?? "미정", noShow: listing.no_show_policy ?? "미정", settlement: listing.settlement_policy ?? "미정",
+    },
+    clauses: listing.clauses.map((clause) => ({ no: `제${clause.clause_order}조`, title: clause.title, text: clause.body })),
+  };
+}
+
+export function createPublicContractRequest(listingId: string, payload: {
+  people: number; quantity: number; quantity_unit: string; nights: number;
+  start_date: string; end_date: string; currency: string; request_message?: string;
+  initial_request_kind: "as_is" | "revision";
+}): Promise<{ contract_id: string; version_no: number; status: string }> {
+  const session = getApiSession();
+  return apiFetch(`/listings/${listingId}/contract-requests`, {
+    method: "POST",
+    headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("contract-request")]]),
+    body: JSON.stringify({ signing_capacity: "self", ...payload }),
+  });
 }
 
 export type AuthenticatedDemoSession = {

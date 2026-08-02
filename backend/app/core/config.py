@@ -18,7 +18,12 @@ class Settings(BaseSettings):
     app_environment: str = "local"
     docs_enabled: bool = True
     api_v1_prefix: str = "/api/v1"
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
     database_url: str | None = Field(default=None, repr=False)
     supabase_url: str | None = None
     supabase_publishable_key: str | None = Field(default=None, repr=False)

@@ -51,17 +51,17 @@ export function ListingsManagePage() {
 
   const rows = tab === "all" ? listings : listings.filter((l) => l.status === tab);
   const listingCategory = (listing: Listing) => CATEGORIES.find((c) => c.value === listing.category)?.labelKey ?? "cat.all";
-  const pauseListing = (listing: Listing) => {
-    updateListingStatus(listing.id, "paused");
-    toast.success("공고를 공개 중지했습니다.");
+  const pauseListing = async (listing: Listing) => {
+    try { await updateListingStatus(listing.id, "paused"); toast.success("공고를 공개 중지했습니다."); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "공고 상태를 변경하지 못했습니다."); }
   };
-  const publishListing = (listing: Listing) => {
-    updateListingStatus(listing.id, "public");
-    toast.success("공고를 다시 공개했습니다.");
+  const publishListing = async (listing: Listing) => {
+    try { await updateListingStatus(listing.id, "public"); toast.success("공고를 다시 공개했습니다."); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "공고 상태를 변경하지 못했습니다."); }
   };
-  const removeListing = (listing: Listing) => {
-    deleteListing(listing.id);
-    toast.success("공고를 삭제했습니다.");
+  const removeListing = async (listing: Listing) => {
+    try { await deleteListing(listing.id); toast.success("공고를 삭제했습니다."); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "공고를 삭제하지 못했습니다."); }
   };
 
   const ActionMenu = ({ listing }: { listing: Listing }) => (
@@ -73,17 +73,17 @@ export function ListingsManagePage() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {listing.status === "paused" ? (
-          <DropdownMenuItem onClick={() => publishListing(listing)}>
+          <DropdownMenuItem onClick={() => void publishListing(listing)}>
             <Globe2 className="mr-2 size-4" />
             공고 재공개
           </DropdownMenuItem>
         ) : (
-          <DropdownMenuItem onClick={() => pauseListing(listing)}>
+          <DropdownMenuItem onClick={() => void pauseListing(listing)}>
             <PauseCircle className="mr-2 size-4" />
             공고 중지
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeListing(listing)}>
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void removeListing(listing)}>
           <Trash2 className="mr-2 size-4" />
           삭제
         </DropdownMenuItem>

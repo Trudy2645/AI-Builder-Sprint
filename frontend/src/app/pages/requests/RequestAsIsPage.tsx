@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Save, PenLine, FileCheck2, FastForward } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -10,7 +10,8 @@ import { Textarea } from "../../components/ui/textarea";
 import { Checkbox } from "../../components/ui/checkbox";
 import { ContractStepper } from "../../components/contract/ContractStepper";
 import { useApp } from "../../context/AppContext";
-import { getContract, formatKRW } from "../../data/contracts";
+import { getContract, formatKRW, type Contract } from "../../data/contracts";
+import { createPublicContractRequest, friendlyApiError, getPublicListingAsContract } from "../../lib/api";
 import { buyerProfile } from "../../data/profile";
 import { useRequests } from "../../store/RequestsContext";
 import { useNegotiation } from "../../store/NegotiationContext";
@@ -29,13 +30,22 @@ export function RequestAsIsPage() {
   const { t } = useApp();
   const { id } = useParams();
   const navigate = useNavigate();
-  const contract = getContract(id);
+  const [serverContract, setServerContract] = useState<Contract | null>(null);
+  const [loading, setLoading] = useState(!getContract(id));
+  const demoContract = getContract(id);
+  useEffect(() => {
+    if (demoContract || !id) return;
+    void getPublicListingAsContract(id).then(setServerContract).catch((error: unknown) => toast.error(friendlyApiError(error))).finally(() => setLoading(false));
+  }, [demoContract, id]);
+  const contract = demoContract ?? serverContract;
   const { addRequest } = useRequests();
   const { startDirectSignature } = useNegotiation();
 
   const [guests, setGuests] = useState("");
   const [rooms, setRooms] = useState(contract?.category === "accommodation" ? "15" : "30");
   const [nights, setNights] = useState(contract?.category === "accommodation" ? "2" : "1");
+  const [startDate, setStartDate] = useState(contract?.start !== "미정" ? contract?.start ?? "" : "");
+  const [endDate, setEndDate] = useState(contract?.end !== "미정" ? contract?.end ?? "" : "");
   const currency = "KRW";
   const [name, setName] = useState(buyerProfile.contactName);
   const [email, setEmail] = useState(buyerProfile.email);
@@ -45,7 +55,7 @@ export function RequestAsIsPage() {
   const [confirmError, setConfirmError] = useState<string | undefined>();
 
   if (!contract) {
-    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">Not found</div>;
+    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">{loading ? "계약 조건을 불러오는 중입니다…" : "공고를 찾을 수 없습니다."}</div>;
   }
 
   const roomsNum = parseInt(rooms, 10) || 0;
@@ -70,12 +80,22 @@ export function RequestAsIsPage() {
     navigate("/buyer/sent");
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!confirmed) {
       setConfirmError("asis.needConfirm");
       return;
     }
-    const requestId = addRequest({
+    if (!startDate || !endDate || endDate <= startDate) {
+      toast.error("이용 시작일과 종료일을 올바르게 입력해 주세요.");
+      return;
+    }
+    try {
+      const created = await createPublicContractRequest(contract.id, {
+        people: parseInt(guests, 10) || 1, quantity: roomsNum, quantity_unit: contract.category === "accommodation" ? "room" : "person",
+        nights: nightsNum, start_date: startDate, end_date: endDate, currency,
+        request_message: message, initial_request_kind: "as_is",
+      });
+      addRequest({
       contractId: contract.id,
       seller: contract.seller,
       title: contract.title,
@@ -89,7 +109,7 @@ export function RequestAsIsPage() {
       currentVersion: "v1",
       latestResponse: "셀러의 공개 조건을 그대로 수락했습니다. 바이어 전자서명 대기 중입니다.",
     });
-    startDirectSignature(requestId, contract.id, {
+      startDirectSignature(created.contract_id, contract.id, {
       title: contract.title,
       seller: contract.seller,
       period: `${contract.start} ~ ${contract.end}`,
@@ -99,8 +119,9 @@ export function RequestAsIsPage() {
       rooms: roomsNum,
       nights: nightsNum,
     });
-    toast.success(t("asis.readyToSign"));
-    navigate("/buyer/signing/sign");
+      toast.success(t("asis.readyToSign"));
+      navigate(`/buyer/contracts/${created.contract_id}/status`);
+    } catch (error) { toast.error(friendlyApiError(error)); }
   };
 
   return (
@@ -145,6 +166,8 @@ export function RequestAsIsPage() {
           <Label htmlFor="nights">숙박 일수</Label>
           <Input id="nights" type="number" min={1} value={nights} onChange={(e) => setNights(e.target.value)} />
         </div>
+        <div className="flex flex-col gap-1.5"><Label htmlFor="startDate">이용 시작일 *</Label><Input id="startDate" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div>
+        <div className="flex flex-col gap-1.5"><Label htmlFor="endDate">이용 종료일 *</Label><Input id="endDate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div>
         <div className="flex flex-col gap-1.5">
           <Label>{t("asis.currency")}</Label>
           <div className="flex h-9 items-center rounded-md px-3 text-sm" style={{ background: "var(--muted)" }}>
