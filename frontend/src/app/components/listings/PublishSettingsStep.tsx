@@ -58,7 +58,7 @@ function BuyerPreview({ draft }: { draft: ListingDraft }) {
   const risks = analyzeDraft(draft).length;
   const price = parseInt(draft.unitPrice, 10) || 0;
   const period =
-    draft.start && draft.end ? `${draft.start} ~ ${draft.end}` : t("wz.tbd");
+    draft.availabilityStart && draft.availabilityEnd ? `${draft.availabilityStart} ~ ${draft.availabilityEnd}` : t("wz.tbd");
   const title = draft.productName || t("lf.productName");
 
   return (

@@ -31,8 +31,8 @@ function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDr
   return {
     productName: candidate?.title ?? "",
     category: candidate?.category ?? "accommodation",
-    start: stringValue(terms.service_start_date),
-    end: stringValue(terms.service_end_date),
+    start: "",
+    end: "",
     unitPrice: stringValue(terms.base_price_amount_minor),
     priceUnit: stringValue(terms.price_unit) || "1인당",
     cancellation,

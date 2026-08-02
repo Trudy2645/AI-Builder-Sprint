@@ -36,6 +36,8 @@ export interface ListingDraft {
   category: Category | "";
   district: string;
   // 공급 조건
+  availabilityStart: string;
+  availabilityEnd: string;
   start: string;
   end: string;
   quantity: string; // 공급 수량 라벨 (예: 주말 객실 최대 30실)
@@ -62,6 +64,8 @@ export function createEmptyDraft(method: CreateMethod): ListingDraft {
     productName: "",
     category: "",
     district: "",
+    availabilityStart: "",
+    availabilityEnd: "",
     start: "",
     end: "",
     quantity: "",
@@ -91,8 +95,8 @@ export function draftToListing(
     productName: draft.productName || "제목 없는 공고",
     category: (draft.category || "accommodation") as Category,
     district: draft.district || "해운대구",
-    start: draft.start,
-    end: draft.end,
+    start: draft.availabilityStart,
+    end: draft.availabilityEnd,
     unitPrice: parseInt(draft.unitPrice, 10) || 0,
     priceUnit: draft.priceUnit,
     quantityLabel: draft.quantity || "미정",

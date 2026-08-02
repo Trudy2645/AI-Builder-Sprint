@@ -129,7 +129,7 @@ export function WriteContractPage() {
                 <div className="rounded-lg border border-border p-5" style={{ background: "var(--surface)", fontSize: "14px", lineHeight: 1.9 }}>
                   <p style={{ fontWeight: 700, color: "var(--navy)" }}>{draft.productName || t("lf.productName")}</p>
                   <p className="mt-2">제1조 (계약의 목적) 본 계약은 셀러가 바이어에게 {draft.productName || "관광 상품"}을 공급하는 조건을 정함을 목적으로 한다.</p>
-                  <p>제2조 (공급 기간·수량) 공급 기간은 {draft.start || "○○"} ~ {draft.end || "○○"}로 하며, {draft.quantity || "협의된 수량"}을 공급한다.</p>
+                  <p>제2조 (이용 기간·수량) 이용 기간은 바이어가 계약 요청 시 선택하며, {draft.quantity || "협의된 수량"}을 공급한다.</p>
                   <p>제3조 (공급 단가) 공급 단가는 {draft.priceUnit} {formatKRW(price)}으로 한다.</p>
                   <p>제4조 (취소·환불) {draft.cancellation || "별도 협의"}.</p>
                   <p>제5조 (노쇼) {draft.noShow || "별도 협의"}.</p>

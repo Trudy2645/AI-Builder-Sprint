@@ -62,11 +62,11 @@ export function SupplyFields({ draft, onChange }: { draft: ListingDraft; onChang
   const { t } = useApp();
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <Field label={t("filter.from")}>
-        <Input type="date" value={draft.start} onChange={(e) => onChange({ start: e.target.value })} />
+      <Field label="공고 가능 시작일">
+        <Input type="date" value={draft.availabilityStart} onChange={(e) => onChange({ availabilityStart: e.target.value })} />
       </Field>
-      <Field label={t("filter.to")}>
-        <Input type="date" value={draft.end} onChange={(e) => onChange({ end: e.target.value })} />
+      <Field label="공고 가능 종료일">
+        <Input type="date" value={draft.availabilityEnd} onChange={(e) => onChange({ availabilityEnd: e.target.value })} />
       </Field>
       <div className="sm:col-span-2">
         <Field label={t("lf.quantity")}>
