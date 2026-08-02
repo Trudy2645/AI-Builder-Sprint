@@ -525,6 +525,50 @@ class ContractService:
             self._database_unavailable(exc)
         return self._signature_response(signature_request)
 
+    async def dispatch_signature_request_from_snapshots(
+        self,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+        idempotency_key: str,
+        client: ModusignClient,
+        template_id: str | None,
+    ) -> SignatureRequestCreated:
+        try:
+            contacts = await self._repository.get_signature_contacts(
+                contract_id, contract_version_id
+            )
+        except ContractRepositoryUnavailableError as exc:
+            self._database_unavailable(exc)
+        if contacts is None:
+            self._raise(
+                status.HTTP_404_NOT_FOUND,
+                "CONTRACT_VERSION_NOT_FOUND",
+                "Contract version was not found.",
+            )
+        if not contacts.buyer_email or not contacts.seller_email:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "SIGNING_EMAIL_MISSING",
+                "A buyer or seller signing email is missing from the contract snapshot.",
+            )
+        record = await self._get_record(contract_id)
+        return await self.create_signature_request(
+            contract_id,
+            contract_version_id,
+            ContractSignatureRequestCreate(
+                title=record.version_title or record.listing_title,
+                buyer={"name": contacts.buyer_name, "email": contacts.buyer_email},
+                seller={"name": contacts.seller_name, "email": contacts.seller_email},
+            ),
+            actor,
+            header_organization_id,
+            idempotency_key,
+            client,
+            template_id,
+        )
+
     async def _mark_signature_failed(self, signature_request_id: UUID) -> None:
         try:
             await self._repository.mark_signature_request_failed(signature_request_id)

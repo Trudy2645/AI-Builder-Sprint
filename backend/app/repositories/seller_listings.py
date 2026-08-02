@@ -568,7 +568,8 @@ class SqlAlchemySellerListingRepository:
                             select exists (
                                 select 1 from public.documents
                                 where id = :document_id and listing_id = :listing_id
-                                  and purpose = 'listing_hero' and status = 'ready'
+                                  and purpose in ('listing_hero', 'source_contract')
+                                  and status = 'ready'
                             )
                             """
                         ),

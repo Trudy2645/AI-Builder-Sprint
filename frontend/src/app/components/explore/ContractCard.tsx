@@ -108,7 +108,14 @@ export function ContractCard({ contract, base, guests, from, to }: { contract: C
         <Button
           className="mt-auto w-full gap-1.5 whitespace-nowrap"
           style={{ background: "var(--navy)" }}
-          onClick={() => navigate(`${base}/${contract.id}`)}
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (from) params.set("from", from);
+            if (to) params.set("to", to);
+            if (guests) params.set("guests", guests);
+            const query = params.toString();
+            navigate(`${base}/${contract.id}${query ? `?${query}` : ""}`);
+          }}
         >
           {t("card.viewTerms")}
           <ArrowRight className="size-4" />

@@ -22,7 +22,7 @@ import {
 } from "../../components/ui/table";
 import { useApp } from "../../context/AppContext";
 import { useListings, type Listing, type ListingStatus } from "../../store/ListingsContext";
-import { CATEGORIES, formatKRW } from "../../lib/catalog";
+import { CATEGORIES, formatKRW } from "../../data/contracts";
 
 type Tab = "all" | ListingStatus;
 const TABS: Tab[] = ["all", "draft", "needsReview", "public", "paused", "expired"];
@@ -53,15 +53,15 @@ export function ListingsManagePage() {
   const listingCategory = (listing: Listing) => CATEGORIES.find((c) => c.value === listing.category)?.labelKey ?? "cat.all";
   const pauseListing = async (listing: Listing) => {
     try { await updateListingStatus(listing.id, "paused"); toast.success("공고를 공개 중지했습니다."); }
-    catch { toast.error("공고 상태를 변경하지 못했습니다."); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "공고 상태를 변경하지 못했습니다."); }
   };
   const publishListing = async (listing: Listing) => {
     try { await updateListingStatus(listing.id, "public"); toast.success("공고를 다시 공개했습니다."); }
-    catch { toast.error("공고 상태를 변경하지 못했습니다."); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "공고 상태를 변경하지 못했습니다."); }
   };
   const removeListing = async (listing: Listing) => {
-    try { await deleteListing(listing.id); toast.success("공고를 보관 처리했습니다."); }
-    catch { toast.error("공고를 보관 처리하지 못했습니다."); }
+    try { await deleteListing(listing.id); toast.success("공고를 삭제했습니다."); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "공고를 삭제하지 못했습니다."); }
   };
 
   const ActionMenu = ({ listing }: { listing: Listing }) => (

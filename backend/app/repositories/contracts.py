@@ -169,6 +169,14 @@ class SignatureRequestRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class SignatureContactRecord:
+    buyer_name: str
+    buyer_email: str | None
+    seller_name: str
+    seller_email: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class SellerListingRequestCountRecord:
     listing_id: UUID
     listing_title: str
@@ -268,6 +276,10 @@ class ContractRepository(Protocol):
         seller_email: str,
     ) -> SignatureRequestRecord: ...
 
+    async def get_signature_contacts(
+        self, contract_id: UUID, contract_version_id: UUID
+    ) -> SignatureContactRecord | None: ...
+
     async def mark_signature_request_dispatched(
         self, signature_request_id: UUID, provider_document_id: str, provider_status: str
     ) -> SignatureRequestRecord: ...
@@ -354,6 +366,38 @@ class SqlAlchemyContractRepository:
             raise
         except SQLAlchemyError as exc:
             raise ContractRepositoryUnavailableError from exc
+
+    async def get_signature_contacts(
+        self, contract_id: UUID, contract_version_id: UUID
+    ) -> SignatureContactRecord | None:
+        """Load immutable buyer contact data and the seller who approved this version."""
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select buyer.name_snapshot as buyer_name,
+                           buyer.email_snapshot as buyer_email,
+                           seller.name_snapshot as seller_name,
+                           seller_user.email as seller_email
+                    from public.contracts c
+                    join public.contract_parties buyer
+                      on buyer.contract_id = c.id and buyer.party_role = 'buyer'
+                    join public.contract_parties seller
+                      on seller.contract_id = c.id and seller.party_role = 'seller'
+                    left join public.contract_version_approvals seller_approval
+                      on seller_approval.contract_version_id = :contract_version_id
+                     and seller_approval.party_role = 'seller'
+                    left join auth.users seller_user
+                      on seller_user.id = seller_approval.approved_by_user_id
+                    where c.id = :contract_id and c.current_version_id = :contract_version_id
+                    """
+                ),
+                {"contract_id": contract_id, "contract_version_id": contract_version_id},
+            )
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+        row = result.mappings().one_or_none()
+        return SignatureContactRecord(**row) if row is not None else None
 
     async def _claim_idempotency(
         self, actor_user_id: UUID, operation: str, key: str, request_hash: str

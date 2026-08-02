@@ -11,13 +11,9 @@ interface AppContextValue {
   companyName: string;
   setCompanyName: (name: string) => void;
   currentRole: Role | null;
-  login: (role: Role, company?: string) => void;
-  loginWithSession: (
-    role: Role,
-    company: string,
-    accessToken: string,
-    organizationId?: string | null,
-  ) => void;
+  isDemoSession: boolean;
+  login: (role: Role, company?: string, isDemo?: boolean) => void;
+  loginWithSession: (role: Role, company: string, accessToken: string, organizationId?: string | null) => void;
   logout: () => void;
 }
 
@@ -47,30 +43,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>("ko");
   const [companyName, setCompanyName] = useState<string>(storedSession?.companyName ?? "");
   const [currentRole, setCurrentRole] = useState<Role | null>(storedSession?.role ?? null);
-  const login = (role: Role, company?: string) => {
+  const [isDemoSession, setIsDemoSession] = useState(false);
+
+  const login = (role: Role, company?: string, isDemo = false) => {
     setCurrentRole(role);
     setCompanyName(company ?? "");
-    window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
+    setIsDemoSession(isDemo);
+    if (!isDemo) {
+      window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
+    }
   };
 
   const logout = () => {
     setAccessToken(null);
-    window.localStorage.removeItem(sessionKey);
-    window.localStorage.removeItem("busanlink.refresh_token");
     window.localStorage.removeItem("busanlink.organization_id");
+    window.localStorage.removeItem(sessionKey);
     setCurrentRole(null);
     setCompanyName("");
+    setIsDemoSession(false);
   };
 
-  const loginWithSession = (
-    role: Role,
-    company: string,
-    accessToken: string,
-    organizationId?: string | null,
-  ) => {
+  const loginWithSession = (role: Role, company: string, accessToken: string, organizationId?: string | null) => {
     setAccessToken(accessToken);
     if (organizationId) window.localStorage.setItem("busanlink.organization_id", organizationId);
-    login(role, company);
+    login(role, company, false);
   };
 
   const value = useMemo<AppContextValue>(
@@ -81,11 +77,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       companyName,
       setCompanyName,
       currentRole,
+      isDemoSession,
       login,
       loginWithSession,
       logout,
     }),
-    [lang, companyName, currentRole],
+    [lang, companyName, currentRole, isDemoSession],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
