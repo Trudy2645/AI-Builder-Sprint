@@ -23,6 +23,43 @@ export class ApiError extends Error {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
+type ApiSession = {
+  accessToken: string;
+  organizationId: string;
+};
+
+type UploadedDocumentProcessingResult = {
+  listingCandidate: {
+    title?: string;
+    category?: "vehicle_rental" | "activity" | "tour" | "accommodation";
+    terms?: Record<string, unknown>;
+  } | null;
+  confirmationRequired: string[];
+  validationWarnings: string[];
+};
+
+function requestIdempotencyKey(prefix: string): string {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function getApiSession(): ApiSession {
+  const accessToken = window.localStorage.getItem("busanlink.access_token")
+    ?? import.meta.env.VITE_API_ACCESS_TOKEN;
+  const organizationId = window.localStorage.getItem("busanlink.organization_id")
+    ?? import.meta.env.VITE_SELLER_ORGANIZATION_ID;
+  if (!accessToken || !organizationId) {
+    throw new Error("API 로그인 정보가 없습니다. 로그인 후 다시 시도해 주세요.");
+  }
+  return { accessToken, organizationId };
+}
+
+function authenticatedHeaders(session: ApiSession, headers: HeadersInit = {}): Headers {
+  const result = new Headers(headers);
+  result.set("Authorization", `Bearer ${session.accessToken}`);
+  result.set("X-Organization-Id", session.organizationId);
+  return result;
+}
+
 export function friendlyApiError(error: unknown): string {
   if (error instanceof ApiError) {
     const messages: Record<string, string> = {
@@ -56,6 +93,91 @@ export async function apiFetch<Data>(path: string, init: RequestInit = {}): Prom
     });
   }
   return payload.data as Data;
+}
+
+/**
+ * Creates a draft listing, uploads a contract, waits for the backend's AI workflow,
+ * and returns only the structured candidate intended for seller confirmation.
+ */
+export async function uploadAndProcessSourceContract(file: File): Promise<UploadedDocumentProcessingResult> {
+  const session = getApiSession();
+  const sha256 = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  const contentSha256 = Array.from(new Uint8Array(sha256))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  const headers = authenticatedHeaders(session, { "Content-Type": "application/json" });
+
+  const listing = await apiFetch<{ listing_id: string }>("/seller/listings", {
+    method: "POST",
+    headers: new Headers([
+      ...headers.entries(),
+      ["Idempotency-Key", requestIdempotencyKey("listing-create")],
+    ]),
+    body: JSON.stringify({
+      creation_method: "upload",
+      title: file.name.replace(/\.[^.]+$/, "") || "업로드 계약서",
+      category: "accommodation",
+      district: "부산",
+      language: "ko-KR",
+    }),
+  });
+
+  const upload = await apiFetch<{ document: { id: string }; upload_url: string; method: string }>("/documents/upload-url", {
+    method: "POST",
+    headers: new Headers([
+      ...headers.entries(),
+      ["Idempotency-Key", requestIdempotencyKey("document-upload")],
+    ]),
+    body: JSON.stringify({
+      listing_id: listing.listing_id,
+      purpose: "source_contract",
+      original_filename: file.name,
+      mime_type: file.type || "application/pdf",
+      size_bytes: file.size,
+      content_sha256: contentSha256,
+    }),
+  });
+
+  const putResponse = await fetch(upload.upload_url, {
+    method: upload.method,
+    headers: { "Content-Type": file.type || "application/pdf" },
+    body: file,
+  });
+  if (!putResponse.ok) throw new Error("계약서 파일을 저장하지 못했습니다.");
+
+  await apiFetch(`/documents/${upload.document.id}/complete`, {
+    method: "POST",
+    headers: authenticatedHeaders(session),
+  });
+  await apiFetch(`/documents/${upload.document.id}/process`, {
+    method: "POST",
+    headers: new Headers([
+      ...authenticatedHeaders(session).entries(),
+      ["Idempotency-Key", requestIdempotencyKey("document-process")],
+    ]),
+  });
+
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const result = await apiFetch<{
+      status: "processing" | "ready" | "failed";
+      listing_candidate: UploadedDocumentProcessingResult["listingCandidate"];
+      confirmation_required: string[];
+      validation_warnings: string[];
+      failure_code: string | null;
+    }>(`/documents/${upload.document.id}/processing-result`, {
+      headers: authenticatedHeaders(session),
+    });
+    if (result.status === "ready") {
+      return {
+        listingCandidate: result.listing_candidate,
+        confirmationRequired: result.confirmation_required,
+        validationWarnings: result.validation_warnings,
+      };
+    }
+    if (result.status === "failed") throw new Error(`AI 계약서 분석에 실패했습니다${result.failure_code ? ` (${result.failure_code})` : ""}.`);
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+  }
+  throw new Error("AI 분석 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
 }
 
 export type PublicListing = {

@@ -10,29 +10,34 @@ import { RiskReviewStep, analyzeDraft } from "../../components/listings/RiskRevi
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
 import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
+import { friendlyApiError, uploadAndProcessSourceContract } from "../../lib/api";
 
 const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
 
-// OCR로 추출했다고 가정하는 데모 데이터 (위험 조항이 포함되도록 구성).
-const OCR_PREFILL: Partial<ListingDraft> = {
-  productName: "2026 오션뷰 루프탑 바비큐 투어",
-  category: "tour",
-  district: "해운대구",
-  start: "2026-06-01",
-  end: "2026-09-30",
-  quantity: "1일 최대 60명",
-  unitPrice: "52000",
-  priceUnit: "1인당",
-  minQty: "20",
-  maxQty: "60",
-  cancellation: "이용 3일 전까지 무료 취소",
-  noShow: "투어 요금 전액 청구",
-  settlement: "매월 말 마감 후 익익월(60일) 15일 지급",
-  liability: "",
-  termination: "30일 전 서면 통지로 해지 가능",
-  special: "최소 보장 물량 20명 미달 시 위약금 발생",
-  headline: "해운대 오션뷰 루프탑에서 즐기는 바비큐 투어를 단체 물량으로 확보하세요.",
+type ListingCandidate = {
+  title?: string;
+  category?: ListingDraft["category"];
+  terms?: Record<string, unknown>;
 };
+
+function stringValue(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDraft> {
+  const terms = candidate?.terms ?? {};
+  return {
+    productName: candidate?.title ?? "",
+    category: candidate?.category ?? "accommodation",
+    start: stringValue(terms.service_start_date),
+    end: stringValue(terms.service_end_date),
+    unitPrice: stringValue(terms.base_price_amount_minor),
+    priceUnit: stringValue(terms.price_unit) || "1인당",
+    cancellation: stringValue(terms.cancellation_policy),
+    noShow: stringValue(terms.refund_policy),
+    liability: stringValue(terms.liability_policy),
+  };
+}
 
 export function UploadOcrPage() {
   const { t } = useApp();
@@ -40,23 +45,41 @@ export function UploadOcrPage() {
   const { addListing } = useListings();
 
   const [step, setStep] = useState(0);
-  const [fileName, setFileName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [draft, setDraft] = useState<ListingDraft>(() => createEmptyDraft("upload"));
   const [applied, setApplied] = useState<Record<string, boolean>>({});
+  const [analysisNotes, setAnalysisNotes] = useState<string[]>([]);
 
   const patch = (p: Partial<ListingDraft>) => setDraft((d) => ({ ...d, ...p }));
 
-  const runOcr = () => {
+  const runOcr = async () => {
+    if (!file) return;
     setAnalyzing(true);
     setAnalyzed(false);
-    setTimeout(() => {
-      setDraft((d) => ({ ...d, ...OCR_PREFILL }));
-      setAnalyzing(false);
-      setAnalyzed(true);
+    try {
+      const result = await uploadAndProcessSourceContract(file);
+      setDraft((d) => ({ ...d, ...candidateToDraft(result.listingCandidate) }));
+      setAnalysisNotes([...result.confirmationRequired, ...result.validationWarnings]);
       toast.success(t("ocr.analyzeDone"));
-    }, 1400);
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+      setAnalyzed(false);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const loadSampleContract = async () => {
+    try {
+      const response = await fetch("/samples/accommodation_service_agreement_filled_sample_ko.pdf");
+      if (!response.ok) throw new Error("예시 계약서를 불러오지 못했습니다.");
+      setFile(new File([await response.blob()], "숙박시설_이용_및_제공_계약서.pdf", { type: "application/pdf" }));
+      toast.success("숙박 계약서 예시를 불러왔습니다.");
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    }
   };
 
   const applyRisk = (field: keyof ListingDraft, value: string, id: string) => {
@@ -65,7 +88,7 @@ export function UploadOcrPage() {
   };
 
   const goNext = () => {
-    if (step === 0 && !fileName) {
+    if (step === 0 && !file) {
       toast.error(t("wz.needFile"));
       return;
     }
@@ -125,10 +148,10 @@ export function UploadOcrPage() {
               <h3 style={{ color: "var(--navy)" }}>{t("ocr.dropTitle")}</h3>
               <p className="mt-1 text-muted-foreground" style={{ fontSize: "14px" }}>{t("ocr.dropDesc")}</p>
             </div>
-            {fileName && (
+            {file && (
               <div className="flex items-center gap-2 rounded-lg border border-border px-4 py-2" style={{ fontSize: "14px" }}>
                 <FileText className="size-4" style={{ color: "var(--ocean)" }} />
-                {fileName}
+                {file.name}
               </div>
             )}
             <label htmlFor="ocr-file">
@@ -136,13 +159,17 @@ export function UploadOcrPage() {
                 id="ocr-file"
                 type="file"
                 className="hidden"
-                onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "계약서_2026.pdf")}
+                accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
               <span className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-4 py-2 text-white" style={{ background: "var(--navy)", fontSize: "14px" }}>
                 <UploadCloud className="size-4" />
                 {t("ocr.choose")}
               </span>
             </label>
+            <Button type="button" variant="outline" size="sm" onClick={loadSampleContract}>
+              숙박 계약서 예시 불러오기
+            </Button>
           </div>
         )}
 
@@ -170,7 +197,7 @@ export function UploadOcrPage() {
                 <div className="flex size-14 items-center justify-center rounded-2xl" style={{ background: "var(--info-soft)", color: "var(--ocean)" }}>
                   <FileText className="size-7" />
                 </div>
-                <p className="text-muted-foreground" style={{ fontSize: "14px" }}>{fileName}</p>
+                <p className="text-muted-foreground" style={{ fontSize: "14px" }}>{file?.name}</p>
                 <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--ocean)" }} onClick={runOcr}>
                   <Sparkles className="size-4" />
                   {t("wz.ocr")}
@@ -185,6 +212,14 @@ export function UploadOcrPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("ocr.confirmTitle")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("ocr.confirmDesc")}</p>
+            {analysisNotes.length > 0 && (
+              <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">AI 확인 필요 항목</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {analysisNotes.map((note) => <li key={note}>{note}</li>)}
+                </ul>
+              </div>
+            )}
             <div className="flex flex-col gap-6">
               <ProductFields draft={draft} onChange={patch} />
               <SupplyFields draft={draft} onChange={patch} />
