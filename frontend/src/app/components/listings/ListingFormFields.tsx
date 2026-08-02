@@ -101,14 +101,14 @@ export function TermsFields({ draft, onChange }: { draft: ListingDraft; onChange
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Field label={t("lf.cancellation")}>
-        <Input value={draft.cancellation} placeholder={t("lf.cancellationPh")} onChange={(e) => onChange({ cancellation: e.target.value })} />
+        <Textarea rows={4} value={draft.cancellation} placeholder={t("lf.cancellationPh")} onChange={(e) => onChange({ cancellation: e.target.value })} />
       </Field>
       <Field label={t("lf.noShow")}>
-        <Input value={draft.noShow} placeholder={t("lf.noShowPh")} onChange={(e) => onChange({ noShow: e.target.value })} />
+        <Textarea rows={4} value={draft.noShow} placeholder={t("lf.noShowPh")} onChange={(e) => onChange({ noShow: e.target.value })} />
       </Field>
       <div className="sm:col-span-2">
         <Field label={t("lf.settlement")}>
-          <Input value={draft.settlement} placeholder={t("lf.settlementPh")} onChange={(e) => onChange({ settlement: e.target.value })} />
+          <Textarea rows={3} value={draft.settlement} placeholder={t("lf.settlementPh")} onChange={(e) => onChange({ settlement: e.target.value })} />
         </Field>
       </div>
       <div className="sm:col-span-2">

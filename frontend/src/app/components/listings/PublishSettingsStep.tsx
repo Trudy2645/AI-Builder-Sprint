@@ -47,7 +47,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-4 py-2" style={{ fontSize: "13px" }}>
       <span className="whitespace-nowrap text-muted-foreground">{label}</span>
-      <span className="text-right">{value}</span>
+      <span className="max-w-[75%] whitespace-pre-wrap break-words text-right leading-5">{value}</span>
     </div>
   );
 }
