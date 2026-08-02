@@ -335,8 +335,14 @@ export const contracts: Contract[] = [
   },
 ];
 
+export const DEMO_SERVER_IDS: Record<string, string> = {
+  "coastline-hotel-room-2026": "11111111-1111-4111-8111-111111111111",
+  "bluewave-surf-lesson-2026": "22222222-2222-4222-8222-222222222222",
+  "route-rental-van-2026": "33333333-3333-4333-8333-333333333333",
+};
+
 export function getContract(id: string | undefined): Contract | undefined {
-  return contracts.find((c) => c.id === id);
+  return contracts.find((c) => c.id === id || DEMO_SERVER_IDS[c.id] === id);
 }
 
 export function riskCount(c: Contract): number {

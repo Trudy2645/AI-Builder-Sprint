@@ -28,6 +28,8 @@ import {
 import { useApp } from "../../context/AppContext";
 import {
   CATEGORIES,
+  contracts as demoContracts,
+  DEMO_SERVER_IDS,
   DISTRICTS,
   contracts,
   formatKRW,
@@ -47,6 +49,7 @@ const categoryByApiCategory: Record<PublicListing["category"], Category> = {
 };
 
 function toContract(listing: PublicListing): Contract {
+  const demo = demoContracts.find((item) => DEMO_SERVER_IDS[item.id] === listing.id);
   const price = listing.base_price?.amount_minor ?? 0;
   const currency = listing.base_price?.currency ?? "KRW";
   const period = `${listing.availability.start_date ?? "미정"} ~ ${listing.availability.end_date ?? "미정"}`;
@@ -60,15 +63,15 @@ function toContract(listing: PublicListing): Contract {
     end: listing.availability.end_date ?? "미정",
     unitPrice: price,
     priceUnit: listing.base_price?.unit ?? "기준 단가",
-    quantityLabel: "상세 페이지에서 공급 조건을 확인하세요",
-    capacity: Number.MAX_SAFE_INTEGER,
+    quantityLabel: demo?.quantityLabel ?? "상세 페이지에서 공급 조건을 확인하세요",
+    capacity: demo?.capacity ?? Number.MAX_SAFE_INTEGER,
     available: listing.contract_available,
-    popularity: 0,
-    createdOrder: 0,
-    recommendScore: 0,
-    image: listing.hero_image_url ?? "",
-    aiSummary: [listing.ai_summary ?? "AI 요약이 아직 준비되지 않았습니다."],
-    details: {
+    popularity: demo?.popularity ?? 0,
+    createdOrder: demo?.createdOrder ?? 0,
+    recommendScore: demo?.recommendScore ?? 0,
+    image: listing.hero_image_url ?? demo?.image ?? "",
+    aiSummary: listing.ai_summary?.split("\n") ?? demo?.aiSummary ?? ["AI 요약이 아직 준비되지 않았습니다."],
+    details: demo?.details ?? {
       period,
       supplyQuantity: "상세 페이지에서 확인",
       unitPrice: `${price.toLocaleString("ko-KR")} ${currency}`,
@@ -76,7 +79,7 @@ function toContract(listing: PublicListing): Contract {
       noShow: "상세 페이지에서 확인",
       settlement: "상세 페이지에서 확인",
     },
-    clauses: [],
+    clauses: demo?.clauses ?? [],
   };
 }
 
