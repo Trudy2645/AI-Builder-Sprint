@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
@@ -7,7 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Resolve the project env file from this module so uvicorn works when
+        # launched from either the repository root or the backend directory.
+        env_file=Path(__file__).resolve().parents[2] / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -67,6 +70,13 @@ class Settings(BaseSettings):
     modusign_max_retries: int = Field(default=3, ge=0, le=5)
     modusign_retry_base_seconds: float = Field(default=0.5, gt=0, le=10)
     modusign_webhook_secret: str | None = Field(default=None, repr=False)
+    # Older local environments used this name. Keep it as a backwards-compatible
+    # fallback so a deployed webhook never silently becomes unauthenticated.
+    modusign_webhook_token: str | None = Field(default=None, repr=False)
+
+    @property
+    def effective_modusign_webhook_secret(self) -> str | None:
+        return self.modusign_webhook_secret or self.modusign_webhook_token
 
 
 @lru_cache

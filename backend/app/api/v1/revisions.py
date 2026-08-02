@@ -56,6 +56,20 @@ async def get_revision_request(
     return typed_envelope(request, await service.get(revision_request_id, actor, organization_id))
 
 
+@router.post(
+    "/revision-requests/{revision_request_id}/read",
+    response_model=SuccessEnvelope[dict[str, bool]],
+)
+async def mark_revision_request_read(
+    request: Request,
+    revision_request_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[RevisionService, Depends(get_revision_service)],
+) -> SuccessEnvelope[dict[str, bool]]:
+    await service.mark_buyer_read(revision_request_id, actor)
+    return typed_envelope(request, {"read": True})
+
+
 @router.get(
     "/seller/revision-requests",
     response_model=SuccessEnvelope[list[SellerRevisionRequestListItem]],
@@ -71,6 +85,27 @@ async def list_seller_revision_requests(
 ) -> SuccessEnvelope[list[SellerRevisionRequestListItem]]:
     statuses = set(status_filter) if status_filter else {"sent", "countered"}
     return typed_envelope(request, await service.list_seller(actor, organization_id, statuses))
+
+
+@router.get(
+    "/me/revision-requests",
+    response_model=SuccessEnvelope[list[SellerRevisionRequestListItem]],
+)
+async def list_buyer_revision_requests(
+    request: Request,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[RevisionService, Depends(get_revision_service)],
+    status_filter: Annotated[
+        list[Literal["sent", "countered", "accepted", "rejected", "partially_accepted"]] | None,
+        Query(alias="status"),
+    ] = None,
+) -> SuccessEnvelope[list[SellerRevisionRequestListItem]]:
+    statuses = (
+        set(status_filter)
+        if status_filter
+        else {"sent", "countered", "accepted", "rejected", "partially_accepted"}
+    )
+    return typed_envelope(request, await service.list_buyer(actor, statuses))
 
 
 @router.post(

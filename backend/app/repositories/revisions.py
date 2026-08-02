@@ -128,6 +128,10 @@ class RevisionRepository(Protocol):
         self, organization_id: UUID, statuses: set[str]
     ) -> list[RevisionRequestRecord]: ...
 
+    async def list_buyer_revisions(
+        self, user_id: UUID, statuses: set[str]
+    ) -> list[RevisionRequestRecord]: ...
+
     async def list_unread_revision_contract_ids(
         self, user_id: UUID, contract_ids: list[UUID]
     ) -> set[UUID]: ...
@@ -322,6 +326,52 @@ class SqlAlchemyRevisionRepository:
         except SQLAlchemyError as exc:
             raise RevisionRepositoryError from exc
 
+    async def list_buyer_revisions(
+        self, user_id: UUID, statuses: set[str]
+    ) -> list[RevisionRequestRecord]:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select rr.id
+                    from public.revision_requests rr
+                    join public.contracts c on c.id = rr.contract_id
+                    where c.buyer_user_id = :user_id
+                      and rr.status::text = any(cast(:statuses as text[]))
+                    order by coalesce(rr.sent_at, rr.updated_at) desc, rr.id desc
+                    """
+                ),
+                {"user_id": user_id, "statuses": sorted(statuses)},
+            )
+            records = []
+            for revision_id in result.scalars().all():
+                record = await self.get_revision(revision_id)
+                if record is not None:
+                    records.append(record)
+            return records
+        except SQLAlchemyError as exc:
+            raise RevisionRepositoryError from exc
+
+    async def mark_buyer_revision_read(self, user_id: UUID, revision_id: UUID) -> None:
+        try:
+            await self._session.execute(
+                text(
+                    """
+                    update public.notifications n
+                    set read_at = coalesce(read_at, now())
+                    from public.revision_requests rr
+                    where rr.id = :revision_id
+                      and n.user_id = :user_id
+                      and n.resource_type = 'contract'
+                      and n.resource_id = rr.contract_id
+                      and n.notification_type in ('revision_decided', 'seller_response')
+                    """
+                ),
+                {"user_id": user_id, "revision_id": revision_id},
+            )
+        except SQLAlchemyError as exc:
+            raise RevisionRepositoryError from exc
+
     async def list_unread_revision_contract_ids(
         self, user_id: UUID, contract_ids: list[UUID]
     ) -> set[UUID]:
@@ -487,7 +537,7 @@ class SqlAlchemyRevisionRepository:
                     raise RevisionReferenceError
                 if row["status"] != "draft":
                     raise RevisionStateConflictError
-                await self._validate_item_references(
+                clause_id = await self._validate_item_references(
                     revision_id, row["contract_id"], item["clause_id"], item["document_ids"]
                 )
                 updated = await self._session.execute(
@@ -502,7 +552,12 @@ class SqlAlchemyRevisionRepository:
                         returning id
                         """
                     ),
-                    {"item_id": item_id, "revision_id": revision_id, **item},
+                    {
+                        "item_id": item_id,
+                        "revision_id": revision_id,
+                        "clause_id": clause_id,
+                        **{key: item[key] for key in ("request_type", "reason", "requested_text")},
+                    },
                 )
                 if updated.scalar_one_or_none() is None:
                     raise RevisionNotFoundError
@@ -1011,7 +1066,7 @@ class SqlAlchemyRevisionRepository:
     async def _insert_item(
         self, revision_id: UUID, contract_id: UUID, item_order: int, item: dict[str, Any]
     ) -> UUID:
-        await self._validate_item_references(
+        clause_id = await self._validate_item_references(
             revision_id, contract_id, item["clause_id"], item["document_ids"]
         )
         item_id = uuid4()
@@ -1031,10 +1086,8 @@ class SqlAlchemyRevisionRepository:
                 "id": item_id,
                 "revision_id": revision_id,
                 "item_order": item_order,
-                **{
-                    key: item[key]
-                    for key in ("clause_id", "request_type", "reason", "requested_text")
-                },
+                "clause_id": clause_id,
+                **{key: item[key] for key in ("request_type", "reason", "requested_text")},
             },
         )
         await self._replace_documents(item_id, contract_id, item["document_ids"])
@@ -1081,23 +1134,24 @@ class SqlAlchemyRevisionRepository:
         contract_id: UUID,
         clause_id: UUID | None,
         document_ids: list[UUID],
-    ) -> None:
+    ) -> UUID | None:
+        normalized_clause_id = clause_id
         if clause_id is not None:
             result = await self._session.execute(
                 text(
                     """
-                    select exists (
-                        select 1
+                    select cc.id
                         from public.contract_clauses cc
                         join public.revision_requests rr
                           on rr.contract_version_id = cc.contract_version_id
-                        where rr.id = :revision_id and cc.id = :clause_id
-                    )
+                        where rr.id = :revision_id
+                          and (cc.id = :clause_id or cc.source_listing_clause_id = :clause_id)
                     """
                 ),
                 {"revision_id": revision_id, "clause_id": clause_id},
             )
-            if not result.scalar_one():
+            normalized_clause_id = result.scalar_one_or_none()
+            if normalized_clause_id is None:
                 raise RevisionReferenceError
         if len(set(document_ids)) != len(document_ids):
             raise RevisionReferenceError
@@ -1114,6 +1168,7 @@ class SqlAlchemyRevisionRepository:
             )
             if result.scalar_one() != len(document_ids):
                 raise RevisionReferenceError
+        return normalized_clause_id
 
     async def _decision_values(self, revision_id: UUID) -> set[str]:
         result = await self._session.execute(

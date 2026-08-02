@@ -335,6 +335,33 @@ def test_contract_request_creates_expected_initial_state(
     assert contract_repository.copied_clause_counts[-1] == 1
 
 
+def test_contract_request_can_use_a_subset_of_listing_supply_period(
+    contract_client: TestClient,
+    contract_repository: FakeContractRepository,
+) -> None:
+    """A buyer may request part of the published period, not only the full period."""
+    contract_repository.source = replace(
+        contract_repository.source,
+        service_start_date=date(2026, 8, 1),
+        service_end_date=date(2026, 8, 31),
+    )
+
+    response = post_request(
+        contract_client,
+        request_payload(
+            nights=3,
+            start_date="2026-08-10",
+            end_date="2026-08-13",
+            initial_request_kind="as_is",
+        ),
+        key="subset-of-listing-period",
+    )
+
+    assert response.status_code == 200
+    assert contract_repository.created_data[-1].service_start_date == date(2026, 8, 10)
+    assert contract_repository.created_data[-1].service_end_date == date(2026, 8, 13)
+
+
 def test_published_seat_listing_accepts_contract_request_with_same_unit(
     contract_client: TestClient,
     contract_repository: FakeContractRepository,
