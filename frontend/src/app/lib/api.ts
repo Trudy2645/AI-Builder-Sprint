@@ -450,6 +450,10 @@ export function createRevisionRequest(contractId: string, payload: { base_versio
   const session = getApiSession();
   return apiFetch(`/contracts/${contractId}/revision-requests`, { method: "POST", headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("revision-request")]]), body: JSON.stringify(payload) });
 }
+export function sendRevisionRequest(revisionId: string): Promise<unknown> {
+  const session = getApiSession();
+  return apiFetch(`/revision-requests/${revisionId}/send`, { method: "POST", headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("revision-send")]]) });
+}
 export function decideRevisionItem(revisionId: string, itemId: string, payload: { decision: "accepted" | "rejected" | "countered"; seller_reason?: string; counter_text?: string }): Promise<RevisionDetail> {
   const session = getApiSession();
   return apiFetch<RevisionDetail>(`/revision-requests/${revisionId}/items/${itemId}`, { method: "PATCH", headers: new Headers([...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(), ["Idempotency-Key", requestIdempotencyKey("revision-item-decide")]]), body: JSON.stringify(payload) });

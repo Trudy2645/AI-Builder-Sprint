@@ -9,7 +9,7 @@ import { ContractStepper } from "../../components/contract/ContractStepper";
 import { RevisionCard, type RevisionDraft } from "../../components/requests/RevisionCard";
 import { useApp } from "../../context/AppContext";
 import { getContract, type Contract } from "../../data/contracts";
-import { createPublicContractRequest, createRevisionRequest, friendlyApiError, getPublicListingAsContract } from "../../lib/api";
+import { createPublicContractRequest, createRevisionRequest, friendlyApiError, getPublicListingAsContract, sendRevisionRequest } from "../../lib/api";
 import { useRequests } from "../../store/RequestsContext";
 
 let counter = 0;
@@ -85,7 +85,7 @@ export function RevisionRequestPage() {
         start_date: startDate, end_date: endDate, currency: "KRW", initial_request_kind: "revision",
         request_message: valid.map((d) => `${d.clauseNo}: ${d.requested}${d.reason ? ` (사유: ${d.reason})` : ""}`).join("\n"),
       });
-      await createRevisionRequest(created.contract_id, {
+      const revision = await createRevisionRequest(created.contract_id, {
         base_version_no: created.version_no,
         message: valid.map((d) => d.reason).filter(Boolean).join("\n") || "바이어가 계약 조항 수정을 요청했습니다.",
         items: valid.map((d) => {
@@ -98,6 +98,7 @@ export function RevisionRequestPage() {
           };
         }),
       });
+      await sendRevisionRequest(revision.revision_request_id);
       addRequest({
       contractId: contract.id,
       seller: contract.seller,
