@@ -56,7 +56,7 @@ const STATUS_META: Record<BuyerContractStatus, { label: string; tone: string; de
 
 const OCR_MOCK: BuyerContractDraft = {
   ...DEFAULT_BUYER_CONTRACT_DRAFT,
-  title: "해운대 오션스테이 여름 객실 공급",
+  title: "해운대 오션스테이 단체 객실 공급",
   cancellationPolicy: "체크인 7일 전까지 무료 취소, 이후 1박 요금의 50% 부과",
   settlementPolicy: "월 마감 후 익월 15일 이내 계좌이체",
 };

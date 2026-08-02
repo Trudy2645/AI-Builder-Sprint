@@ -105,7 +105,7 @@ export function NegotiatingPage() {
   const { approve } = useNegotiation();
   const activeRequest = useMemo(
     () =>
-      requests.find((request) => request.id === "req-summer-main") ??
+      requests.find((request) => request.id === "req-hotel-main") ??
       requests.find((request) => request.status === "responded" || request.status === "negotiating") ??
       requests[0],
     [requests],

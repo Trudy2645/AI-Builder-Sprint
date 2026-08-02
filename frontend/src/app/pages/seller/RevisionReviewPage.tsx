@@ -93,7 +93,7 @@ export function RevisionReviewPage() {
       return;
     }
     setPreviewOpen(false);
-    updateRequestStatus("req-summer-main", "responded", {
+    updateRequestStatus("req-hotel-main", "responded", {
       currentVersion: "v3",
       latestResponse: "셀러가 취소 조건에 대안을 제시하고 노쇼·정산 조건에 응답했습니다.",
     });
@@ -164,7 +164,7 @@ export function RevisionReviewPage() {
           style={{ color: "var(--coral)" }}
           onClick={() => {
             if (!window.confirm("이 계약 협상을 종료하시겠습니까? 종료 후에는 같은 요청에서 협상을 계속할 수 없습니다.")) return;
-            updateRequestStatus("req-summer-main", "closed", {
+            updateRequestStatus("req-hotel-main", "closed", {
               latestResponse: "셀러가 협상을 종료했습니다.",
             });
             toast.success(t("rvw.ended"));

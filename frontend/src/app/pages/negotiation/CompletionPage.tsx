@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react";
-import { CheckCircle2, Download, FileSearch, ListChecks, Hash, FileCheck2, Clock, Building2 } from "lucide-react";
+import { CheckCircle2, Download, FileSearch, ListChecks, Hash, FileCheck2, Clock, Building2, CalendarRange, UsersRound, Wallet } from "lucide-react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
@@ -11,6 +11,7 @@ import { useRoleBase } from "../../hooks/useRoleBase";
 import { useNegotiation } from "../../store/NegotiationContext";
 import { useRequests } from "../../store/RequestsContext";
 import { finalContractInfo, NEGOTIATION_CONTRACT_ID } from "../../data/negotiation";
+import { formatKRW } from "../../data/contracts";
 
 function DetailRow({ icon: Icon, label, children }: { icon: typeof Hash; label: string; children: ReactNode }) {
   return (
@@ -28,13 +29,21 @@ export function CompletionPage() {
   const { t } = useApp();
   const navigate = useNavigate();
   const { base, role } = useRoleBase();
-  const { flow, directRequestId, directContractId, bothSigned, contractNo, signedAt } = useNegotiation();
+  const { flow, directRequestId, directContractId, directContract, bothSigned, contractNo, signedAt } = useNegotiation();
   const { updateRequestStatus } = useRequests();
   const isDirect = flow === "direct";
+  const direct = isDirect ? directContract : undefined;
+  const contractTitle = direct?.title ?? "2026 해운대 단체 객실 공급 계약";
+  const contractSeller = direct?.seller ?? finalContractInfo.seller;
+  const contractPeriod = direct?.period ?? finalContractInfo.period;
+  const contractTotal = direct?.total ?? finalContractInfo.estimatedTotal;
+  const quantityText = direct
+    ? `${direct.guests ?? "-"}명 · ${direct.rooms}실 · ${direct.nights}박`
+    : "30명 · 15실 · 2박";
 
   useEffect(() => {
     if (!bothSigned) return;
-    updateRequestStatus(directRequestId ?? "req-summer-main", "completed", {
+    updateRequestStatus(directRequestId ?? "req-hotel-main", "completed", {
       currentVersion: isDirect ? "v1" : "v4",
       latestResponse: isDirect
         ? "바이어가 공개 조건에 전자서명하여 계약이 체결되었습니다. 셀러에게 체결 완료 알림을 보냈습니다."
@@ -46,17 +55,17 @@ export function CompletionPage() {
     const content = [
       "BUSAN LINK 최종 전자계약서",
       "",
-      "계약명: 2026 부산 여름 객실 공급 계약",
+      `계약명: ${contractTitle}`,
       `계약번호: ${contractNo}`,
       `바이어: ${finalContractInfo.buyer}`,
-      `셀러: ${finalContractInfo.seller}`,
-      `계약기간: ${finalContractInfo.period}`,
+      `셀러: ${contractSeller}`,
+      `계약기간: ${contractPeriod}`,
       `최종버전: ${isDirect ? "v1" : finalContractInfo.finalVersion}`,
       `체결시각: ${signedAt}`,
       "",
       "핵심 조건",
-      "- 주말 객실 15실, 2박, 일본인 관광객 30명 기준",
-      "- 객실당 145,000원 / 총 예상금액 4,350,000원",
+      `- 요청 조건: ${quantityText}`,
+      `- 총 예상금액: ${formatKRW(contractTotal)}`,
       "- 체크인 7일 전까지 무료 취소, 이후 50% 부과",
       "- 노쇼 시 해당 객실 1박 공급 요금 100% 부과",
       "- 매월 말 마감 후 다음 달 15일까지 바이어가 셀러에게 지급",
@@ -105,18 +114,45 @@ export function CompletionPage() {
       <div className="mb-6 rounded-xl border border-border bg-card p-4 sm:p-6">
         <div className="flex items-start gap-2 break-words" style={{ fontWeight: 700, color: "var(--navy)" }}>
           <Building2 className="mt-0.5 size-4 shrink-0" style={{ color: "var(--ocean)" }} />
-          <span>2026 부산 여름 객실 공급 계약</span>
+          <span>{contractTitle}</span>
         </div>
         <div className="text-muted-foreground" style={{ fontSize: "13px" }}>
-          {finalContractInfo.buyer} · {finalContractInfo.seller}
+          {finalContractInfo.buyer} · {contractSeller}
         </div>
 
         <Separator className="my-4" />
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+              <UsersRound className="size-3.5" style={{ color: "var(--ocean)" }} />
+              요청 조건
+            </div>
+            <div className="mt-1 text-sm font-bold" style={{ color: "var(--navy)" }}>{quantityText}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+              <CalendarRange className="size-3.5" style={{ color: "var(--ocean)" }} />
+              이용 기간
+            </div>
+            <div className="mt-1 text-sm font-bold" style={{ color: "var(--navy)" }}>{contractPeriod}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-muted/20 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+              <Wallet className="size-3.5" style={{ color: "var(--ocean)" }} />
+              총 예상금액
+            </div>
+            <div className="mt-1 text-sm font-bold" style={{ color: "var(--navy)" }}>{formatKRW(contractTotal)}</div>
+          </div>
+        </div>
 
         <div className="divide-y divide-border">
           <DetailRow icon={Hash} label={t("cc.contractNo")}>
             <span style={{ color: "var(--navy)", fontFamily: "monospace" }}>{contractNo}</span>
           </DetailRow>
+          <DetailRow icon={CalendarRange} label="계약 기간">{contractPeriod}</DetailRow>
+          <DetailRow icon={UsersRound} label="입력 조건">{quantityText}</DetailRow>
+          <DetailRow icon={Wallet} label="계약 금액">{formatKRW(contractTotal)}</DetailRow>
           <DetailRow icon={FileCheck2} label={t("cc.finalVersion")}>
             <span className="inline-flex"><VersionBadge version={isDirect ? "v1" : finalContractInfo.finalVersion} /></span>
           </DetailRow>

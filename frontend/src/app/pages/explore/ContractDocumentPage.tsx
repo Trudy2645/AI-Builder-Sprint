@@ -62,132 +62,69 @@ const DOCUMENT_COPY: Record<DocLang, Record<string, string>> = {
 
 const TRANSLATED_TITLES: Record<Exclude<DocLang, "ko">, Record<string, string>> = {
   en: {
-    "ocean-stay-2026-summer": "2026 Busan Summer Room Supply Agreement",
-    "gwangan-seabreeze": "2026 Gwangalli Ocean-view Room Supply Agreement",
-    "marina-yacht-tour": "2026 Yacht Sunset Tour Seat Supply Agreement",
-    "songjeong-surf": "2026 Songjeong Surf Lesson Supply Agreement",
-    "busan-city-tour": "2026 Busan City Highlights Tour Supply Agreement",
-    "gijang-glamping": "2026 Gijang Ocean-view Glamping Supply Agreement",
+    "coastline-hotel-room-2026": "2026 Haeundae Group Room Supply Agreement",
+    "bluewave-surf-lesson-2026": "2026 Songjeong Group Surf Lesson Supply Agreement",
+    "route-rental-van-2026": "2026 Gimhae Airport Group Van Rental Agreement",
   },
   ja: {
-    "ocean-stay-2026-summer": "2026年 釜山サマー客室供給契約",
-    "gwangan-seabreeze": "2026年 広安里オーシャンビュー客室供給契約",
-    "marina-yacht-tour": "2026年 ヨット・サンセットツアー座席供給契約",
-    "songjeong-surf": "2026年 松亭サーフィンレッスン供給契約",
-    "busan-city-tour": "2026年 釜山シティハイライトツアー供給契約",
-    "gijang-glamping": "2026年 機張オーシャンビューグランピング供給契約",
+    "coastline-hotel-room-2026": "2026年 海雲台団体客室供給契約",
+    "bluewave-surf-lesson-2026": "2026年 松亭団体サーフィンレッスン供給契約",
+    "route-rental-van-2026": "2026年 金海空港団体バンレンタル契約",
   },
   zh: {
-    "ocean-stay-2026-summer": "2026釜山夏季客房供应合同",
-    "gwangan-seabreeze": "2026广安里海景客房供应合同",
-    "marina-yacht-tour": "2026游艇日落之旅座位供应合同",
-    "songjeong-surf": "2026松亭冲浪课程供应合同",
-    "busan-city-tour": "2026釜山城市精选旅游供应合同",
-    "gijang-glamping": "2026机张海景豪华露营供应合同",
+    "coastline-hotel-room-2026": "2026海云台团体客房供应合同",
+    "bluewave-surf-lesson-2026": "2026松亭团体冲浪课程供应合同",
+    "route-rental-van-2026": "2026金海机场团体面包车租赁合同",
   },
 };
 
 const CLAUSE_TRANSLATIONS: Record<Exclude<DocLang, "ko">, Record<string, Record<string, ClauseTranslation>>> = {
   en: {
-    "ocean-stay-2026-summer": {
-      "제1조": ["Purpose", "This agreement sets the terms under which the Seller (Haeundae Ocean Stay) supplies peak-season rooms for summer 2026 to the Buyer for sale and distribution."],
-      "제2조": ["Supply Period and Quantity", "The supply period is July 1 through August 31, 2026. Up to 30 rooms will be supplied on weekends (Friday and Saturday), with additional weekday rooms subject to mutual agreement."],
-      "제3조": ["Supply Price", "The room supply price is KRW 145,000 per room, excluding VAT."],
-      "제4조": ["Cancellation and Refunds", "The Buyer may cancel reservations free of charge as needed.", "No free-cancellation deadline or later fee standard is stated, so the Seller may bear cancellation risk until immediately before check-in.", "Specify free cancellation until seven days before check-in and a fee equal to 50% of one night's room charge thereafter."],
-      "제5조": ["No-show Policy", "No separate standard is established for no-shows.", "Without a charge standard for guests who do not arrive, the parties may dispute the amount to be settled.", "Specify a no-show charge equal to 100% of the applicable one-night room rate."],
-      "제6조": ["Settlement and Payment", "Room usage charges will be settled at a later date.", "The payment date and responsible payer are unclear, which may cause delayed settlement or unpaid-balance disputes.", "Close usage records at each month-end and require the Buyer to pay the Seller by the 15th of the following month."],
-      "제8조": ["Dispute Resolution", "Any dispute arising from this agreement will be subject to the Busan District Court as the court of first instance."],
+    "coastline-hotel-room-2026": {
+      "제1조": ["Purpose", "This agreement sets the terms under which the Seller supplies group rooms in Haeundae and the Buyer allocates them to a travel itinerary."],
+      "제2조": ["Reservation Request and Confirmation", "A reservation is formed when the Seller confirms the room type, stay dates, guests, and rate and sends confirmation to the Buyer.", "If request and confirmation timing are unclear, the Buyer may misunderstand that rooms are already secured.", "State that the reservation is formed only when the Seller's confirmation reaches the Buyer."],
+      "제4조": ["Rates and Additional Costs", "The room supply rate is KRW 146,000 per room. Taxes, service charges, resort fees, damage deposits, and minibar charges are settled under separately notified standards.", "The final billed amount may differ if included and excluded costs are not separated.", "Separate included and excluded costs and define who bills and settles on-site additional charges."],
+      "제6조": ["Overbooking and Changes", "If the Seller cannot provide confirmed rooms, the Seller will provide equivalent or better rooms or cancel and refund after consultation.", "Unclear replacement standards may cause disputes over schedule changes and extra costs.", "Limit replacement rooms to the same area and equivalent or better grade, with refund and transfer-cost rules for lower-grade replacements."],
     },
-    "gwangan-seabreeze": {
-      "제1조": ["Purpose", "This agreement sets the conditions under which the Seller supplies Gwangalli ocean-view rooms to the Buyer."],
-      "제2조": ["Supply Period and Quantity", "Up to 40 rooms will be supplied on weekdays and weekends from June 15 through September 15, 2026."],
-      "제3조": ["Settlement and Payment", "Payment is made on the 15th of the second month following each month-end close, a cycle of approximately 60 days.", "A 60-day settlement cycle is longer than the usual 30-day standard and may increase the Buyer's working-capital burden.", "Shorten payment to the 15th of the following month or add an early-settlement discount if the 60-day term remains."],
-      "제4조": ["Cancellation and No-show", "Cancellation is free until five days before check-in; a no-show is charged at 80% of one night's room rate."],
+    "bluewave-surf-lesson-2026": {
+      "제1조": ["Purpose", "This agreement sets the terms for surf lessons and equipment rental supplied to the Buyer's group travelers."],
+      "제4조": ["Cancellation and Refunds", "Cancellation is free until three days before use. Cancellation two days before use is charged at 50%, and one-day-before, same-day cancellation, or no-show is charged at 100%.", "Group activities often have changing participant counts, so partial-cancellation rules need to be clear.", "Separate full cancellation and partial participant cancellation, and allow changes within 10% of confirmed participants until one day before use."],
+      "제5조": ["Electronic Voucher and Meeting Time", "Refunds may be restricted if participants cannot present the electronic voucher or arrive after the meeting time.", "A strict voucher or lateness rule can overburden the Buyer.", "Provide a backup verification process when the Seller can confirm participants from the booking list."],
+      "제7조": ["Insurance and Accident Handling", "The Seller maintains liability insurance or equivalent coverage and cooperates with emergency response and insurance claims.", "Without policy name and coverage limits, the Buyer may face additional accident liability.", "Attach insurance name, coverage limit, deductible, and exclusions."],
     },
-    "marina-yacht-tour": {
-      "제1조": ["Purpose", "This agreement sets the supply conditions for seats on the yacht sunset tour."],
-      "제2조": ["Liability for Safety Accidents", "The Seller is liable for safety accidents during the tour when the guest is not at fault, but compensation is limited to KRW 5 million per person.", "The per-person cap may expose the Buyer to additional liability in the event of a serious accident.", "Require the Seller to maintain commercial liability insurance and remove a separate cap for losses covered by that insurance."],
-      "제3조": ["Adverse Weather", "If the tour is cancelled due to adverse weather, the full amount will be refunded or the schedule will be changed."],
-    },
-    "songjeong-surf": {
-      "제1조": ["Purpose", "This agreement sets the supply conditions for the surfing lesson product."],
-      "제2조": ["Cancellation Policy", "Cancellation is free until one day before use; same-day cancellations are charged the full lesson fee.", "The one-day deadline may create a high cancellation-fee burden when a group reservation changes.", "For group bookings of ten or more, extend the free-cancellation deadline to three days before use."],
-    },
-    "busan-city-tour": {
-      "제1조": ["Purpose", "This agreement sets the supply conditions for the Busan city tour."],
-      "제2조": ["Price Structure", "Peak-season and off-season prices are applied separately, with a detailed price schedule attached."],
-    },
-    "gijang-glamping": {
-      "제1조": ["Purpose", "This agreement sets the supply conditions for ocean-view glamping units."],
-      "제2조": ["Cancellation and Settlement", "Cancellation is free until seven days before check-in, and payment is due on the 15th of the following month."],
+    "route-rental-van-2026": {
+      "제1조": ["Purpose", "This agreement sets the terms for renting vehicles needed for the Buyer's tourism itinerary and returning them after use."],
+      "제4조": ["Cancellation and Replacement Vehicle", "If the Buyer cancels at least 24 hours before rental start, the reservation deposit is refunded. If the Seller cannot provide the reserved vehicle, it offers an equivalent or better replacement or refunds the deposit.", "Replacement grade, seat count, and price-difference standards are unclear.", "Require replacement vehicles to have the same or higher seat count and grade, and refund price differences for lower-priced vehicles."],
+      "제5조": ["Insurance and Vehicle Damage Waiver", "The Seller maintains basic auto insurance. Vehicle damage waiver coverage is optional and its scope and deductible are disclosed before contract signing.", "Unclear insurance coverage and deductibles may create unexpected costs after an accident.", "Disclose insurance type, coverage limits, vehicle damage coverage, deductible, and exclusions in writing."],
+      "제8조": ["Accident Handling and Loss of Use", "The Buyer must notify the Seller immediately after an accident and cooperate with insurance handling. If damage is attributable to the Buyer, the Seller may claim loss of use with objective calculation evidence.", "Loss-of-use charges may be excessive without objective evidence.", "Allow loss-of-use claims only with repair estimates, repair-period confirmation, and normal rental-rate evidence."],
     },
   },
   ja: {
-    "ocean-stay-2026-summer": {
-      "제1조": ["契約の目的", "本契約は、セルラー（海雲台オーシャンステイ）がバイヤーに2026年夏の繁忙期客室を供給し、バイヤーが販売・流通するための条件を定めることを目的とします。"],
-      "제2조": ["供給期間および数量", "供給期間は2026年7月1日から8月31日までとし、週末（金・土）は最大30室を供給します。平日の客室は双方の協議により追加供給できます。"],
-      "제3조": ["供給単価", "客室供給単価は1室145,000ウォン（VAT別）とします。"],
-      "제4조": ["取消および返金", "バイヤーは必要に応じて予約を無料で取り消すことができます。", "無料取消の期限とその後の手数料基準がなく、セルラーがチェックイン直前まで取消リスクを負う可能性があります。", "チェックイン7日前まで無料とし、それ以降は1泊料金の50％を請求する基準を明記してください。"],
-      "제5조": ["ノーショー対応", "ノーショー発生時の処理基準は別途定めません。", "来館しない予約者の料金基準がないため、精算範囲について紛争になる可能性があります。", "ノーショー時は該当客室の1泊料金100％を請求すると明記してください。"],
-      "제6조": ["精算および支払", "客室利用料金は後日精算します。", "支払時期と支払主体が不明確なため、精算遅延や未収金紛争が発生する可能性があります。", "毎月末に利用実績を締め、翌月15日までにバイヤーがセルラーへ支払うと明記してください。"],
-      "제8조": ["紛争解決", "本契約に関する紛争は釜山地方裁判所を第一審の管轄裁判所とします。"],
+    "coastline-hotel-room-2026": {
+      "제1조": ["契約の目的", "本契約は、セルラーが海雲台地域の団体旅行客向け客室を供給し、バイヤーが旅程に合わせて配分・利用する条件を定めます。"],
+      "제2조": ["予約依頼および確定", "セルラーが客室タイプ、宿泊日、人数、料金を確認し、バイヤーに確定通知を送った時点で予約が成立します。", "依頼と確定の時点が曖昧だと、客室が確保済みだと誤解される可能性があります。", "予約成立時点をセルラーの確定通知到達時と明記してください。"],
     },
-    "gwangan-seabreeze": {
-      "제1조": ["契約の目的", "セルラーがバイヤーに広安里オーシャンビュー客室を供給する条件を定めます。"],
-      "제2조": ["供給期間および数量", "2026年6月15日から9月15日まで、平日・週末とも最大40室を供給します。"],
-      "제3조": ["精算および支払", "毎月末締め後、翌々月（約60日後）の15日に支払います。", "60日の精算周期は一般的な30日より長く、バイヤーの運転資金負担が増える可能性があります。", "翌月15日に短縮するか、60日を維持する場合は早期精算割引を追加してください。"],
-      "제4조": ["取消およびノーショー", "チェックイン5日前まで無料取消とし、ノーショー時は1泊料金の80％を請求します。"],
+    "bluewave-surf-lesson-2026": {
+      "제1조": ["契約の目的", "団体旅行客向けサーフィンレッスンおよび装備レンタルの提供条件を定めます。"],
+      "제7조": ["保険および事故対応", "セルラーは賠償責任保険または同等の保険に加入し、事故時の応急措置と保険受付に協力します。", "保険名と補償限度がない場合、バイヤーが追加責任を負う可能性があります。", "保険名、補償限度、免責金額、補償除外事由を添付してください。"],
     },
-    "marina-yacht-tour": {
-      "제1조": ["契約の目的", "ヨット・サンセットツアーの座席供給条件を定めます。"],
-      "제2조": ["安全事故の賠償責任", "ツアー中の安全事故について利用者に故意・過失がない場合、セルラーが責任を負いますが、賠償限度は1人500万ウォンとします。", "重大事故ではバイヤーが追加賠償責任を負う可能性があります。", "セルラーの賠償責任保険加入を条件とし、保険限度内では別途上限を設けないよう調整してください。"],
-      "제3조": ["悪天候時の対応", "悪天候で運航が中止された場合、全額返金または日程変更を行います。"],
-    },
-    "songjeong-surf": {
-      "제1조": ["契約の目的", "サーフィンレッスン商品の供給条件を定めます。"],
-      "제2조": ["取消方針", "利用1日前まで無料で取り消せますが、当日取消はレッスン料金全額を請求します。", "無料取消期限が短く、団体予約変更時の負担が大きくなる可能性があります。", "10名以上の団体予約は無料取消期限を利用3日前まで延長することを推奨します。"],
-    },
-    "busan-city-tour": {
-      "제1조": ["契約の目的", "釜山シティツアー商品の供給条件を定めます。"],
-      "제2조": ["料金構成", "繁忙期・閑散期の料金を分けて適用し、詳細料金表を添付します。"],
-    },
-    "gijang-glamping": {
-      "제1조": ["契約の目的", "オーシャンビューグランピングの供給条件を定めます。"],
-      "제2조": ["取消および精算", "チェックイン7日前まで無料取消とし、精算金は翌月15日に支払います。"],
+    "route-rental-van-2026": {
+      "제1조": ["契約の目的", "観光日程に必要な車両を貸し出し、利用後に返却する条件を定めます。"],
+      "제5조": ["保険および車両損害免責", "セルラーは基本自動車保険に加入し、車両損害免責の範囲と免責金額を契約前に通知します。", "保険範囲と免責金額が不明確だと事故時に予想外の費用が発生します。", "保険種類、補償限度、車両損害補償、免責金額、除外事由を文書で通知してください。"],
     },
   },
   zh: {
-    "ocean-stay-2026-summer": {
-      "제1조": ["合同目的", "本合同旨在规定卖方（海云台海洋住宿）向买方供应2026年夏季旺季客房，并由买方进行销售和分销所需的条件。"],
-      "제2조": ["供应期间及数量", "供应期为2026年7月1日至8月31日，周末（周五、周六）最多供应30间客房。工作日客房可经双方协商追加。"],
-      "제3조": ["供应单价", "客房供应价格为每间145,000韩元，不含增值税。"],
-      "제4조": ["取消与退款", "买方可根据需要免费取消预订。", "未规定免费取消期限及后续手续费标准，卖方可能需要承担直至入住前的取消风险。", "建议明确入住7天前可免费取消，此后收取一晚房费的50％。"],
-      "제5조": ["未到店处理", "未另行规定未到店情况的处理标准。", "未规定客人未到店时的收费标准，双方可能对结算范围产生争议。", "建议明确未到店时收取相应客房一晚房费的100％。"],
-      "제6조": ["结算与支付", "客房使用费用将在以后结算。", "付款时间和付款主体不明确，可能造成结算延迟或欠款争议。", "建议每月底结算使用记录，并规定买方于次月15日前向卖方付款。"],
-      "제8조": ["争议解决", "因本合同发生争议时，釜山地方法院为一审管辖法院。"],
+    "coastline-hotel-room-2026": {
+      "제1조": ["合同目的", "本合同规定卖方向买方供应海云台团体游客客房，并由买方按行程分配使用的条件。"],
+      "제2조": ["预约请求及确认", "卖方确认客房类型、入住日期、人数和价格并向买方发送确认通知时，预约成立。", "如果请求和确认时间不明确，买方可能误认为客房已经 확보。", "请明确预约成立时间为卖方确认通知到达买方时。"],
     },
-    "gwangan-seabreeze": {
-      "제1조": ["合同目的", "规定卖方向买方供应广安里海景客房的条件。"],
-      "제2조": ["供应期间及数量", "2026年6月15日至9月15日，工作日和周末最多供应40间客房。"],
-      "제3조": ["结算与支付", "每月底结算后，于隔月15日付款，周期约为60天。", "60天的结算周期长于常见的30天，可能增加买方的营运资金负担。", "建议缩短至次月15日，或在保留60天周期时增加提前结算折扣。"],
-      "제4조": ["取消与未到店", "入住5天前可免费取消，未到店时收取一晚房费的80％。"],
+    "bluewave-surf-lesson-2026": {
+      "제1조": ["合同目的", "规定向买方团体游客提供冲浪课程和装备租赁服务的条件。"],
+      "제7조": ["保险及事故处理", "卖方应投保营业责任保险或同等保险，并在事故发生时配合急救和保险处理。", "若未说明保险名称和赔偿限额，买方可能承担额外责任。", "请附上保险名称、赔偿限额、自付额及免责事项。"],
     },
-    "marina-yacht-tour": {
-      "제1조": ["合同目的", "规定游艇日落之旅座位的供应条件。"],
-      "제2조": ["安全事故赔偿责任", "游览期间发生安全事故且游客无故意或过失时，由卖方承担责任，但每人赔偿上限为500万韩元。", "如发生重大事故，买方可能承担额外赔偿责任。", "建议要求卖方投保营业责任保险，并在保险范围内不另设赔偿上限。"],
-      "제3조": ["恶劣天气处理", "因恶劣天气取消航程时，将全额退款或调整日期。"],
-    },
-    "songjeong-surf": {
-      "제1조": ["合同目的", "规定冲浪课程商品的供应条件。"],
-      "제2조": ["取消政策", "使用前1天可免费取消，当天取消时收取全部课程费用。", "免费取消期限较短，团体预订变更时买方可能承担较高费用。", "建议10人以上团体预订的免费取消期限放宽至使用前3天。"],
-    },
-    "busan-city-tour": {
-      "제1조": ["合同目的", "规定釜山城市旅游产品的供应条件。"],
-      "제2조": ["价格构成", "旺季和淡季价格分别适用，详细价格表作为附件。"],
-    },
-    "gijang-glamping": {
-      "제1조": ["合同目的", "规定海景豪华露营单元的供应条件。"],
-      "제2조": ["取消与结算", "入住7天前可免费取消，款项于次月15日支付。"],
+    "route-rental-van-2026": {
+      "제1조": ["合同目的", "规定卖方向买方出租旅游行程所需车辆并在使用后返还车辆的条件。"],
+      "제5조": ["保险及车辆损害免责", "卖方为车辆投保基本汽车保险，并在签约前告知车辆损害免责范围和自付额。", "保险范围和自付额不明确时，事故后可能产生意外费用。", "请书面告知保险种类、赔偿限额、车辆损害保障、自付额和免责事项。"],
     },
   },
 };
