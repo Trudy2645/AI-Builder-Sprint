@@ -61,8 +61,6 @@ _TERM_FIELDS = (
     "contract_availability_note",
 )
 _REQUIRED_TERMS = (
-    "service_start_date",
-    "service_end_date",
     "base_price_amount_minor",
     "currency",
     "price_unit",
