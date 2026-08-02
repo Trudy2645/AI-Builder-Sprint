@@ -14,7 +14,7 @@ import {
 } from "../../components/ui/table";
 import { useApp } from "../../context/AppContext";
 import { receivedRequests, type ReceivedRequest } from "../../data/receivedRequests";
-import { friendlyApiError, getSellerReceivedContracts, getSellerRevisionRequests } from "../../lib/api";
+import { friendlyApiError, getContractDetail, getSellerReceivedContracts, getSellerRevisionRequests } from "../../lib/api";
 
 type RequestTab = "all" | ReceivedRequest["status"];
 const TABS: RequestTab[] = ["all", "new", "negotiating", "signing", "signed"];
@@ -66,14 +66,16 @@ export function ReceivedRequestsPage() {
     return acc;
   }, {});
 
-  const openRequest = (request: ReceivedRequest) => {
+  const openRequest = async (request: ReceivedRequest) => {
     if (request.revisions.length > 0) {
       navigate(`/seller/received/${request.id}`);
       return;
     }
-    if (request.status === "signing") navigate("/seller/signing");
-    else if (request.status === "signed") navigate("/seller/contracts");
-    else navigate(`/seller/received/${request.id}`);
+    if (request.status === "signed") { navigate("/seller/contracts"); return; }
+    try {
+      const detail = await getContractDetail(request.contractId);
+      navigate(`/seller/signing?contractId=${detail.id}&versionId=${detail.current_version.id}`);
+    } catch (error) { setLoadError(friendlyApiError(error)); }
   };
 
   return (

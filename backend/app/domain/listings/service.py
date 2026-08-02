@@ -98,7 +98,9 @@ class PublicListingService:
 
         localized = await self._localized_content(listing, clauses, findings, requested_locale)
         return PublicListingDetail(
-            **self._card(listing, requested_locale, localized).model_dump(),
+            **self._card(listing, requested_locale, localized).model_dump(
+                exclude={"supply_quantity_description"}
+            ),
             supply_quantity=listing.supply_quantity,
             supply_quantity_description=listing.supply_quantity_description,
             quantity_unit=listing.quantity_unit,
@@ -193,6 +195,7 @@ class PublicListingService:
             public_headline=(localized.public_headline if localized else record.public_headline),
             ai_summary=localized.summary if localized else record.ai_summary,
             base_price=base_price,
+            supply_quantity_description=record.supply_quantity_description,
             availability=Availability(
                 start_date=record.service_start_date,
                 end_date=record.service_end_date,

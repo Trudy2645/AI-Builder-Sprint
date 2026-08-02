@@ -62,8 +62,16 @@ export function UploadOcrPage() {
   const [analysisStage, setAnalysisStage] = useState<ContractProcessingStage>("uploading");
   const [processedListing, setProcessedListing] = useState<{ id: string; versionNo: number; documentId: string } | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof ListingDraft, string>>>({});
 
-  const patch = (p: Partial<ListingDraft>) => setDraft((d) => ({ ...d, ...p }));
+  const patch = (p: Partial<ListingDraft>) => {
+    setDraft((d) => ({ ...d, ...p }));
+    setFieldErrors((current) => {
+      const next = { ...current };
+      Object.keys(p).forEach((key) => delete next[key as keyof ListingDraft]);
+      return next;
+    });
+  };
 
   const runOcr = async () => {
     if (!file) return;
@@ -112,25 +120,33 @@ export function UploadOcrPage() {
         return;
       }
     }
+    if (step === 2) {
+      const required = [
+        "productName", "category", "district", "availabilityStart", "availabilityEnd",
+        "quantity", "unitPrice", "priceUnit", "cancellation", "noShow", "settlement",
+      ] as const;
+      const errors: Partial<Record<keyof ListingDraft, string>> = {};
+      required.forEach((field) => {
+        if (!String(draft[field] ?? "").trim()) errors[field] = "필수 입력 항목입니다.";
+      });
+      if (!errors.unitPrice && Number(draft.unitPrice) <= 0) errors.unitPrice = "0원보다 큰 금액을 입력해 주세요.";
+      if (!errors.availabilityEnd && draft.availabilityStart && draft.availabilityEnd && draft.availabilityEnd < draft.availabilityStart) {
+        errors.availabilityEnd = "종료일은 시작일보다 빠를 수 없습니다.";
+      }
+      setFieldErrors(errors);
+      if (Object.keys(errors).length > 0) {
+        toast.error("공개에 필요한 필수 항목을 확인해 주세요.");
+        return;
+      }
+    }
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
 
   const publish = async () => {
-    const publishableDraft = {
-      ...draft,
-      productName: draft.productName || "숙박 계약 공고",
-      category: draft.category || "accommodation",
-      district: draft.district || "해운대구",
-      quantity: draft.quantity || "공급 수량은 바이어 요청 시 확정",
-      unitPrice: draft.unitPrice || "0",
-      cancellation: draft.cancellation || "계약서 기준(셀러 확인 필요)",
-      noShow: draft.noShow || "계약서 기준(셀러 확인 필요)",
-      settlement: draft.settlement || "계약서 기준(셀러 확인 필요)",
-    } as ListingDraft;
     if (!processedListing) { toast.error("OCR 결과가 없습니다. 다시 분석해 주세요."); return; }
     setPublishing(true);
     try {
-      await registerPublishedSellerListing({ ...publishableDraft, listingId: processedListing.id, baseVersionNo: processedListing.versionNo, sourceDocumentId: processedListing.documentId });
+      await registerPublishedSellerListing({ ...draft, listingId: processedListing.id, baseVersionNo: processedListing.versionNo, sourceDocumentId: processedListing.documentId } as Required<ListingDraft>);
       toast.success(t("pub.published"));
       navigate("/seller/listings");
     } catch (error) { toast.error(friendlyApiError(error)); } finally { setPublishing(false); }
@@ -171,8 +187,16 @@ export function UploadOcrPage() {
                 id="ocr-file"
                 type="file"
                 className="hidden"
-                accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                accept="application/pdf"
+                onChange={(e) => {
+                  const selected = e.target.files?.[0] ?? null;
+                  if (selected && selected.type !== "application/pdf") {
+                    toast.error("PDF 계약서만 업로드할 수 있습니다.");
+                    e.target.value = "";
+                    return;
+                  }
+                  setFile(selected);
+                }}
               />
               <span className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-4 py-2 text-white" style={{ background: "var(--navy)", fontSize: "14px" }}>
                 <UploadCloud className="size-4" />
@@ -259,9 +283,9 @@ export function UploadOcrPage() {
               </div>
             )}
             <div className="flex flex-col gap-6">
-              <ProductFields draft={draft} onChange={patch} />
-              <SupplyFields draft={draft} onChange={patch} />
-              <TermsFields draft={draft} onChange={patch} />
+              <ProductFields draft={draft} onChange={patch} errors={fieldErrors} />
+              <SupplyFields draft={draft} onChange={patch} errors={fieldErrors} />
+              <TermsFields draft={draft} onChange={patch} errors={fieldErrors} />
             </div>
           </div>
         )}

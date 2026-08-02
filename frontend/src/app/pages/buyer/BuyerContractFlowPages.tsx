@@ -198,7 +198,7 @@ function ContractSummary({ contract }: { contract: BuyerContract }) {
 function useContractFromRoute() {
   const { id } = useParams();
   const { contracts } = useBuyerContracts();
-  return useMemo(() => contracts.find((contract) => contract.id === id) ?? contracts[0], [contracts, id]);
+  return useMemo(() => contracts.find((contract) => contract.id === id), [contracts, id]);
 }
 
 export function BuyerContractsHomePage() {
@@ -388,6 +388,7 @@ export function BuyerContractWritePage() {
 
 export function BuyerContractStatusPage() {
   const navigate = useNavigate();
+  const { id: routeContractId } = useParams();
   const [searchParams] = useSearchParams();
   const contract = useContractFromRoute();
   const [detail, setDetail] = useState<ContractDetail | null>(null);
@@ -395,19 +396,19 @@ export function BuyerContractStatusPage() {
   const revisionId = searchParams.get("revision");
 
   useEffect(() => {
-    if (!contract?.id || contract.id.startsWith("BL-")) return;
-    getContractDetail(contract.id).then(setDetail).catch((error) => toast.error(friendlyApiError(error)));
-  }, [contract?.id]);
+    if (!routeContractId || routeContractId.startsWith("BL-")) return;
+    getContractDetail(routeContractId).then(setDetail).catch((error) => toast.error(friendlyApiError(error)));
+  }, [routeContractId]);
   useEffect(() => {
     if (!revisionId) return;
     void getRevisionRequest(revisionId).then((value) => { setRevision(value); void markRevisionRequestRead(revisionId); }).catch((error) => toast.error(friendlyApiError(error)));
   }, [revisionId]);
 
-  if (!contract) {
+  if (!contract && !detail) {
     return <PageHeader title="계약 요청이 없습니다" description="먼저 계약 요청을 생성해주세요." />;
   }
 
-  const status = (detail?.status as BuyerContractStatus | undefined) ?? contract.status;
+  const status = (detail?.status as BuyerContractStatus | undefined) ?? contract?.status ?? "seller_review";
   const meta = STATUS_META[status];
   const steps: BuyerContractStatus[] = ["seller_review", "signing", "signed"];
   const currentIndex = steps.indexOf(status) === -1 ? 0 : steps.indexOf(status);
@@ -419,7 +420,13 @@ export function BuyerContractStatusPage() {
   return (
     <div>
       <PageHeader title="계약 상태" description="계약 요청 이후 셀러 검토, 전자서명, 체결 완료까지 상태를 확인합니다." />
-      <ContractSummary contract={contract} />
+      {contract ? <ContractSummary contract={contract} /> : detail && (
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+          <div className="text-sm text-muted-foreground">{detail.id}</div>
+          <h3 className="mt-1 text-lg" style={{ color: "var(--navy)" }}>{detail.current_version.title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{detail.parties.map((party) => party.name).join(" · ")}</p>
+        </div>
+      )}
       {revision && (
         <div className="mt-5 rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between gap-3">

@@ -27,14 +27,15 @@ async def receive_modusign_webhook(
     settings: Annotated[Settings, Depends(get_settings)],
     signature: Annotated[str | None, Header(alias="X-Modusign-Signature")] = None,
 ) -> dict[str, bool]:
-    if not settings.modusign_webhook_secret:
+    webhook_secret = settings.effective_modusign_webhook_secret
+    if not webhook_secret:
         raise AppError(
             status_code=503,
             code="MODUSIGN_WEBHOOK_NOT_CONFIGURED",
             message="Webhook secret is not configured.",
         )
     body = await request.body()
-    expected = hmac.new(settings.modusign_webhook_secret.encode(), body, hashlib.sha256).hexdigest()
+    expected = hmac.new(webhook_secret.encode(), body, hashlib.sha256).hexdigest()
     supplied = (signature or "").removeprefix("sha256=")
     if not hmac.compare_digest(expected, supplied):
         raise AppError(

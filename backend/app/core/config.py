@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     modusign_max_retries: int = Field(default=3, ge=0, le=5)
     modusign_retry_base_seconds: float = Field(default=0.5, gt=0, le=10)
     modusign_webhook_secret: str | None = Field(default=None, repr=False)
+    # Older local environments used this name. Keep it as a backwards-compatible
+    # fallback so a deployed webhook never silently becomes unauthenticated.
+    modusign_webhook_token: str | None = Field(default=None, repr=False)
+
+    @property
+    def effective_modusign_webhook_secret(self) -> str | None:
+        return self.modusign_webhook_secret or self.modusign_webhook_token
 
 
 @lru_cache

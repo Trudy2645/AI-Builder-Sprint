@@ -193,6 +193,33 @@ async def create_contract_signature_request(
     return typed_envelope(request, result)
 
 
+@router.post(
+    "/contracts/{contract_id}/versions/{version_id}/signature-requests/dispatch",
+    response_model=SuccessEnvelope[SignatureRequestCreated],
+)
+async def dispatch_contract_signature_request(
+    request: Request,
+    contract_id: UUID,
+    version_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractService, Depends(get_contract_service)],
+    client: Annotated[ModusignClient, Depends(get_modusign_client)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> SuccessEnvelope[SignatureRequestCreated]:
+    result = await service.dispatch_signature_request_from_snapshots(
+        contract_id,
+        version_id,
+        actor,
+        organization_id,
+        idempotency_key,
+        client,
+        settings.modusign_template_id,
+    )
+    return typed_envelope(request, result)
+
+
 @router.get(
     "/signature-requests/{signature_request_id}",
     response_model=SuccessEnvelope[SignatureRequestCreated],

@@ -59,7 +59,7 @@ function toContract(listing: PublicListing): Contract {
     end: listing.availability.end_date ?? "미정",
     unitPrice: price,
     priceUnit: listing.base_price?.unit ?? "기준 단가",
-    quantityLabel: "상세 페이지에서 공급 조건을 확인하세요",
+    quantityLabel: listing.supply_quantity_description ?? "미정",
     capacity: Number.MAX_SAFE_INTEGER,
     available: listing.contract_available,
     popularity: 0,

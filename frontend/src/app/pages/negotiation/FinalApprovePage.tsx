@@ -12,6 +12,7 @@ import { useNegotiation } from "../../store/NegotiationContext";
 import { finalContractInfo, NEGOTIATION_CONTRACT_ID } from "../../data/negotiation";
 import {
   approveContractVersion,
+  dispatchSignatureRequest,
   friendlyApiError,
   getContractApprovals,
   getContractDetail,
@@ -100,7 +101,14 @@ export function FinalApprovePage() {
     if (!contractId || !versionId) return;
     setSubmitting(true);
     try {
-      setApproval(await approveContractVersion(contractId, versionId));
+      const next = await approveContractVersion(contractId, versionId);
+      setApproval(next);
+      if (next.all_approved) {
+        const request = await dispatchSignatureRequest(contractId, versionId);
+        toast.success("양측 확정이 완료되어 바이어에게 모두싸인 이메일을 발송했습니다.");
+        navigate(`${base}/signing/sign?contractId=${contractId}&versionId=${versionId}&signatureRequestId=${request.id}`, { replace: true });
+        return;
+      }
       toast.success(t("fa.approvedToast"));
     } catch (error) {
       toast.error(friendlyApiError(error));
@@ -139,10 +147,10 @@ export function FinalApprovePage() {
           <Button variant="outline" onClick={() => navigate(role === "buyer" ? `${base}/explore` : `${base}/received`)}>
             {role === "buyer" ? <FilePenLine className="mr-1 size-4" /> : <GitBranch className="mr-1 size-4" />}수정 요청
           </Button>
-          {!mine && <Button disabled={submitting} style={{ background: "var(--navy)" }} onClick={() => void approveApi()}><CheckCircle2 className="mr-1 size-4" />승인</Button>}
-          <Button disabled={!approval.all_approved} style={{ background: approval.all_approved ? "var(--teal)" : "var(--muted)" }} onClick={() => navigate(`${base}/signing/sign${query}`)}>
-            <PenLine className="mr-1 size-4" />전자서명 <ArrowRight className="ml-1 size-4" />
-          </Button>
+          {!mine && <Button disabled={submitting} style={{ background: "var(--navy)" }} onClick={() => void approveApi()}><CheckCircle2 className="mr-1 size-4" />확정하기</Button>}
+          {approval.all_approved && <Button disabled={submitting} style={{ background: "var(--teal)" }} onClick={() => void approveApi()}>
+            <PenLine className="mr-1 size-4" />모두싸인 발송 <ArrowRight className="ml-1 size-4" />
+          </Button>}
         </div>
       </div>
     );

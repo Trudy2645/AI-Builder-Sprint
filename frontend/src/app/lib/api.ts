@@ -35,7 +35,7 @@ export function getAccessToken(): string | null {
 
 type ApiSession = {
   accessToken: string;
-  organizationId: string;
+  organizationId?: string;
 };
 
 let activeSession: ApiSession | null = null;
@@ -64,7 +64,7 @@ function getApiSession(): ApiSession {
     ?? import.meta.env.VITE_API_ACCESS_TOKEN;
   const organizationId = window.localStorage.getItem("busanlink.organization_id")
     ?? import.meta.env.VITE_SELLER_ORGANIZATION_ID;
-  if (!accessToken || !organizationId) {
+  if (!accessToken) {
     throw new Error("API 로그인 정보가 없습니다. 로그인 후 다시 시도해 주세요.");
   }
   return { accessToken, organizationId };
@@ -73,7 +73,7 @@ function getApiSession(): ApiSession {
 function authenticatedHeaders(session: ApiSession, headers: HeadersInit = {}): Headers {
   const result = new Headers(headers);
   result.set("Authorization", `Bearer ${session.accessToken}`);
-  result.set("X-Organization-Id", session.organizationId);
+  if (session.organizationId) result.set("X-Organization-Id", session.organizationId);
   return result;
 }
 
@@ -547,6 +547,17 @@ export function createSignatureRequest(
   });
 }
 
+export function dispatchSignatureRequest(contractId: string, versionId: string): Promise<SignatureRequest> {
+  const session = getApiSession();
+  return apiFetch<SignatureRequest>(`/contracts/${contractId}/versions/${versionId}/signature-requests/dispatch`, {
+    method: "POST",
+    headers: new Headers([
+      ...authenticatedHeaders(session).entries(),
+      ["Idempotency-Key", requestIdempotencyKey("signature-dispatch")],
+    ]),
+  });
+}
+
 export async function downloadModusignFile(documentId: string, kind: "signed" | "audit-trail"): Promise<void> {
   const response = await fetch(`${apiBaseUrl}/modusign/documents/${documentId}/${kind === "signed" ? "download" : "audit-trail"}`, {
     headers: getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {},
@@ -572,12 +583,13 @@ export type PublicListing = {
   hero_image_url: string | null;
   ai_summary: string | null;
   base_price: { amount_minor: number; currency: string; unit: string | null } | null;
+  supply_quantity_description: string | null;
   availability: { start_date: string | null; end_date: string | null };
   contract_available: boolean;
 };
 
 export function getPublicListings(): Promise<PublicListing[]> {
-  return apiFetch<PublicListing[]>("/public/listings");
+  return apiFetch<PublicListing[]>("/public/listings?contract_available_only=true");
 }
 
 export type PublicListingDetail = PublicListing & {
