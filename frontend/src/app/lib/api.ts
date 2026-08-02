@@ -438,6 +438,7 @@ export type ContractListItem = {
   listing_id: string | null;
   listing_title: string;
   seller_name: string;
+  initial_request_kind: "as_is" | "revision";
   status: "draft" | "seller_review" | "revision_requested" | "signing" | "signed" | "cancelled";
   service_start_date: string;
   service_end_date: string;

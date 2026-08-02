@@ -56,7 +56,7 @@ function fromBuyerContract(item: ContractListItem): SentRequest {
     contractId: item.id,
     seller: item.seller_name,
     title: item.listing_title,
-    type: "asis",
+    type: item.initial_request_kind === "revision" ? "revision" : "asis",
     status: requestStatus(item.status),
     createdAt: item.created_at.slice(0, 10).replace(/-/g, "."),
     guests: item.requested_people,
