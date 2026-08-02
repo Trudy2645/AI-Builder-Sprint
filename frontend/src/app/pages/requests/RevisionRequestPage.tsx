@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Save, Send, Plus } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
@@ -32,6 +32,9 @@ export function RevisionRequestPage() {
   const { t } = useApp();
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialFrom = searchParams.get("from") ?? "";
+  const initialTo = searchParams.get("to") ?? "";
   const demoContract = getContract(id);
   const [serverContract, setServerContract] = useState<Contract | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -41,8 +44,14 @@ export function RevisionRequestPage() {
   }, [demoContract, id]);
   const contract = demoContract ?? serverContract;
   const { addRequest } = useRequests();
-  const [startDate, setStartDate] = useState(contract?.start !== "미정" ? contract?.start ?? "" : "");
-  const [endDate, setEndDate] = useState(contract?.end !== "미정" ? contract?.end ?? "" : "");
+  const [startDate, setStartDate] = useState(initialFrom || (contract?.start !== "미정" ? contract?.start ?? "" : ""));
+  const [endDate, setEndDate] = useState(initialTo || (contract?.end !== "미정" ? contract?.end ?? "" : ""));
+
+  useEffect(() => {
+    if (!contract) return;
+    if (!initialFrom && contract.start !== "미정") setStartDate(contract.start);
+    if (!initialTo && contract.end !== "미정") setEndDate(contract.end);
+  }, [contract, initialFrom, initialTo]);
 
   // Pre-seed with one card targeting the first risky clause if any.
   const [drafts, setDrafts] = useState<RevisionDraft[]>(() => {

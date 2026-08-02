@@ -13,7 +13,7 @@ import {
   ZoomOut,
   Languages,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -141,6 +141,7 @@ export function ContractDocumentPage() {
   const { base, isGuest } = useExploreCtx();
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const demoContract = getContract(id);
   const [serverContract, setServerContract] = useState<Contract | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -201,9 +202,9 @@ export function ContractDocumentPage() {
       return;
     }
     if (asIs) {
-      navigate(`/buyer/explore/${contract.id}/request`);
+      navigate(`/buyer/explore/${contract.id}/request${location.search}`);
     } else {
-      navigate(`/buyer/explore/${contract.id}/revise`);
+      navigate(`/buyer/explore/${contract.id}/revise${location.search}`);
     }
   };
 

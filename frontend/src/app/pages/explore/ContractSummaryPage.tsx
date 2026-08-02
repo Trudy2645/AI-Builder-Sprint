@@ -15,7 +15,7 @@ import {
   Star,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -47,6 +47,7 @@ export function ContractSummaryPage() {
   const { base } = useExploreCtx();
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [serverContract, setServerContract] = useState<Contract | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const demoContract = getContract(id);
@@ -162,7 +163,7 @@ export function ContractSummaryPage() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Button className="w-full gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => navigate(`${base}/${contract.id}/document`)}>
+            <Button className="w-full gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => navigate(`${base}/${contract.id}/document${location.search}`)}>
               <FileText className="size-4" />
               {t("summary.viewOriginal")}
             </Button>

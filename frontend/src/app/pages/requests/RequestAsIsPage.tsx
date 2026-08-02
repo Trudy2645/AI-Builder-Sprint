@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Save, PenLine, FileCheck2, FastForward } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
@@ -30,6 +30,9 @@ export function RequestAsIsPage() {
   const { t } = useApp();
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialFrom = searchParams.get("from") ?? "";
+  const initialTo = searchParams.get("to") ?? "";
   const [serverContract, setServerContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(!getContract(id));
   const demoContract = getContract(id);
@@ -44,8 +47,8 @@ export function RequestAsIsPage() {
   const [guests, setGuests] = useState("");
   const [rooms, setRooms] = useState(contract?.category === "accommodation" ? "15" : "30");
   const [nights, setNights] = useState(contract?.category === "accommodation" ? "2" : "1");
-  const [startDate, setStartDate] = useState(contract?.start !== "미정" ? contract?.start ?? "" : "");
-  const [endDate, setEndDate] = useState(contract?.end !== "미정" ? contract?.end ?? "" : "");
+  const [startDate, setStartDate] = useState(initialFrom || (contract?.start !== "미정" ? contract?.start ?? "" : ""));
+  const [endDate, setEndDate] = useState(initialTo || (contract?.end !== "미정" ? contract?.end ?? "" : ""));
   const currency = "KRW";
   const [name, setName] = useState(buyerProfile.contactName);
   const [email, setEmail] = useState(buyerProfile.email);
@@ -53,6 +56,12 @@ export function RequestAsIsPage() {
   const [message, setMessage] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [confirmError, setConfirmError] = useState<string | undefined>();
+
+  useEffect(() => {
+    if (!contract) return;
+    if (!initialFrom && contract.start !== "미정") setStartDate(contract.start);
+    if (!initialTo && contract.end !== "미정") setEndDate(contract.end);
+  }, [contract, initialFrom, initialTo]);
 
   if (!contract) {
     return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">{loading ? "계약 조건을 불러오는 중입니다…" : "공고를 찾을 수 없습니다."}</div>;
