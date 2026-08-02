@@ -537,9 +537,7 @@ class SqlAlchemyRevisionRepository:
                     raise RevisionReferenceError
                 if row["status"] != "draft":
                     raise RevisionStateConflictError
-                normalized_clause_id = await self._resolve_clause_id(
-                    revision_id, item["clause_id"]
-                )
+                normalized_clause_id = await self._resolve_clause_id(revision_id, item["clause_id"])
                 await self._validate_item_references(
                     revision_id,
                     row["contract_id"],
@@ -1072,9 +1070,7 @@ class SqlAlchemyRevisionRepository:
     async def _insert_item(
         self, revision_id: UUID, contract_id: UUID, item_order: int, item: dict[str, Any]
     ) -> UUID:
-        normalized_clause_id = await self._resolve_clause_id(
-            revision_id, item["clause_id"]
-        )
+        normalized_clause_id = await self._resolve_clause_id(revision_id, item["clause_id"])
         await self._validate_item_references(
             revision_id, contract_id, normalized_clause_id, item["document_ids"]
         )
@@ -1105,9 +1101,7 @@ class SqlAlchemyRevisionRepository:
         await self._replace_documents(item_id, contract_id, item["document_ids"])
         return item_id
 
-    async def _resolve_clause_id(
-        self, revision_id: UUID, clause_id: UUID | None
-    ) -> UUID | None:
+    async def _resolve_clause_id(self, revision_id: UUID, clause_id: UUID | None) -> UUID | None:
         if clause_id is None:
             return None
         result = await self._session.execute(
