@@ -435,6 +435,7 @@ export function signup(payload: Record<string, unknown>): Promise<AuthResponse> 
 
 export type ContractListItem = {
   id: string;
+  listing_id: string | null;
   listing_title: string;
   seller_name: string;
   status: "draft" | "seller_review" | "revision_requested" | "signing" | "signed" | "cancelled";
@@ -446,8 +447,9 @@ export type ContractListItem = {
   created_at: string;
 };
 
-export function getMyContracts(): Promise<ContractListItem[]> {
-  return apiFetch<ContractListItem[]>("/me/contracts");
+export async function getMyContracts(): Promise<ContractListItem[]> {
+  const contracts = await apiFetch<ContractListItem[]>("/me/contracts");
+  return contracts.filter((contract) => !isHiddenTestRecord(contract));
 }
 
 export type SellerContractListItem = {
@@ -468,11 +470,12 @@ export type SellerContractListItem = {
   requested_at: string;
 };
 
-export function getReceivedContracts(): Promise<SellerContractListItem[]> {
+export async function getReceivedContracts(): Promise<SellerContractListItem[]> {
   const session = getApiSession();
-  return apiFetch<SellerContractListItem[]>("/seller/contracts/received", {
+  const contracts = await apiFetch<SellerContractListItem[]>("/seller/contracts/received", {
     headers: authenticatedHeaders(session),
   });
+  return contracts.filter((contract) => !isHiddenTestRecord(contract));
 }
 
 export type SellerDashboard = {
@@ -584,8 +587,9 @@ export type ContractVersionCompare = {
   };
 };
 
-export function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
-  return apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
+export async function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
+  const versions = await apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
+  return versions.filter((version) => !isHiddenTestRecord(version));
 }
 
 export function compareContractVersions(
@@ -621,7 +625,7 @@ export function createContractRequest(
   listingId: string,
   payload: ContractRequestPayload,
 ): Promise<ContractRequestCreated> {
-  return apiFetch<ContractRequestCreated>(`/listings/${listingId}/contract-requests`, {
+  return apiFetch(`/listings/${listingId}/contract-requests`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("contract-request") },
     body: JSON.stringify(payload),
@@ -649,14 +653,10 @@ export type RevisionRequestResponse = {
     id: string;
     item_order: number;
     request_type: "modify" | "delete" | "add";
-    clause_id: string | null;
+    clause_id?: string;
     reason: string;
-    requested_text: string | null;
-    document_ids: string[];
-    decision: "pending" | "accepted" | "rejected" | "countered";
-    seller_reason: string | null;
-    counter_text: string | null;
-    decided_at: string | null;
+    requested_text?: string;
+    document_ids?: string[];
   }>;
   decision_preview: {
     resulting_clauses: Array<{ id: string; clause_order: number; clause_key: string | null; title: string; body: string }>;
@@ -682,8 +682,12 @@ export function createRevisionRequest(
   });
 }
 
-export function getRevisionRequest(revisionRequestId: string): Promise<RevisionRequestResponse> {
-  return apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
+export async function getRevisionRequest(revisionRequestId: string): Promise<RevisionRequestResponse> {
+  const revision = await apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
+  if (isHiddenTestRecord(revision)) {
+    throw new ApiError({ code: "REVISION_REQUEST_NOT_FOUND", message: "수정 요청을 찾을 수 없습니다." });
+  }
+  return revision;
 }
 
 export function sendRevisionRequest(revisionRequestId: string): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
@@ -707,8 +711,9 @@ export type SellerRevisionRequestListItem = {
   updated_at: string;
 };
 
-export function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
-  return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
+export async function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
+  const revisions = await apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
+  return revisions.filter((revision) => !isHiddenTestRecord(revision));
 }
 
 export function decideRevisionRequest(
@@ -718,7 +723,6 @@ export function decideRevisionRequest(
   return apiFetch(`/revision-requests/${revisionRequestId}/decide`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-decide") },
-    body: JSON.stringify(payload),
   });
 }
 
@@ -767,7 +771,6 @@ export function updateMe(payload: Record<string, unknown>): Promise<MeProfile> {
 export type OrganizationProfile = {
   id: string;
   organization_type: "seller";
-  name: string;
   legal_name: string | null;
   business_registration_no: string | null;
   representative_name: string | null;
@@ -809,7 +812,7 @@ export function getPublicContractPreview(
     clause_id: string | null;
     severity: "high" | "medium" | "low" | "none";
     explanation: string;
-    suggested_text: string | null;
+    suggested_text: string;
     disclaimer: string;
     evidence_refs: Array<{ id: string; label: string; document_title: string; source_kind: string; page: number; section: string | null; excerpt: string }>;
   }>;
@@ -829,8 +832,12 @@ export type ApprovalStatus = {
   contract_status?: string;
 };
 
-export function getContractDetail(contractId: string): Promise<ContractDetail> {
-  return apiFetch<ContractDetail>(`/contracts/${contractId}`);
+export async function getContractDetail(contractId: string): Promise<ContractDetail> {
+  const contract = await apiFetch<ContractDetail>(`/contracts/${contractId}`);
+  if (isHiddenTestRecord(contract)) {
+    throw new ApiError({ code: "CONTRACT_NOT_FOUND", message: "계약을 찾을 수 없습니다." });
+  }
+  return contract;
 }
 
 export function getContractApprovals(contractId: string, versionId: string): Promise<ApprovalStatus> {
@@ -948,7 +955,6 @@ export type SellerListingDetail = SellerListingSummary & {
     service_start_date: string | null;
     service_end_date: string | null;
     supply_quantity: number | null;
-    supply_quantity_description: string | null;
     quantity_unit: string | null;
     minimum_quantity: number | null;
     maximum_quantity: number | null;
@@ -1097,7 +1103,6 @@ export function requestSigningFromSourceDocument(input: {
       ["Idempotency-Key", requestIdempotencyKey("modusign-signing")],
     ]),
     body: JSON.stringify({
-      document_id: input.documentId,
       title: input.title,
       buyer: { role: "바이어", ...input.buyer },
       fields: input.fields,
