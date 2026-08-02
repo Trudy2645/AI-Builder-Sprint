@@ -6,7 +6,11 @@ from uuid import UUID
 from fastapi import status
 
 from app.core.errors import AppError
-from app.domain.pricing.units import PRICE_UNIT_RULES, SUPPORTED_QUANTITY_UNITS
+from app.domain.pricing.units import (
+    PRICE_UNIT_RULES,
+    SUPPORTED_QUANTITY_UNITS,
+    canonical_price_unit,
+)
 from app.integrations.auth import AuthenticatedUser
 from app.repositories.seller_listings import (
     NewSellerListingClause,
@@ -434,7 +438,7 @@ class SellerListingService:
     @staticmethod
     def _validate_term_units(terms: dict[str, Any]) -> None:
         quantity_unit = terms["quantity_unit"]
-        price_unit = terms["price_unit"]
+        price_unit = canonical_price_unit(terms["price_unit"])
         if quantity_unit is not None and quantity_unit not in SUPPORTED_QUANTITY_UNITS:
             raise AppError(
                 status_code=status.HTTP_400_BAD_REQUEST,
