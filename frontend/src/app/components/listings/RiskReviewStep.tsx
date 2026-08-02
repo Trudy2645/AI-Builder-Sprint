@@ -1,6 +1,8 @@
-import { AlertTriangle, Lightbulb, CheckCircle2, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Lightbulb, CheckCircle2, ShieldCheck, Pencil, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 import { useApp } from "../../context/AppContext";
 import type { ListingDraft } from "../../store/ListingsContext";
 
@@ -106,6 +108,8 @@ interface RiskReviewStepProps {
 export function RiskReviewStep({ draft, applied, onApply }: RiskReviewStepProps) {
   const { t } = useApp();
   const findings = analyzeDraft(draft);
+  const [editing, setEditing] = useState<Record<string, boolean>>({});
+  const [draftValues, setDraftValues] = useState<Record<string, string>>({});
 
   if (findings.length === 0) {
     return (
@@ -129,17 +133,60 @@ export function RiskReviewStep({ draft, applied, onApply }: RiskReviewStepProps)
       <div className="flex flex-col gap-4">
         {findings.map((f) => {
           const isApplied = applied[f.id];
+          const isEditing = editing[f.id];
+          const editValue = draftValues[f.id] ?? draft[f.field] ?? "";
           return (
             <div key={f.id} className="rounded-xl border p-5" style={{ borderColor: "var(--coral)", background: "var(--coral-soft)" }}>
-              <div className="flex items-center gap-2 whitespace-nowrap" style={{ color: "var(--coral)", fontWeight: 700 }}>
-                <AlertTriangle className="size-4" />
-                {t(f.fieldLabelKey)}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 whitespace-nowrap" style={{ color: "var(--coral)", fontWeight: 700 }}>
+                  <AlertTriangle className="size-4" />
+                  {t(f.fieldLabelKey)}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 whitespace-nowrap bg-white"
+                  onClick={() => {
+                    setEditing((prev) => ({ ...prev, [f.id]: !prev[f.id] }));
+                    setDraftValues((prev) => ({ ...prev, [f.id]: prev[f.id] ?? String(draft[f.field] ?? "") }));
+                  }}
+                >
+                  <Pencil className="size-4" />
+                  {isEditing ? "수정 닫기" : "직접 수정"}
+                </Button>
               </div>
 
               <div className="mt-3">
                 <div className="whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px", fontWeight: 600 }}>{t("risk.reason")}</div>
                 <p className="mt-1 text-foreground" style={{ fontSize: "14px", lineHeight: 1.7 }}>{f.reason}</p>
               </div>
+
+              {isEditing && (
+                <div className="mt-3 rounded-lg border border-border bg-white p-3">
+                  <div className="mb-2 whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px", fontWeight: 600 }}>
+                    현재 조항 직접 수정
+                  </div>
+                  <Textarea
+                    rows={4}
+                    value={editValue}
+                    onChange={(event) => setDraftValues((prev) => ({ ...prev, [f.id]: event.target.value }))}
+                  />
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      size="sm"
+                      className="gap-1.5 whitespace-nowrap"
+                      onClick={() => {
+                        onApply(f.field, editValue, f.id);
+                        setEditing((prev) => ({ ...prev, [f.id]: false }));
+                        toast.success("수정한 문구를 반영했습니다.");
+                      }}
+                    >
+                      <Save className="size-4" />
+                      수정 저장
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-3 rounded-lg p-3" style={{ background: "#fff" }}>
                 <div className="flex items-center gap-1.5 whitespace-nowrap" style={{ color: "var(--teal)", fontSize: "12px", fontWeight: 600 }}>

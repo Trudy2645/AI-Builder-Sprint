@@ -16,6 +16,8 @@ import { SentRequestsPage } from "./pages/requests/SentRequestsPage";
 import { BuyerMyPage } from "./pages/BuyerMyPage";
 import { SellerDashboardPage } from "./pages/seller/SellerDashboardPage";
 import { ListingsManagePage } from "./pages/seller/ListingsManagePage";
+import { ListingDetailPage } from "./pages/seller/ListingDetailPage";
+import { ListingDocumentPage } from "./pages/seller/ListingDocumentPage";
 import { CreateMethodPage } from "./pages/seller/CreateMethodPage";
 import { UploadOcrPage } from "./pages/seller/UploadOcrPage";
 import { WriteContractPage } from "./pages/seller/WriteContractPage";
@@ -91,6 +93,8 @@ const buyerChildren = buyerNav
 // Seller listing creation flow (dashboard + listings + create wizards).
 const sellerListingRoutes = [
   { path: "listings", element: <ListingsManagePage /> },
+  { path: "listings/:id", element: <ListingDetailPage /> },
+  { path: "listings/:id/document", element: <ListingDocumentPage /> },
   { path: "listings/new", element: <CreateMethodPage /> },
   { path: "listings/new/upload", element: <UploadOcrPage /> },
   { path: "listings/new/write", element: <WriteContractPage /> },

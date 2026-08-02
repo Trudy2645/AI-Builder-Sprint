@@ -52,6 +52,7 @@ export interface ListingDraft {
   special: string; // 특약
   // 바이어 공개 정보 설정
   headline: string; // 공개용 한 줄 소개
+  imageUrl: string; // 바이어 카드 대표 이미지
   available: boolean; // 계약 가능 여부 공개
   showRisk: boolean; // AI 위험 요약 공개
 }
@@ -76,6 +77,7 @@ export function createEmptyDraft(method: CreateMethod): ListingDraft {
     termination: "",
     special: "",
     headline: "",
+    imageUrl: "",
     available: true,
     showRisk: true,
   };
@@ -106,6 +108,8 @@ export function draftToListing(
 interface ListingsContextValue {
   listings: Listing[];
   addListing: (l: Omit<Listing, "id" | "updatedAt">) => void;
+  updateListingStatus: (id: string, status: ListingStatus) => void;
+  deleteListing: (id: string) => void;
   publicCount: number;
 }
 
@@ -176,10 +180,22 @@ export function ListingsProvider({ children }: { children: ReactNode }) {
     setListings((prev) => [{ ...l, id: `lst-${Date.now()}`, updatedAt }, ...prev]);
   };
 
+  const updateListingStatus: ListingsContextValue["updateListingStatus"] = (id, status) => {
+    const now = new Date();
+    const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
+    setListings((prev) => prev.map((listing) => listing.id === id ? { ...listing, status, updatedAt } : listing));
+  };
+
+  const deleteListing: ListingsContextValue["deleteListing"] = (id) => {
+    setListings((prev) => prev.filter((listing) => listing.id !== id));
+  };
+
   const value = useMemo<ListingsContextValue>(
     () => ({
       listings,
       addListing,
+      updateListingStatus,
+      deleteListing,
       publicCount: listings.filter((l) => l.status === "public").length,
     }),
     [listings],
