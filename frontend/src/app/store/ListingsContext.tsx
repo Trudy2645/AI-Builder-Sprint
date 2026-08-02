@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApp } from "../context/AppContext";
 import type { Category } from "../data/contracts";
+import { getSellerListings, hasApiSession, type SellerListingSummary } from "../lib/api";
 
 // 계약 공고 상태: 임시저장 / AI 검토 필요 / 공개 중 / 공개 중지 / 기간 만료
 export type ListingStatus = "draft" | "needsReview" | "public" | "paused" | "expired";
@@ -170,18 +171,73 @@ const seed: Listing[] = [
   },
 ];
 
+function localStatus(status: SellerListingSummary["status"]): ListingStatus {
+  if (status === "published") return "public";
+  if (status === "paused") return "paused";
+  if (status === "expired") return "expired";
+  if (status === "draft") return "draft";
+  return "needsReview";
+}
+
+function displayDate(value: string | null): string {
+  return value ? value.slice(0, 10).replaceAll("-", ".") : "";
+}
+
+function fromServerListing(item: SellerListingSummary): Listing {
+  return {
+    id: item.id,
+    productName: item.display_title || item.title,
+    category: item.category,
+    district: item.district,
+    start: displayDate(item.service_start_date),
+    end: displayDate(item.service_end_date),
+    unitPrice: item.base_price?.amount_minor ?? 0,
+    priceUnit: item.base_price?.unit ?? "기준 단가",
+    quantityLabel: item.supply_quantity_description || "미정",
+    status: localStatus(item.status),
+    method: item.creation_method,
+    requests: item.contract_request_count,
+    updatedAt: displayDate(item.updated_at),
+    riskCount: item.attention_required_count,
+  };
+}
+
 export function ListingsProvider({ children }: { children: ReactNode }) {
   const { isDemoSession } = useApp();
   const [listings, setListings] = useState<Listing[]>([]);
 
   useEffect(() => {
-    if (!isDemoSession) { setListings([]); return; }
-    try {
-      const saved = window.localStorage.getItem("busanlink.seller.listings");
-      setListings(saved ? JSON.parse(saved) as Listing[] : seed);
-    } catch {
-      setListings(seed);
+    if (!hasApiSession()) {
+      if (!isDemoSession) { setListings([]); return; }
+      try {
+        const saved = window.localStorage.getItem("busanlink.seller.listings");
+        setListings(saved ? JSON.parse(saved) as Listing[] : seed);
+      } catch {
+        setListings(seed);
+      }
+      return;
     }
+
+    let active = true;
+    getSellerListings()
+      .then((items) => {
+        if (active) setListings(items.map(fromServerListing));
+      })
+      .catch(() => {
+        if (!active) return;
+        // Keep the local demo board usable if the optional API session expires.
+        if (isDemoSession) {
+          try {
+            const saved = window.localStorage.getItem("busanlink.seller.listings");
+            setListings(saved ? JSON.parse(saved) as Listing[] : seed);
+          } catch {
+            setListings(seed);
+          }
+        } else {
+          setListings([]);
+        }
+      });
+    return () => { active = false; };
   }, [isDemoSession]);
 
   const addListing: ListingsContextValue["addListing"] = (l) => {

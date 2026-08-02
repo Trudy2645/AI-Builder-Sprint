@@ -118,7 +118,7 @@ export function BuyerSignupPage() {
       if (!result.session) throw new Error("Signup session was not returned.");
       setCompanyName(company.trim());
       setLang(language as Lang);
-      loginWithSession("buyer", company.trim(), result.session.access_token);
+      loginWithSession("buyer", company.trim(), result.session.access_token, result.organization_id);
       navigate("/signup/complete?role=buyer");
     } catch (error) {
       setSubmitError(friendlyApiError(error));

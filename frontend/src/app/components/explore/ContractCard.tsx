@@ -11,7 +11,7 @@ const catKey = (c: Contract) => CATEGORIES.find((x) => x.value === c.category)?.
 export function ContractCard({ contract, base, guests, from, to }: { contract: Contract; base: string; guests?: string; from?: string; to?: string }) {
   const { t } = useApp();
   const navigate = useNavigate();
-  const risks = riskCount(contract);
+  const risks = contract.attentionRequiredCount ?? riskCount(contract);
   const guestCount = parseInt(guests ?? "", 10) || 0;
   const isAccommodation = contract.category === "accommodation";
   const units = isAccommodation ? Math.ceil(guestCount / 2) : guestCount;

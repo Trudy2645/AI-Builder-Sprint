@@ -47,6 +47,7 @@ def _load_frontend_contracts() -> list[dict[str, Any]]:
             check=True,
             capture_output=True,
             text=True,
+            timeout=30,
         )
         result = subprocess.run(
             [
@@ -58,6 +59,7 @@ def _load_frontend_contracts() -> list[dict[str, Any]]:
             check=True,
             capture_output=True,
             text=True,
+            timeout=30,
         )
     contracts = json.loads(result.stdout)
     source_ids = {item["id"] for item in contracts}
@@ -162,6 +164,8 @@ async def _seed(contracts: list[dict[str, Any]]) -> None:
                     on conflict (id) do update set
                         name = excluded.name,
                         verification_status = 'verified',
+                        rating_average = excluded.rating_average,
+                        rating_count = excluded.rating_count,
                         verified_at = coalesce(public.organizations.verified_at, now())
                     """
                 ),

@@ -7,9 +7,8 @@ import { Label } from "../../components/ui/label";
 import { Plane, Building2 } from "lucide-react";
 import { Separator } from "../../components/ui/separator";
 import { useApp, type Role } from "../../context/AppContext";
-import { friendlyApiError, loginWithDemoRole } from "../../lib/api";
+import { friendlyApiError, loginWithDemoRole, loginWithPassword } from "../../lib/api";
 import { toast } from "sonner";
-import { friendlyApiError, loginWithPassword } from "../../lib/api";
 
 export function LoginPage() {
   const { t, login, loginWithSession } = useApp();
@@ -45,7 +44,7 @@ export function LoginPage() {
       const result = await loginWithPassword(email, password);
       if (!result.session) throw new Error("Login session was not returned.");
       const role = inferDemoRole(email);
-      loginWithSession(role, email, result.session.access_token);
+      loginWithSession(role, email, result.session.access_token, result.organization_id);
       navigate(`/${role}`);
     } catch (error) {
       if (error instanceof TypeError && isDemoEmail(email)) {
