@@ -502,7 +502,7 @@ const strings: Record<string, Dict> = {
   // OCR steps
   "ocr.title": { ko: "기존 계약서 업로드 및 OCR", en: "Upload & OCR", ja: "契約書アップロードとOCR", zh: "上传合约与 OCR" },
   "ocr.dropTitle": { ko: "계약서 파일을 업로드하세요", en: "Upload a contract file", ja: "契約書ファイルをアップロード", zh: "上传合约文件" },
-  "ocr.dropDesc": { ko: "PDF, JPG, PNG 형식을 지원합니다. (데모)", en: "Supports PDF, JPG, PNG. (demo)", ja: "PDF・JPG・PNG対応。(デモ)", zh: "支持 PDF、JPG、PNG。(演示)" },
+  "ocr.dropDesc": { ko: "PDF, JPG, PNG 형식을 지원합니다.", en: "Supports PDF, JPG, PNG.", ja: "PDF・JPG・PNG対応。", zh: "支持 PDF、JPG、PNG。" },
   "ocr.choose": { ko: "파일 선택", en: "Choose file", ja: "ファイル選択", zh: "选择文件" },
   "ocr.analyzing": { ko: "OCR로 계약서를 분석하고 있습니다…", en: "Analyzing the contract with OCR…", ja: "OCRで契約書を解析しています…", zh: "正在用 OCR 分析合约…" },
   "ocr.analyzeDone": { ko: "분석이 완료되었습니다. 추출된 정보를 확인하세요.", en: "Analysis complete. Review the extracted info.", ja: "解析が完了しました。抽出情報を確認してください。", zh: "分析完成，请确认提取的信息。" },

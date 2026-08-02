@@ -27,7 +27,6 @@ export interface ClauseChange {
 export interface VersionDiff {
   from: ContractVersion;
   to: ContractVersion;
-  aiSummary: string[];
   changes: ClauseChange[];
 }
 
@@ -57,11 +56,6 @@ export const versionDiffs: Record<Exclude<ContractVersion, "v1">, VersionDiff> =
   v2: {
     from: "v1",
     to: "v2",
-    aiSummary: [
-      "바이어가 예약 요청과 예약 확정 시점을 더 명확히 구분하도록 요청했습니다.",
-      "부대비용 청구 시 증빙과 포함·불포함 비용 표기를 추가했습니다.",
-      "오버부킹 시 대체 객실과 이동 비용 부담 기준을 구체화했습니다.",
-    ],
     changes: [
       {
         clauseNo: "제2조",
@@ -92,11 +86,6 @@ export const versionDiffs: Record<Exclude<ContractVersion, "v1">, VersionDiff> =
   v3: {
     from: "v2",
     to: "v3",
-    aiSummary: [
-      "셀러가 예약 확정 통지 기한을 24시간 이내로 제한하는 대안을 제시했습니다.",
-      "부대비용 증빙 제공 요청은 수락했습니다.",
-      "오버부킹 대체 조건은 동일 지역·동급 이상 원칙을 유지하되, 불가피한 경우 합의 절차를 추가했습니다.",
-    ],
     changes: [
       {
         clauseNo: "제2조",
@@ -119,11 +108,6 @@ export const versionDiffs: Record<Exclude<ContractVersion, "v1">, VersionDiff> =
   v4: {
     from: "v3",
     to: "v4",
-    aiSummary: [
-      "양측이 셀러 대응안에 합의해 최종 계약안이 완성되었습니다.",
-      "예약확정·부대비용·오버부킹 기준이 모두 명확해졌습니다.",
-      "최종안은 전자서명을 진행할 수 있는 상태입니다.",
-    ],
     changes: [
       {
         clauseNo: "제2·4·6조",

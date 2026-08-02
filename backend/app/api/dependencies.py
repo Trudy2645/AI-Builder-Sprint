@@ -9,6 +9,7 @@ from app.core.auth import get_auth_account_provider
 from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.core.errors import AppError
+from app.domain.ai_guidance.service import AIGuidanceService
 from app.domain.ai_jobs.service import AIJobService
 from app.domain.auth_accounts.service import AuthAccountService, DemoLoginConfig
 from app.domain.contract_generation.service import ContractGenerationService
@@ -106,6 +107,13 @@ def get_ai_provider(
         timeout_seconds=settings.ai_request_timeout_seconds,
         max_retries=settings.ai_max_retries,
     )
+
+
+def get_ai_guidance_service(
+    provider: Annotated[FakeAIProvider | UpstageAIProvider, Depends(get_ai_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AIGuidanceService:
+    return AIGuidanceService(provider, prompt_version=settings.ai_prompt_version)
 
 
 def get_document_processing_repository(

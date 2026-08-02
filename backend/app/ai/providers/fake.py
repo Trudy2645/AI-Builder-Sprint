@@ -145,8 +145,60 @@ class FakeAIProvider:
                 if value is not None and (not isinstance(value, str) or value.strip())
             ]
             return {"clauses": clauses}
+        if request.task_type == "public_summary":
+            raw_changes = request.input_data.get("changes")
+            if isinstance(raw_changes, list):
+                titles = [
+                    str(item.get("title", "조항")) for item in raw_changes if isinstance(item, dict)
+                ]
+                changed = ", ".join(titles[:3]) or "계약 조항"
+                return {
+                    "lines": [
+                        f"{changed} 내용이 이전 버전과 달라졌습니다.",
+                        f"총 {len(raw_changes)}개 변경 항목의 전후 문구를 확인해야 합니다.",
+                        "가격·기간·책임 범위가 달라졌는지 최종 계약 전에 확인해야 합니다.",
+                    ]
+                }
+            listing = request.input_data.get("listing", {})
+            terms = request.input_data.get("terms", {})
+            title = listing.get("title", "관광 상품") if isinstance(listing, dict) else "관광 상품"
+            start = terms.get("service_start_date", "미정") if isinstance(terms, dict) else "미정"
+            end = terms.get("service_end_date", "미정") if isinstance(terms, dict) else "미정"
+            cancellation = terms.get("cancellation_policy") if isinstance(terms, dict) else None
+            settlement = terms.get("settlement_policy") if isinstance(terms, dict) else None
+            return {
+                "lines": [
+                    f"{title}의 공급 조건과 계약 조항을 정리한 계약입니다.",
+                    f"서비스 이용 기간은 {start}부터 {end}까지이며 확정 조건을 확인해야 합니다.",
+                    str(
+                        cancellation
+                        or settlement
+                        or "취소·정산 및 책임 조건을 계약 전에 확인해야 합니다."
+                    ),
+                ]
+            }
+        if request.task_type == "revision_draft":
+            raw_items = request.input_data.get("items", [])
+            items = []
+            if isinstance(raw_items, list):
+                for item in raw_items:
+                    if not isinstance(item, dict):
+                        continue
+                    items.append(
+                        {
+                            "id": item.get("id", "item"),
+                            "impact": (
+                                "요청 문구를 반영하면 조건이 구체화되지만 셀러의 이행 범위와 "
+                                "운영 부담이 달라질 수 있어 양측 확인이 필요합니다."
+                            ),
+                            "recommendation": item.get("requested_text")
+                            or "양측의 책임과 처리 기한을 구체적으로 합의해 기재하세요.",
+                        }
+                    )
+            return {"items": items}
         if request.task_type == "contract_review":
             raw_findings = request.input_data.get("rule_findings", [])
+            viewer_role = request.input_data.get("viewer_role")
             findings = []
             if isinstance(raw_findings, list):
                 for item in raw_findings:
@@ -168,9 +220,39 @@ class FakeAIProvider:
                             "source_location": item.get("source_location", {}),
                             "evidence_ids": [],
                             "disclaimer": "법률 자문이 아닌 계약 검토 보조 의견입니다.",
-                            "is_public": False,
+                            "is_public": viewer_role == "buyer",
                         }
                     )
+            if not findings:
+                inventory = request.input_data.get("clause_inventory", [])
+                if isinstance(inventory, list):
+                    for item in inventory[:3]:
+                        if not isinstance(item, dict):
+                            continue
+                        title = str(item.get("title", "계약 조항"))
+                        findings.append(
+                            {
+                                "clause_id": item.get("id"),
+                                "category": f"clause_{item.get('clause_order', len(findings) + 1)}",
+                                "severity": "medium",
+                                "importance": "medium",
+                                "title": f"{title} 확인이 필요합니다",
+                                "explanation": (
+                                    f"{title}의 적용 조건과 당사자별 책임 범위를 계약 전에 "
+                                    "확인해야 합니다."
+                                ),
+                                "suggested_text": (
+                                    "적용 시점, 처리 기한과 각 당사자의 책임을 구체적으로 "
+                                    "기재하세요."
+                                ),
+                                "grounding_status": "insufficient_evidence",
+                                "confidence": None,
+                                "source_location": {},
+                                "evidence_ids": [],
+                                "disclaimer": "법률 자문이 아닌 계약 검토 보조 의견입니다.",
+                                "is_public": viewer_role == "buyer",
+                            }
+                        )
             return {"tool_calls": [{"name": "submit_review", "arguments": {"findings": findings}}]}
         if request.task_type == "localize_explain":
             source = request.input_data.get("source", {})

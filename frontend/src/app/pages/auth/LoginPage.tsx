@@ -7,32 +7,24 @@ import { Label } from "../../components/ui/label";
 import { Plane, Building2 } from "lucide-react";
 import { Separator } from "../../components/ui/separator";
 import { useApp, type Role } from "../../context/AppContext";
-import { friendlyApiError, loginWithPassword } from "../../lib/api";
+import { friendlyApiError, getMe, loginDemo, loginWithPassword, setAccessToken } from "../../lib/api";
 
 export function LoginPage() {
-  const { t, login, loginWithSession } = useApp();
+  const { t, loginWithSession } = useApp();
   const navigate = useNavigate();
   const [email, setEmail] = useState("buyer@globaltrip.jp");
   const [password, setPassword] = useState("demo-password");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const inferDemoRole = (value: string): Role => {
-    const normalized = value.toLocaleLowerCase();
-    return normalized.includes("seller") ||
-      normalized.includes("ocean") ||
-      normalized.includes("haeundae")
-      ? "seller"
-      : "buyer";
-  };
-
-  const demoCompany = (role: Role) => role === "seller" ? "해운대 오션스테이" : "GlobalTrip Japan";
-  const isDemoEmail = (value: string) => {
-    const normalized = value.toLocaleLowerCase();
-    return normalized.includes("buyer@globaltrip") ||
-      normalized.includes("seller") ||
-      normalized.includes("ocean") ||
-      normalized.includes("haeundae");
+  const establishSession = async (result: Awaited<ReturnType<typeof loginWithPassword>>) => {
+    if (!result.session) throw new Error("Login session was not returned.");
+    setAccessToken(result.session.access_token);
+    const profile = await getMe();
+    const organization = profile.organizations[0];
+    const company = organization?.name || profile.affiliation_name || profile.display_name || result.email;
+    loginWithSession(profile.role, company, result.session.access_token, organization?.id ?? null);
+    navigate(`/${profile.role}`);
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -41,26 +33,24 @@ export function LoginPage() {
     setErrorMessage(null);
     try {
       const result = await loginWithPassword(email, password);
-      if (!result.session) throw new Error("Login session was not returned.");
-      const role = result.role ?? inferDemoRole(email);
-      loginWithSession(role, email, result.session.access_token, result.organization_id);
-      navigate(`/${role}`);
+      await establishSession(result);
     } catch (error) {
-      if (error instanceof TypeError && isDemoEmail(email)) {
-        const role = inferDemoRole(email);
-        login(role, demoCompany(role), true);
-        navigate(`/${role}`);
-        return;
-      }
       setErrorMessage(friendlyApiError(error));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const demoLogin = (r: Role, company: string) => {
-    login(r, company, true);
-    navigate(`/${r}`);
+  const demoLogin = async (role: Role) => {
+    setSubmitting(true);
+    setErrorMessage(null);
+    try {
+      await establishSession(await loginDemo(role));
+    } catch (error) {
+      setErrorMessage(friendlyApiError(error));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -101,7 +91,8 @@ export function LoginPage() {
           type="button"
           variant="outline"
           className="w-full justify-start gap-2 whitespace-nowrap"
-          onClick={() => demoLogin("buyer", "GlobalTrip Japan")}
+          onClick={() => void demoLogin("buyer")}
+          disabled={submitting}
         >
           <Plane className="size-4 shrink-0" style={{ color: "var(--ocean)" }} />
           {t("login.demoBuyer")}
@@ -110,7 +101,8 @@ export function LoginPage() {
           type="button"
           variant="outline"
           className="w-full justify-start gap-2 whitespace-nowrap"
-          onClick={() => demoLogin("seller", "해운대 오션스테이")}
+          onClick={() => void demoLogin("seller")}
+          disabled={submitting}
         >
           <Building2 className="size-4 shrink-0" style={{ color: "var(--teal)" }} />
           {t("login.demoSeller")}

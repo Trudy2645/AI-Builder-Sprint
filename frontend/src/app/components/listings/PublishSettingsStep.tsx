@@ -15,7 +15,6 @@ import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { useApp } from "../../context/AppContext";
 import { CATEGORIES, formatKRW } from "../../data/contracts";
-import { analyzeDraft } from "./RiskReviewStep";
 import type { ListingDraft } from "../../store/ListingsContext";
 
 const catKey = (c: ListingDraft["category"]) =>
@@ -53,9 +52,8 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 /** 오른쪽 실시간 미리보기: 바이어 계약 카드 + 요약 화면. */
-function BuyerPreview({ draft }: { draft: ListingDraft }) {
+function BuyerPreview({ draft, riskCount }: { draft: ListingDraft; riskCount: number }) {
   const { t } = useApp();
-  const risks = analyzeDraft(draft).length;
   const price = parseInt(draft.unitPrice, 10) || 0;
   const period =
     draft.start && draft.end ? `${draft.start} ~ ${draft.end}` : t("wz.tbd");
@@ -120,10 +118,10 @@ function BuyerPreview({ draft }: { draft: ListingDraft }) {
                 <p className="mt-1 line-clamp-2 text-foreground" style={{ fontSize: "13px", lineHeight: 1.5 }}>{draft.headline}</p>
               </div>
             )}
-            {draft.showRisk && risks > 0 && (
+            {draft.showRisk && riskCount > 0 && (
               <div className="flex items-center gap-1.5 whitespace-nowrap" style={{ color: "var(--coral)", fontSize: "13px" }}>
                 <AlertTriangle className="size-4" />
-                {t("card.riskClauses")} {risks}{t("card.riskUnit")}
+                {t("card.riskClauses")} {riskCount}{t("card.riskUnit")}
               </div>
             )}
           </div>
@@ -156,10 +154,11 @@ function BuyerPreview({ draft }: { draft: ListingDraft }) {
 
 interface PublishSettingsStepProps {
   draft: ListingDraft;
+  riskCount: number;
   onChange: (patch: Partial<ListingDraft>) => void;
 }
 
-export function PublishSettingsStep({ draft, onChange }: PublishSettingsStepProps) {
+export function PublishSettingsStep({ draft, riskCount, onChange }: PublishSettingsStepProps) {
   const { t } = useApp();
 
   return (
@@ -200,7 +199,7 @@ export function PublishSettingsStep({ draft, onChange }: PublishSettingsStepProp
             <Eye className="size-4" />
             {t("pub.previewTitle")}
           </div>
-          <BuyerPreview draft={draft} />
+          <BuyerPreview draft={draft} riskCount={riskCount} />
         </div>
       </div>
     </div>

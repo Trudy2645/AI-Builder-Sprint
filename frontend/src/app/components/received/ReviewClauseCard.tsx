@@ -55,7 +55,7 @@ function DecisionButton({
 
 interface Props {
   index: number;
-  revision: ReceivedRevision;
+  revision: ReceivedRevision & { aiImpact: string; aiRecommend: string };
   decision: Decision;
   onChange: (d: Decision) => void;
 }

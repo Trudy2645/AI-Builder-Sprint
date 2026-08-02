@@ -24,6 +24,7 @@ AI task, prompt, rule engine과 Upstage 연동은 `AI_UPSTAGE_ARCHITECTURE.md`, 
 - auth: `POST /api/v1/auth/signup`, `POST /api/v1/auth/login`, `POST /api/v1/auth/demo-login`, `POST /api/v1/auth/logout`, `POST /api/v1/auth/password/reset-email`, `PATCH /api/v1/auth/password`
 - profile: `GET /api/v1/me`, `PATCH /api/v1/me`, `GET /api/v1/organizations/{id}`, `PATCH /api/v1/organizations/{id}`
 - public listing: `GET /api/v1/public/listings`, `GET /api/v1/public/listings/{id}`, `GET /api/v1/public/listings/{id}/contract-preview`, `POST /api/v1/public/listings/{id}/price-estimates`
+- authenticated AI guidance: `POST /api/v1/ai-guidance/revision-impact`, `POST /api/v1/ai-guidance/change-summary`
 - contract: `POST /api/v1/listings/{id}/contract-requests`, `GET /api/v1/contracts/{id}`, `GET /api/v1/me/contracts`, `GET /api/v1/seller/contracts/received`, `GET /api/v1/seller/dashboard`, `POST /api/v1/contracts/{id}/cancel`
 
 `POST /api/v1/auth/signup`, `POST /api/v1/auth/login`, `POST /api/v1/auth/demo-login`,
@@ -257,6 +258,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 | 내 공고문·편집 | `GET /seller/listings`, `GET /seller/listings/{id}` | 구현 |
 | 직접 작성 | `POST /seller/listings`, `PATCH /seller/listings/{id}/terms` | 구현 |
 | AI 계약 생성 | `POST /seller/listings/{id}/generate` | 구현 |
+| 수정 영향·버전 변경 요약 | `POST /ai-guidance/revision-impact`, `POST /ai-guidance/change-summary` | 구현 |
 | 문서 업로드·검증 | `POST /documents/upload-url`, `POST /documents/{id}/complete`, `GET /documents/{id}`, `POST /documents/{id}/download-url` | 구현 |
 | 작성 완료·게시 | `POST /seller/listings/{id}/complete`, `PATCH /seller/listings/{id}/presentation`, `POST /seller/listings/{id}/publish`, `POST /seller/listings/{id}/pause`, `POST /seller/listings/{id}/archive` | 구현 |
 | 수정 요청 알림·판단 | revision request API와 알림 생성 | 구현 |
@@ -812,7 +814,8 @@ version과 clauses를 저장하고 `ready`로 전이한다. 결과를 자동 게
 승인된 template Vector Store가 설정된 경우 `source_type=approved_template`, category,
 `party_type=B2C_individual` 조건으로 최대 5개 문단을 미리 검색해 생성 참고 문맥으로 전달한다.
 이 문맥은 공식 법적 근거로 표시하거나 `ai_evidence`로 저장하지 않는다. Vector Store가 설정되지
-않아도 구조화 terms만으로 생성할 수 있다.
+않아도 구조화 terms만으로 생성할 수 있다. 계약 초안 검증이 끝나면 공개 화면에 사용할 3줄
+요약을 `public_summary` 고정 task로 생성하고 `listings.ai_summary`에 함께 저장한다.
 
 동일 listing, `base_version_no`, model, prompt version과 `Idempotency-Key` 조합은 저장된 동일
 응답을 반환하고 Solar를 다시 호출하지 않는다. 같은 key에 다른 입력을 보내면
@@ -1001,8 +1004,20 @@ fallback을 명시한다. 공개 조회 중에는 Solar를 호출하지 않는�
 - `[구현] GET /contracts/{contract_id}/versions`: immutable 계약 버전 목록과 작성자 역할,
   생성 시각, 생성 사유, 조항 수와 저장된 buyer 관점 위험 분석 요약을 반환한다.
 - `[구현] GET /contracts/{contract_id}/versions/compare?from=1&to=2`: 두 버전의 조항별
-  추가·삭제·변경, 가격·기간과 위험도 변화를 반환한다. AI를 호출하지 않고 저장된 version,
-  clauses, terms snapshot과 finding을 Python 코드로 비교한다.
+  추가·삭제·변경, 가격·기간과 위험도 변화를 반환한다. 비교 데이터 자체는 AI를 호출하지 않고
+  저장된 version, clauses, terms snapshot과 finding을 Python 코드로 계산한다. 화면의 설명형
+  3줄 요약은 인증 후 `POST /ai-guidance/change-summary` 고정 task로 별도 생성한다.
+
+### `[구현] POST /ai-guidance/revision-impact`
+
+인증된 사용자가 원문, 요청 문구와 수정 이유를 보내면 각 항목의 `impact`, `recommendation`을
+구조화 출력으로 반환한다. 계약 상태나 조항을 변경하지 않으며 사용자가 수락하기 전에는 결과를
+계약서에 반영하지 않는다. `Idempotency-Key`가 필요하다.
+
+### `[구현] POST /ai-guidance/change-summary`
+
+인증된 사용자가 버전 비교 결과의 변경 전·후 문구를 보내면 정확히 3개의 설명 문장을 구조화
+출력으로 반환한다. 비교 계산과 가격 계산은 AI에 맡기지 않는다. `Idempotency-Key`가 필요하다.
 
 버전 목록의 `version_label`은 `V1`, `V2` 형식이다. `created_by_role`은
 `buyer|seller|system`, `creation_reason`은

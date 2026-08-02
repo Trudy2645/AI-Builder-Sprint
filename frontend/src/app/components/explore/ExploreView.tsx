@@ -70,7 +70,6 @@ function toContract(listing: PublicListing): Contract {
     createdOrder: demo?.createdOrder ?? 0,
     recommendScore: demo?.recommendScore ?? 0,
     image: listing.hero_image_url ?? demo?.image ?? "",
-    aiSummary: listing.ai_summary?.split("\n") ?? demo?.aiSummary ?? ["AI 요약이 아직 준비되지 않았습니다."],
     details: demo?.details ?? {
       period,
       supplyQuantity: "상세 페이지에서 확인",
@@ -79,7 +78,8 @@ function toContract(listing: PublicListing): Contract {
       noShow: "상세 페이지에서 확인",
       settlement: "상세 페이지에서 확인",
     },
-    clauses: demo?.clauses ?? [],
+    clauses: [],
+    attentionRequiredCount: listing.attention_required_count ?? 0,
   };
 }
 

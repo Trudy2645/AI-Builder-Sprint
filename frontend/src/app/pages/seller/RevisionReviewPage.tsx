@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, X, GitBranch, Eye, Save, Send, XCircle } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -30,6 +30,7 @@ import {
 import { useApp } from "../../context/AppContext";
 import { getReceivedRequest } from "../../data/receivedRequests";
 import { useRequests } from "../../store/RequestsContext";
+import { friendlyApiError, generateRevisionGuidance, type RevisionGuidance } from "../../lib/api";
 
 export function RevisionReviewPage() {
   const { t } = useApp();
@@ -44,6 +45,25 @@ export function RevisionReviewPage() {
     return init;
   });
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [guidance, setGuidance] = useState<Record<string, RevisionGuidance>>({});
+  const [guidanceError, setGuidanceError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!request || request.revisions.length === 0) return;
+    let active = true;
+    generateRevisionGuidance(request.revisions.map((item) => ({
+      id: item.id,
+      clause_title: `${item.clauseNo} ${item.clauseTitle}`,
+      original_text: item.original,
+      requested_text: item.requested,
+      reason: item.reason,
+    })))
+      .then((result) => {
+        if (active) setGuidance(Object.fromEntries(result.items.map((item) => [item.id, item])));
+      })
+      .catch((error: unknown) => active && setGuidanceError(friendlyApiError(error)));
+    return () => { active = false; };
+  }, [request]);
 
   const total = request?.revisions.length ?? 0;
   const decidedCount = useMemo(
@@ -168,8 +188,10 @@ export function RevisionReviewPage() {
 
       {/* Clause cards */}
       <div className="flex flex-col gap-4">
+        {guidanceError && <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{guidanceError}</div>}
+        {!guidanceError && request.revisions.length > 0 && Object.keys(guidance).length === 0 && <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground">AI가 수정 요청의 영향을 분석하는 중입니다.</div>}
         {request.revisions.map((r, i) => (
-          <ReviewClauseCard key={r.id} index={i} revision={r} decision={decisions[r.id]} onChange={(d) => update(r.id, d)} />
+          guidance[r.id] && <ReviewClauseCard key={r.id} index={i} revision={{ ...r, aiImpact: guidance[r.id].impact, aiRecommend: guidance[r.id].recommendation }} decision={decisions[r.id]} onChange={(d) => update(r.id, d)} />
         ))}
       </div>
 

@@ -24,6 +24,8 @@ import { useApp } from "../../context/AppContext";
 import { LANGUAGES, type Lang } from "../../i18n/translations";
 import type { Role } from "../../context/AppContext";
 import { useRequests } from "../../store/RequestsContext";
+import { friendlyApiError, getMe, loginDemo, setAccessToken } from "../../lib/api";
+import { toast } from "sonner";
 
 export function Header({
   role,
@@ -34,10 +36,28 @@ export function Header({
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
 }) {
-  const { lang, setLang, t, companyName, login, logout, isDemoSession } = useApp();
+  const { lang, setLang, t, companyName, loginWithSession, logout } = useApp();
   const navigate = useNavigate();
   const otherRole: Role = role === "buyer" ? "seller" : "buyer";
   const roleLabel = t(role === "buyer" ? "role.buyer" : "role.seller");
+  const switchDemoRole = async () => {
+    try {
+      const result = await loginDemo(otherRole);
+      if (!result.session) throw new Error("Demo session was not returned.");
+      setAccessToken(result.session.access_token);
+      const profile = await getMe();
+      const organization = profile.organizations[0];
+      loginWithSession(
+        profile.role,
+        organization?.name || profile.affiliation_name || profile.display_name,
+        result.session.access_token,
+        organization?.id ?? null,
+      );
+      navigate(`/${profile.role}`);
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    }
+  };
   const homePath = role === "buyer" ? "/buyer/explore" : "/seller/dashboard";
   const { requests } = useRequests();
   const directCompletion = requests.find((request) => request.type === "asis" && request.status === "completed");
@@ -199,15 +219,7 @@ export function Header({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => {
-                login(
-                  otherRole,
-                  otherRole === "buyer" ? "GlobalTrip Japan" : "해운대 오션스테이",
-                  true,
-                );
-                // Let the role context commit before the route guard evaluates.
-                window.setTimeout(() => navigate(`/${otherRole}`), 0);
-              }}
+              onClick={() => void switchDemoRole()}
             >
               <ArrowLeftRight className="size-4" />
               데모 {t("header.switchRole")} → {t(otherRole === "buyer" ? "role.buyer" : "role.seller")}

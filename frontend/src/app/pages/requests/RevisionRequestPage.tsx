@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Save, Send, Plus } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -7,7 +7,8 @@ import { Button } from "../../components/ui/button";
 import { ContractStepper } from "../../components/contract/ContractStepper";
 import { RevisionCard, type RevisionDraft } from "../../components/requests/RevisionCard";
 import { useApp } from "../../context/AppContext";
-import { getContract } from "../../data/contracts";
+import type { Contract } from "../../data/contracts";
+import { friendlyApiError, getPublicContractPreview, getPublicListingDetail } from "../../lib/api";
 import { useRequests } from "../../store/RequestsContext";
 
 let counter = 0;
@@ -30,19 +31,73 @@ export function RevisionRequestPage() {
   const { t } = useApp();
   const { id } = useParams();
   const navigate = useNavigate();
-  const contract = getContract(id);
   const { addRequest } = useRequests();
+  const [contract, setContract] = useState<Contract>();
+  const [loadError, setLoadError] = useState("");
 
-  // Pre-seed with one card targeting the first risky clause if any.
-  const [drafts, setDrafts] = useState<RevisionDraft[]>(() => {
-    const first = newDraft();
-    const risky = contract?.clauses.find((c) => c.risk);
-    if (risky) first.clauseNo = risky.no;
-    return [first];
-  });
+  const [drafts, setDrafts] = useState<RevisionDraft[]>(() => [newDraft()]);
+
+  useEffect(() => {
+    if (!id) return;
+    let active = true;
+    Promise.all([getPublicListingDetail(id), getPublicContractPreview(id)])
+      .then(([listing, preview]) => {
+        if (!active) return;
+        const findings = new Map(
+          preview.findings.filter((finding) => finding.clause_id).map((finding) => [finding.clause_id, finding]),
+        );
+        const clauses = preview.clauses.map((clause, index) => {
+          const finding = findings.get(clause.id);
+          return {
+            no: clause.clause_key || `제${index + 1}조`,
+            title: clause.title,
+            text: clause.body,
+            risk: finding
+              ? { reason: finding.explanation, recommendation: finding.suggested_text || finding.explanation }
+              : undefined,
+          };
+        });
+        setContract({
+          id: listing.id,
+          seller: listing.seller.name,
+          title: listing.title,
+          category: listing.category,
+          district: listing.district,
+          start: listing.availability.start_date || "",
+          end: listing.availability.end_date || "",
+          unitPrice: listing.base_price?.amount_minor || 0,
+          priceUnit: listing.base_price?.unit || "",
+          quantityLabel: listing.supply_quantity_description || "",
+          capacity: listing.maximum_people || listing.maximum_quantity || 0,
+          available: listing.contract_available,
+          popularity: 0,
+          createdOrder: 0,
+          recommendScore: 0,
+          image: listing.hero_image_url || "",
+          details: {
+            period: `${listing.availability.start_date || ""} ~ ${listing.availability.end_date || ""}`,
+            supplyQuantity: listing.supply_quantity_description || "",
+            unitPrice: listing.base_price ? `${listing.base_price.amount_minor} ${listing.base_price.currency}` : "",
+            cancellation: listing.cancellation_policy || "",
+            noShow: listing.no_show_policy || "",
+            settlement: listing.settlement_policy || "",
+          },
+          clauses,
+          attentionRequiredCount: preview.findings.length,
+        });
+        const firstRisk = clauses.find((clause) => clause.risk);
+        if (firstRisk) {
+          setDrafts((current) => current.map((draft, index) => index === 0 && !draft.clauseNo ? { ...draft, clauseNo: firstRisk.no } : draft));
+        }
+      })
+      .catch((reason: unknown) => active && setLoadError(friendlyApiError(reason)));
+    return () => {
+      active = false;
+    };
+  }, [id]);
 
   if (!contract) {
-    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">Not found</div>;
+    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">{loadError || "계약서와 AI 분석 결과를 불러오는 중입니다."}</div>;
   }
 
   const update = (d: RevisionDraft) => setDrafts((prev) => prev.map((x) => (x.id === d.id ? d : x)));

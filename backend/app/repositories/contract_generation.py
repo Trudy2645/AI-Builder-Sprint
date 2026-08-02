@@ -144,6 +144,7 @@ class ContractGenerationRepository(Protocol):
         request_hash: str,
         clauses: list[NewGeneratedClause],
         body: str,
+        ai_summary: str,
         result_metadata: dict[str, Any],
     ) -> ContractGenerationRecord: ...
 
@@ -338,6 +339,7 @@ class SqlAlchemyContractGenerationRepository:
         request_hash: str,
         clauses: list[NewGeneratedClause],
         body: str,
+        ai_summary: str,
         result_metadata: dict[str, Any],
     ) -> ContractGenerationRecord:
         version_id = uuid4()
@@ -427,11 +429,16 @@ class SqlAlchemyContractGenerationRepository:
                     text(
                         """
                         update public.listings
-                        set current_version_id = :version_id, status = 'ready'
+                        set current_version_id = :version_id, status = 'ready',
+                            ai_summary = :ai_summary
                         where id = :listing_id
                         """
                     ),
-                    {"version_id": version_id, "listing_id": listing.id},
+                    {
+                        "version_id": version_id,
+                        "listing_id": listing.id,
+                        "ai_summary": ai_summary,
+                    },
                 )
                 await self._session.execute(
                     text(

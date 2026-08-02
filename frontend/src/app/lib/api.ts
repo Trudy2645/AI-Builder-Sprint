@@ -94,6 +94,27 @@ export function loginWithPassword(email: string, password: string): Promise<Auth
   });
 }
 
+export function loginDemo(role: Role): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/auth/demo-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+}
+
+export type MeProfile = {
+  id: string;
+  email: string | null;
+  display_name: string;
+  affiliation_name: string | null;
+  role: Role;
+  organizations: Array<{ id: string; name: string; verification_status: string; member_role: string }>;
+};
+
+export function getMe(): Promise<MeProfile> {
+  return apiFetch<MeProfile>("/me");
+}
+
 export function signup(payload: Record<string, unknown>): Promise<AuthResponse> {
   return apiFetch<AuthResponse>("/auth/signup", {
     method: "POST",
@@ -199,7 +220,7 @@ export async function downloadModusignFile(documentId: string, kind: "signed" | 
 
 export type PublicListing = {
   id: string;
-  seller: { name: string };
+  seller: { name: string; rating: number; rating_count: number; verified: boolean };
   title: string;
   district: string;
   category: "vehicle_rental" | "activity" | "tour" | "accommodation";
@@ -208,8 +229,94 @@ export type PublicListing = {
   base_price: { amount_minor: number; currency: string; unit: string | null } | null;
   availability: { start_date: string | null; end_date: string | null };
   contract_available: boolean;
+  attention_required_count?: number;
 };
 
 export function getPublicListings(): Promise<PublicListing[]> {
   return apiFetch<PublicListing[]>("/public/listings");
+}
+
+export type PublicClause = {
+  id: string;
+  clause_key: string | null;
+  title: string;
+  body: string;
+  highlight: "critical" | "warning" | "info" | null;
+};
+
+export type PublicFinding = {
+  id: string | null;
+  clause_id: string | null;
+  severity: "high" | "medium" | "low" | "none";
+  explanation: string;
+  suggested_text: string | null;
+  disclaimer: string;
+};
+
+export type PublicListingDetail = PublicListing & {
+  supply_quantity: number | null;
+  supply_quantity_description: string | null;
+  quantity_unit: string | null;
+  minimum_quantity: number | null;
+  maximum_quantity: number | null;
+  people_per_unit: number | null;
+  minimum_people: number | null;
+  maximum_people: number | null;
+  cancellation_policy: string | null;
+  no_show_policy: string | null;
+  refund_policy: string | null;
+  settlement_policy: string | null;
+  safety_policy: string | null;
+  compensation_policy: string | null;
+  liability_policy: string | null;
+  termination_policy: string | null;
+  special_terms: string | null;
+  clauses: PublicClause[];
+};
+
+export type PublicContractPreview = {
+  listing_version_id: string;
+  body: string;
+  clauses: PublicClause[];
+  findings: PublicFinding[];
+  content_locale: string;
+  fallback_locale: string | null;
+  localized_content?: {
+    locale: string;
+    title: string;
+    clauses: Array<{ clause_id: string; clause_no: number; title: string; body: string; easy_explanation: string }>;
+    findings: Array<{ finding_id: string; clause_id: string | null; severity: PublicFinding["severity"]; explanation: string; suggested_text: string | null; disclaimer: string }>;
+  } | null;
+};
+
+export function getPublicListingDetail(listingId: string, locale = "ko-KR"): Promise<PublicListingDetail> {
+  return apiFetch<PublicListingDetail>(`/public/listings/${listingId}?locale=${encodeURIComponent(locale)}`);
+}
+
+export function getPublicContractPreview(listingId: string, locale = "ko-KR"): Promise<PublicContractPreview> {
+  return apiFetch<PublicContractPreview>(`/public/listings/${listingId}/contract-preview?locale=${encodeURIComponent(locale)}`);
+}
+
+export type RevisionGuidance = { id: string; impact: string; recommendation: string };
+
+export function generateRevisionGuidance(items: Array<{
+  id: string;
+  clause_title: string;
+  original_text: string;
+  requested_text: string;
+  reason: string;
+}>): Promise<{ items: RevisionGuidance[] }> {
+  return apiFetch<{ items: RevisionGuidance[] }>("/ai-guidance/revision-impact", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ items }),
+  });
+}
+
+export function generateChangeSummary(changes: Array<{ title: string; before?: string; after?: string }>): Promise<{ lines: string[] }> {
+  return apiFetch<{ lines: string[] }>("/ai-guidance/change-summary", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ changes }),
+  });
 }

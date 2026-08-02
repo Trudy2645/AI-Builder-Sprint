@@ -3,12 +3,9 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  ClipboardCheck,
   Download,
   FileClock,
-  FileText,
   History,
-  Loader2,
   PenLine,
   Send,
   UploadCloud,
@@ -53,13 +50,6 @@ const STATUS_META: Record<BuyerContractStatus, { label: string; tone: string; de
     desc: "계약 체결이 완료되었습니다.",
   },
   cancelled: { label: "취소됨", tone: "var(--destructive)", desc: "계약 요청이 취소되었습니다." },
-};
-
-const OCR_MOCK: BuyerContractDraft = {
-  ...DEFAULT_BUYER_CONTRACT_DRAFT,
-  title: "해운대 오션스테이 단체 객실 공급",
-  cancellationPolicy: "체크인 7일 전까지 무료 취소, 이후 1박 요금의 50% 부과",
-  settlementPolicy: "월 마감 후 익월 15일 이내 계좌이체",
 };
 
 function Field({
@@ -140,7 +130,7 @@ function ContractForm({
           <div className="font-semibold" style={{ color: "var(--navy)" }}>
             예상 계약 금액 {formatKRW(draft.quantity * draft.unitPrice)}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">mock 계약 요청 데이터가 생성되고 셀러 검토 상태로 전환됩니다.</p>
+          <p className="mt-1 text-sm text-muted-foreground">입력한 조건으로 계약 요청을 생성합니다.</p>
         </div>
         <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={onSubmit}>
           <Send className="size-4" />
@@ -255,30 +245,6 @@ export function BuyerContractsHomePage() {
 
 export function BuyerContractUploadPage() {
   const navigate = useNavigate();
-  const { createContractRequest } = useBuyerContracts();
-  const [fileName, setFileName] = useState("");
-  const [analyzing, setAnalyzing] = useState(false);
-  const [draft, setDraft] = useState<BuyerContractDraft | null>(null);
-
-  const runOcr = () => {
-    if (!fileName) {
-      toast.error("PDF 파일을 먼저 선택해주세요.");
-      return;
-    }
-    setAnalyzing(true);
-    setTimeout(() => {
-      setDraft(OCR_MOCK);
-      setAnalyzing(false);
-      toast.success("OCR 결과를 불러왔습니다.");
-    }, 1000);
-  };
-
-  const submit = () => {
-    if (!draft) return;
-    const contract = createContractRequest(draft, "upload");
-    toast.success("계약 요청을 셀러에게 보냈습니다.");
-    navigate(`/buyer/contracts/${contract.id}/status`);
-  };
 
   return (
     <div className="mx-auto max-w-[960px]">
@@ -286,50 +252,22 @@ export function BuyerContractUploadPage() {
         <ArrowLeft className="size-4" />
         바이어 계약
       </Button>
-      <PageHeader title="계약서 업로드" description="기존 PDF 계약서를 올리면 mock OCR 결과로 계약 요청 정보를 채웁니다." />
+      <PageHeader title="계약서 업로드" description="바이어 계약 요청은 공개된 셀러 공고를 기준으로 생성됩니다." />
       <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex flex-col items-center gap-4 py-6 text-center">
           <div className="flex size-16 items-center justify-center rounded-2xl" style={{ background: "var(--info-soft)", color: "var(--ocean)" }}>
             <UploadCloud className="size-8" />
           </div>
           <div>
-            <h3 style={{ color: "var(--navy)" }}>PDF 계약서를 선택해주세요</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Upstage 연동 전까지는 데모 OCR 데이터가 채워집니다.</p>
+            <h3 style={{ color: "var(--navy)" }}>계약 가능한 공고를 선택해주세요</h3>
+            <p className="mt-1 text-sm text-muted-foreground">공고의 실제 AI 요약과 바이어 관점 분석을 확인한 뒤 계약 요청을 보낼 수 있습니다.</p>
           </div>
-          {fileName && (
-            <div className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm">
-              <FileText className="size-4" style={{ color: "var(--ocean)" }} />
-              {fileName}
-            </div>
-          )}
-          <div className="flex flex-wrap justify-center gap-2">
-            <label htmlFor="buyer-contract-file">
-              <input
-                id="buyer-contract-file"
-                type="file"
-                accept="application/pdf"
-                className="hidden"
-                onChange={(event) => setFileName(event.target.files?.[0]?.name ?? "buyer_contract.pdf")}
-              />
-              <span className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-card px-4 py-2 text-sm">
-                <UploadCloud className="size-4" />
-                파일 선택
-              </span>
-            </label>
-            <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--ocean)" }} onClick={runOcr} disabled={analyzing}>
-              {analyzing ? <Loader2 className="size-4 animate-spin" /> : <ClipboardCheck className="size-4" />}
-              OCR 결과 확인
-            </Button>
-          </div>
+          <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--ocean)" }} onClick={() => navigate("/buyer/explore")}>
+            계약 탐색으로 이동
+            <ArrowRight className="size-4" />
+          </Button>
         </div>
       </div>
-
-      {draft && (
-        <div className="mt-5 rounded-xl border border-border bg-card p-5">
-          <h3 className="mb-4" style={{ color: "var(--navy)" }}>OCR 추출 결과 확인</h3>
-          <ContractForm draft={draft} onChange={(patch) => setDraft((prev) => ({ ...(prev ?? OCR_MOCK), ...patch }))} onSubmit={submit} />
-        </div>
-      )}
     </div>
   );
 }

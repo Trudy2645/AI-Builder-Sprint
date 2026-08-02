@@ -19,6 +19,7 @@ from app.ai.providers.base import (
     LanguageModelProvider,
 )
 from app.ai.tasks.contract_generation import generate_contract_draft
+from app.ai.tasks.public_summary import generate_public_summary
 from app.core.errors import AppError
 from app.integrations.auth import AuthenticatedUser
 from app.repositories.contract_generation import (
@@ -167,6 +168,18 @@ class ContractGenerationService:
                 f"제{index}조 {clause.title}\n{clause.body}"
                 for index, clause in enumerate(clauses, start=1)
             )
+            summary = await generate_public_summary(
+                self._language_model,
+                listing={
+                    "title": listing.title,
+                    "seller": listing.organization_name,
+                    "category": listing.category,
+                    "district": listing.district,
+                },
+                terms=terms,
+                clauses=[{"title": clause.title, "body": clause.body} for clause in clauses],
+                prompt_version=self._prompt_version,
+            )
         except Exception as exc:
             await self._fail_and_raise(listing, job_id, idempotency_key, exc)
         try:
@@ -178,8 +191,10 @@ class ContractGenerationService:
                 request_hash=request_hash,
                 clauses=clauses,
                 body=body,
+                ai_summary="\n".join(summary.lines),
                 result_metadata={
                     "clause_count": len(clauses),
+                    "public_summary_line_count": len(summary.lines),
                     "template_context_used": bool(self._template_vector_store_id),
                 },
             )

@@ -6,10 +6,10 @@ import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { WizardStepper } from "../../components/listings/WizardStepper";
 import { ProductFields, SupplyFields, TermsFields } from "../../components/listings/ListingFormFields";
-import { AIReviewStep, RiskReviewStep, analyzeDraft } from "../../components/listings/RiskReviewStep";
+import { AIReviewStep } from "../../components/listings/RiskReviewStep";
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
-import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
+import { useListings, createEmptyDraft, type ListingDraft } from "../../store/ListingsContext";
 import { friendlyApiError } from "../../lib/api";
 import {
   createSellerListing,
@@ -25,31 +25,10 @@ import {
 
 const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
 
-// OCR로 추출했다고 가정하는 데모 데이터 (위험 조항이 포함되도록 구성).
-const OCR_PREFILL: Partial<ListingDraft> = {
-  productName: "2026 오션뷰 루프탑 바비큐 투어",
-  category: "tour",
-  district: "해운대구",
-  start: "2026-06-01",
-  end: "2026-09-30",
-  quantity: "1일 최대 60명",
-  unitPrice: "52000",
-  priceUnit: "1인당",
-  minQty: "20",
-  maxQty: "60",
-  cancellation: "이용 3일 전까지 무료 취소",
-  noShow: "투어 요금 전액 청구",
-  settlement: "매월 말 마감 후 익익월(60일) 15일 지급",
-  liability: "",
-  termination: "30일 전 서면 통지로 해지 가능",
-  special: "최소 보장 물량 20명 미달 시 위약금 발생",
-  headline: "해운대 오션뷰 루프탑에서 즐기는 바비큐 투어를 단체 물량으로 확보하세요.",
-};
-
 export function UploadOcrPage() {
-  const { t, isDemoSession, organizationId } = useApp();
+  const { t, organizationId } = useApp();
   const navigate = useNavigate();
-  const { addListing, refreshListings } = useListings();
+  const { refreshListings } = useListings();
 
   const [step, setStep] = useState(0);
   const [fileName, setFileName] = useState("");
@@ -57,7 +36,6 @@ export function UploadOcrPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [draft, setDraft] = useState<ListingDraft>(() => createEmptyDraft("upload"));
-  const [applied, setApplied] = useState<Record<string, boolean>>({});
   const [listingId, setListingId] = useState<string | null>(null);
   const [currentVersionNo, setCurrentVersionNo] = useState(1);
   const [aiFindings, setAiFindings] = useState<ReviewFinding[]>([]);
@@ -74,27 +52,23 @@ export function UploadOcrPage() {
     setAnalyzing(true);
     setAnalyzed(false);
     try {
-      if (isDemoSession) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1400));
-        setDraft((d) => ({ ...d, ...OCR_PREFILL }));
-      } else {
-        if (!organizationId) throw new Error("Seller organization is missing from the session.");
-        let targetListingId = listingId;
-        if (!targetListingId) {
-          const created = await createSellerListing(organizationId, {
-            creation_method: "upload",
-            title: draft.productName,
-            category: draft.category || "tour",
-            district: draft.district,
-            language: "ko-KR",
-          });
-          targetListingId = created.listing_id;
-          setListingId(targetListingId);
-          setCurrentVersionNo(created.version_no);
-        }
-        const result = await uploadAndProcessDocument(organizationId, targetListingId, file);
-        const terms = result.listing_candidate?.terms ?? {};
-        setDraft((current) => ({
+      if (!organizationId) throw new Error("Seller organization is missing from the session.");
+      let targetListingId = listingId;
+      if (!targetListingId) {
+        const created = await createSellerListing(organizationId, {
+          creation_method: "upload",
+          title: draft.productName,
+          category: draft.category || "tour",
+          district: draft.district,
+          language: "ko-KR",
+        });
+        targetListingId = created.listing_id;
+        setListingId(targetListingId);
+        setCurrentVersionNo(created.version_no);
+      }
+      const result = await uploadAndProcessDocument(organizationId, targetListingId, file);
+      const terms = result.listing_candidate?.terms ?? {};
+      setDraft((current) => ({
           ...current,
           productName: current.productName,
           category: current.category,
@@ -113,10 +87,9 @@ export function UploadOcrPage() {
           noShow: String(terms.no_show_policy ?? ""),
           settlement: String(terms.settlement_policy ?? ""),
           liability: String(terms.liability_policy ?? ""),
-        }));
-        if (result.confirmation_required.length > 0) {
-          toast.info(`${result.confirmation_required.length}개 항목은 셀러 확인이 필요합니다.`);
-        }
+      }));
+      if (result.confirmation_required.length > 0) {
+        toast.info(`${result.confirmation_required.length}개 항목은 셀러 확인이 필요합니다.`);
       }
       setAnalyzed(true);
       toast.success(t("ocr.analyzeDone"));
@@ -164,7 +137,6 @@ export function UploadOcrPage() {
       toast.error("위험 검토 전 추출된 필수 조건을 모두 확인하고 빈 항목을 입력해주세요.");
       return false;
     }
-    if (isDemoSession) return true;
     if (!organizationId || !listingId) {
       toast.error("업로드된 계약서 정보가 없습니다. 다시 업로드해주세요.");
       return false;
@@ -186,17 +158,12 @@ export function UploadOcrPage() {
     }
   };
 
-  const applyRisk = (field: keyof ListingDraft, value: string, id: string) => {
-    patch({ [field]: value } as Partial<ListingDraft>);
-    setApplied((a) => ({ ...a, [id]: true }));
-  };
-
   const goNext = async () => {
     if (step === 0 && !fileName) {
       toast.error(t("wz.needFile"));
       return;
     }
-    if (step === 0 && !isDemoSession && (!draft.productName.trim() || !draft.category || !draft.district)) {
+    if (step === 0 && (!draft.productName.trim() || !draft.category || !draft.district)) {
       toast.error("업로드 전 계약명, 상품 유형, 지역을 입력해주세요.");
       return;
     }
@@ -229,15 +196,10 @@ export function UploadOcrPage() {
     }
     setPublishing(true);
     try {
-      if (isDemoSession) {
-        const risks = analyzeDraft(draft).length;
-        addListing(draftToListing(draft, asDraft ? "draft" : "public", risks));
-      } else {
-        if (!organizationId || !listingId) throw new Error("Listing is not ready.");
-        await updateSellerPresentation(organizationId, listingId, draft.headline);
-        if (!asDraft) await publishSellerListing(organizationId, listingId);
-        await refreshListings();
-      }
+      if (!organizationId || !listingId) throw new Error("Listing is not ready.");
+      await updateSellerPresentation(organizationId, listingId, draft.headline);
+      if (!asDraft) await publishSellerListing(organizationId, listingId);
+      await refreshListings();
       toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
       navigate("/seller/listings");
     } catch (error) {
@@ -295,11 +257,9 @@ export function UploadOcrPage() {
                 {t("ocr.choose")}
               </span>
             </label>
-            {!isDemoSession && (
-              <div className="mt-4 w-full max-w-[680px] text-left">
-                <ProductFields draft={draft} onChange={patch} />
-              </div>
-            )}
+            <div className="mt-4 w-full max-w-[680px] text-left">
+              <ProductFields draft={draft} onChange={patch} />
+            </div>
           </div>
         )}
 
@@ -355,11 +315,7 @@ export function UploadOcrPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("risk.title")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("risk.desc")}</p>
-            {isDemoSession ? (
-              <RiskReviewStep draft={draft} applied={applied} onApply={applyRisk} />
-            ) : (
-              <AIReviewStep findings={aiFindings} />
-            )}
+            <AIReviewStep findings={aiFindings} />
           </div>
         )}
 
@@ -368,7 +324,7 @@ export function UploadOcrPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("pub.title")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("pub.desc")}</p>
-            <PublishSettingsStep draft={draft} onChange={patch} />
+            <PublishSettingsStep draft={draft} riskCount={aiFindings.length} onChange={patch} />
           </div>
         )}
       </div>

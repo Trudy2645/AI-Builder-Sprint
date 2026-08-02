@@ -17,6 +17,7 @@ import {
   NEGOTIATION_CONTRACT_ID,
 } from "../../data/negotiation";
 import { getContract } from "../../data/contracts";
+import { useAiChangeSummary } from "../../hooks/useAiChangeSummary";
 
 const SELECTABLE: ContractVersion[] = VERSION_ORDER;
 
@@ -28,6 +29,7 @@ export function VersionComparePage() {
 
   const [target, setTarget] = useState<ContractVersion>("v4");
   const diff = useMemo(() => getVersionDiff(target), [target]);
+  const changeSummary = useAiChangeSummary(diff?.changes);
   const original = getContract(NEGOTIATION_CONTRACT_ID);
 
   const prevMeta = diff ? versionMetas[diff.from] : undefined;
@@ -90,11 +92,10 @@ export function VersionComparePage() {
           </div>
           <div className="flex flex-col gap-4">
             {original.clauses.map((clause) => (
-              <div key={clause.no} className="rounded-lg border p-4" style={clause.risk ? { borderColor: "var(--coral)", background: "var(--coral-soft)" } : undefined}>
+              <div key={clause.no} className="rounded-lg border p-4">
                 <div className="flex items-center gap-2" style={{ fontWeight: 700, color: "var(--navy)" }}>
                   <span>{clause.no}</span>
                   <span>{clause.title}</span>
-                  {clause.risk && <ChangeLabelBadge label="riskUp" />}
                 </div>
                 <p className="mt-2" style={{ fontSize: "13px", lineHeight: 1.7 }}>{clause.text}</p>
               </div>
@@ -129,7 +130,9 @@ export function VersionComparePage() {
               {t("vc.aiSummary")}
             </div>
             <ul className="mt-2 flex flex-col gap-1.5">
-              {diff.aiSummary.map((line, i) => (
+              {changeSummary.loading && <li className="text-sm text-muted-foreground">AI가 변경 내용을 요약하는 중입니다.</li>}
+              {changeSummary.error && <li className="text-sm text-destructive">{changeSummary.error}</li>}
+              {changeSummary.lines.map((line, i) => (
                 <li key={i} className="flex gap-2 text-foreground" style={{ fontSize: "14px", lineHeight: 1.7 }}>
                   <span style={{ color: "var(--ocean)" }}>•</span>
                   <span>{line}</span>

@@ -21,6 +21,7 @@ from app.ai.schemas import (
     LanguageModelRequest,
     ParsedBlock,
     ParsedPage,
+    PublicSummaryOutput,
 )
 
 
@@ -143,6 +144,25 @@ async def test_fake_provider_supports_local_contract_flow_without_queued_outputs
     assert any("145000" in clause.body for clause in generated.clauses)
     assert reviewed.tool_calls[0].name == "submit_review"
     assert reviewed.tool_calls[0].arguments["findings"][0]["category"] == "liability"
+
+    summary = await fake.generate_structured(
+        LanguageModelRequest(
+            task_type="public_summary",
+            system_prompt="Summarize a contract.",
+            input_data={
+                "listing": {"title": "부산 단체 투어"},
+                "terms": {
+                    "service_start_date": "2026-08-01",
+                    "service_end_date": "2026-08-02",
+                    "cancellation_policy": "이용 3일 전까지 무료 취소",
+                },
+            },
+            prompt_version="busan-link-v1",
+        ),
+        PublicSummaryOutput,
+    )
+    assert len(summary.lines) == 3
+    assert summary.lines[0].startswith("부산 단체 투어")
 
 
 @pytest.mark.asyncio

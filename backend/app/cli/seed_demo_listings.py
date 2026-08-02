@@ -13,6 +13,9 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import text
 
+from app.ai.providers.fake import FakeAIProvider
+from app.ai.providers.upstage import UpstageAIProvider
+from app.ai.tasks.public_summary import generate_public_summary
 from app.core.config import get_settings
 from app.core.database import get_session_factory
 
@@ -107,7 +110,51 @@ def _supply_values(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _seed(contracts: list[dict[str, Any]]) -> None:
+async def _generate_summaries(contracts: list[dict[str, Any]]) -> dict[str, list[str]]:
+    settings = get_settings()
+    if settings.ai_provider == "fake":
+        provider = FakeAIProvider(enable_default_outputs=True)
+    else:
+        if not settings.upstage_api_key:
+            raise RuntimeError("UPSTAGE_API_KEY is required when AI_PROVIDER=upstage.")
+        provider = UpstageAIProvider(
+            api_key=settings.upstage_api_key,
+            document_base_url=settings.upstage_document_base_url,
+            chat_base_url=settings.upstage_chat_base_url,
+            agent_base_url=settings.upstage_agent_base_url,
+            chat_model=settings.upstage_chat_model,
+            timeout_seconds=settings.ai_request_timeout_seconds,
+            max_retries=settings.ai_max_retries,
+        )
+    summaries: dict[str, list[str]] = {}
+    for item in contracts:
+        result = await generate_public_summary(
+            provider,
+            listing={
+                "title": item["title"],
+                "seller": item["seller"],
+                "category": item["category"],
+                "district": item["district"],
+            },
+            terms={
+                "service_start_date": item["start"].replace(".", "-"),
+                "service_end_date": item["end"].replace(".", "-"),
+                "base_price_amount_minor": item["unitPrice"],
+                "price_unit": item["priceUnit"],
+                "cancellation_policy": item["details"]["cancellation"],
+                "no_show_policy": item["details"]["noShow"],
+                "settlement_policy": item["details"]["settlement"],
+            },
+            clauses=[
+                {"title": clause["title"], "body": clause["text"]} for clause in item["clauses"]
+            ],
+            prompt_version=settings.ai_prompt_version,
+        )
+        summaries[item["id"]] = result.lines
+    return summaries
+
+
+async def _seed(contracts: list[dict[str, Any]], summaries: dict[str, list[str]]) -> None:
     settings = get_settings()
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL is not configured.")
@@ -142,6 +189,7 @@ async def _seed(contracts: list[dict[str, Any]]) -> None:
 
         for item in contracts:
             source_id = item["id"]
+            summary = summaries[source_id]
             listing_id = LISTING_IDS[source_id]
             version_id = _stable_uuid("listing-version", source_id)
             organization_id = (
@@ -217,8 +265,8 @@ async def _seed(contracts: list[dict[str, Any]]) -> None:
                     "seller": item["seller"],
                     "district": item["district"],
                     "category": item["category"],
-                    "headline": item["aiSummary"][0],
-                    "ai_summary": "\n".join(item["aiSummary"]),
+                    "headline": summary[0],
+                    "ai_summary": "\n".join(summary),
                     "popularity": item["popularity"],
                     "owner": owner_user_id,
                 },
@@ -303,7 +351,7 @@ async def _seed(contracts: list[dict[str, Any]]) -> None:
                         {
                             "demo_source_id": source_id,
                             "image_url": item["image"],
-                            "ai_summary": item["aiSummary"],
+                            "ai_summary": summary,
                             "details": item["details"],
                         },
                         ensure_ascii=False,
@@ -347,7 +395,8 @@ def main() -> None:
     if not args.confirm:
         parser.error("Pass --confirm to write the frontend demo data.")
     contracts = _load_frontend_contracts()
-    asyncio.run(_seed(contracts))
+    summaries = asyncio.run(_generate_summaries(contracts))
+    asyncio.run(_seed(contracts, summaries))
     print(f"Seeded {len(contracts)} demo listings.")
 
 

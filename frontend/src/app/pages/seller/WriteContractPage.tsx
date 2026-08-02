@@ -6,11 +6,10 @@ import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { WizardStepper } from "../../components/listings/WizardStepper";
 import { ProductFields, SupplyFields, TermsFields } from "../../components/listings/ListingFormFields";
-import { AIReviewStep, RiskReviewStep, analyzeDraft } from "../../components/listings/RiskReviewStep";
+import { AIReviewStep } from "../../components/listings/RiskReviewStep";
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
-import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
-import { formatKRW } from "../../data/contracts";
+import { useListings, createEmptyDraft, type ListingDraft } from "../../store/ListingsContext";
 import { friendlyApiError } from "../../lib/api";
 import {
   createSellerListing,
@@ -27,13 +26,12 @@ import {
 const STEPS = ["wz.product", "wz.supply", "wz.terms", "wz.generate", "wz.risk", "wz.publish"];
 
 export function WriteContractPage() {
-  const { t, isDemoSession, organizationId } = useApp();
+  const { t, organizationId } = useApp();
   const navigate = useNavigate();
-  const { addListing, refreshListings } = useListings();
+  const { refreshListings } = useListings();
 
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<ListingDraft>(() => createEmptyDraft("write"));
-  const [applied, setApplied] = useState<Record<string, boolean>>({});
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [listingId, setListingId] = useState<string | null>(null);
@@ -43,11 +41,6 @@ export function WriteContractPage() {
   const [publishing, setPublishing] = useState(false);
 
   const patch = (p: Partial<ListingDraft>) => setDraft((d) => ({ ...d, ...p }));
-
-  const applyRisk = (field: keyof ListingDraft, value: string, id: string) => {
-    patch({ [field]: value } as Partial<ListingDraft>);
-    setApplied((a) => ({ ...a, [id]: true }));
-  };
 
   const positiveInt = (value: string) => {
     const parsed = Number.parseInt(value, 10);
@@ -92,12 +85,6 @@ export function WriteContractPage() {
     setGenerating(true);
     setGenerated(false);
     try {
-      if (isDemoSession) {
-        await new Promise((resolve) => window.setTimeout(resolve, 1400));
-        setGenerated(true);
-        toast.success(t("gen.done"));
-        return;
-      }
       if (!organizationId) throw new Error("Seller organization is missing from the session.");
       let targetListingId = listingId;
       let versionNo = currentVersionNo;
@@ -161,18 +148,13 @@ export function WriteContractPage() {
     }
     setPublishing(true);
     try {
-      if (isDemoSession) {
-        const risks = analyzeDraft(draft).length;
-        addListing(draftToListing(draft, asDraft ? "draft" : "public", risks));
-      } else {
-        if (!organizationId || !listingId || !generation) {
-          toast.error("먼저 AI 계약서를 생성해주세요.");
-          return;
-        }
-        await updateSellerPresentation(organizationId, listingId, draft.headline);
-        if (!asDraft) await publishSellerListing(organizationId, listingId);
-        await refreshListings();
+      if (!organizationId || !listingId || !generation) {
+        toast.error("먼저 AI 계약서를 생성해주세요.");
+        return;
       }
+      await updateSellerPresentation(organizationId, listingId, draft.headline);
+      if (!asDraft) await publishSellerListing(organizationId, listingId);
+      await refreshListings();
       toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
       navigate("/seller/listings");
     } catch (error) {
@@ -181,8 +163,6 @@ export function WriteContractPage() {
       setPublishing(false);
     }
   };
-
-  const price = parseInt(draft.unitPrice, 10) || 0;
 
   return (
     <div className="mx-auto max-w-[960px]">
@@ -239,18 +219,12 @@ export function WriteContractPage() {
                 </div>
                 <div className="rounded-lg border border-border p-5" style={{ background: "var(--surface)", fontSize: "14px", lineHeight: 1.9 }}>
                   <p style={{ fontWeight: 700, color: "var(--navy)" }}>{draft.productName || t("lf.productName")}</p>
-                  {generation ? generation.clauses.map((clause) => (
+                  {generation?.clauses.map((clause) => (
                     <div key={clause.id} className="mt-2">
                       <p style={{ fontWeight: 600 }}>제{clause.clause_order}조 ({clause.title})</p>
                       <p>{clause.body}</p>
                     </div>
-                  )) : (
-                    <>
-                      <p className="mt-2">제1조 (계약의 목적) 본 계약은 셀러가 바이어에게 {draft.productName || "관광 상품"}을 공급하는 조건을 정함을 목적으로 한다.</p>
-                      <p>제2조 (공급 기간·수량) 공급 기간은 {draft.start || "○○"} ~ {draft.end || "○○"}로 하며, {draft.quantity || "협의된 수량"}을 공급한다.</p>
-                      <p>제3조 (공급 단가) 공급 단가는 {draft.priceUnit} {formatKRW(price)}으로 한다.</p>
-                    </>
-                  )}
+                  ))}
                 </div>
               </div>
             ) : (
@@ -273,11 +247,7 @@ export function WriteContractPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("risk.title")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("risk.desc")}</p>
-            {isDemoSession ? (
-              <RiskReviewStep draft={draft} applied={applied} onApply={applyRisk} />
-            ) : (
-              <AIReviewStep findings={aiFindings} />
-            )}
+            <AIReviewStep findings={aiFindings} />
           </div>
         )}
 
@@ -286,7 +256,7 @@ export function WriteContractPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("pub.title")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("pub.desc")}</p>
-            <PublishSettingsStep draft={draft} onChange={patch} />
+            <PublishSettingsStep draft={draft} riskCount={aiFindings.length} onChange={patch} />
           </div>
         )}
       </div>

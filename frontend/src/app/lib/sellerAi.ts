@@ -147,11 +147,12 @@ export function startSellerReview(
   organizationId: string,
   listingId: string,
   versionId: string,
+  viewerRole: "seller" | "buyer" = "seller",
 ): Promise<{ job_id: string; status: AIJob["status"] }> {
   return apiFetch<{ job_id: string; status: AIJob["status"] }>(`/seller/listings/${listingId}/analyses`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...sellerHeaders(organizationId, true) },
-    body: JSON.stringify({ version_id: versionId, viewer_role: "seller", analysis_types: ["risk", "missing_terms"] }),
+    body: JSON.stringify({ version_id: versionId, viewer_role: viewerRole, analysis_types: ["risk", "missing_terms"] }),
   });
 }
 
@@ -181,12 +182,18 @@ export async function reviewSellerContract(
   listingId: string,
   versionId: string,
 ): Promise<ReviewRun> {
-  const accepted = await startSellerReview(organizationId, listingId, versionId);
-  const job = await waitForAIJob(organizationId, accepted.job_id);
-  if (!job.result_resource_id) {
+  const [sellerAccepted, buyerAccepted] = await Promise.all([
+    startSellerReview(organizationId, listingId, versionId, "seller"),
+    startSellerReview(organizationId, listingId, versionId, "buyer"),
+  ]);
+  const [sellerJob] = await Promise.all([
+    waitForAIJob(organizationId, sellerAccepted.job_id),
+    waitForAIJob(organizationId, buyerAccepted.job_id),
+  ]);
+  if (!sellerJob.result_resource_id) {
     throw new ApiError({ code: "AI_RESULT_MISSING", message: "AI 분석 결과를 찾을 수 없습니다." });
   }
-  return getReviewRun(organizationId, job.result_resource_id);
+  return getReviewRun(organizationId, sellerJob.result_resource_id);
 }
 
 export function updateSellerPresentation(

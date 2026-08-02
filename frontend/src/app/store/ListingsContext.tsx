@@ -82,90 +82,16 @@ export function createEmptyDraft(method: CreateMethod): ListingDraft {
   };
 }
 
-/** 위저드 초안을 공고 목록 항목으로 변환한다. */
-export function draftToListing(
-  draft: ListingDraft,
-  status: ListingStatus,
-  riskCount: number,
-): Omit<Listing, "id" | "updatedAt"> {
-  return {
-    productName: draft.productName || "제목 없는 공고",
-    category: (draft.category || "accommodation") as Category,
-    district: draft.district || "해운대구",
-    start: draft.start,
-    end: draft.end,
-    unitPrice: parseInt(draft.unitPrice, 10) || 0,
-    priceUnit: draft.priceUnit,
-    quantityLabel: draft.quantity || "미정",
-    status,
-    method: draft.method,
-    requests: 0,
-    riskCount,
-  };
-}
-
 interface ListingsContextValue {
   listings: Listing[];
-  addListing: (l: Omit<Listing, "id" | "updatedAt">) => void;
   refreshListings: () => Promise<void>;
   publicCount: number;
 }
 
 const ListingsContext = createContext<ListingsContextValue | null>(null);
 
-const seed: Listing[] = [
-  {
-    id: "lst-coastline-room",
-    productName: "2026 해운대 단체 객실 공급 계약",
-    category: "accommodation",
-    district: "해운대구",
-    start: "2026.07.01",
-    end: "2026.08.31",
-    unitPrice: 146000,
-    priceUnit: "객실당",
-    quantityLabel: "1일 최대 32실",
-    status: "public",
-    method: "write",
-    requests: 5,
-    updatedAt: "2026.07.20",
-    riskCount: 0,
-  },
-  {
-    id: "lst-bluewave-surf",
-    productName: "2026 송정 단체 서핑 강습 공급 계약",
-    category: "activity",
-    district: "해운대구",
-    start: "2026.06.01",
-    end: "2026.09.30",
-    unitPrice: 68000,
-    priceUnit: "1인당",
-    quantityLabel: "1일 최대 45명",
-    status: "public",
-    method: "write",
-    requests: 2,
-    updatedAt: "2026.07.11",
-    riskCount: 1,
-  },
-  {
-    id: "lst-route-rental",
-    productName: "2026 김해공항 단체 밴 렌탈 계약",
-    category: "vehicle_rental",
-    district: "강서구",
-    start: "2026.03.01",
-    end: "2026.12.31",
-    unitPrice: 132000,
-    priceUnit: "차량 1대·1일",
-    quantityLabel: "1일 최대 12대",
-    status: "needsReview",
-    method: "upload",
-    requests: 0,
-    updatedAt: "2026.07.25",
-    riskCount: 2,
-  },
-];
-
 export function ListingsProvider({ children }: { children: ReactNode }) {
-  const { isDemoSession, currentRole, organizationId } = useApp();
+  const { currentRole, organizationId } = useApp();
   const [listings, setListings] = useState<Listing[]>([]);
 
   const fromApi = (listing: SellerListingSummary): Listing => ({
@@ -192,10 +118,6 @@ export function ListingsProvider({ children }: { children: ReactNode }) {
   });
 
   const refreshListings = async () => {
-    if (isDemoSession) {
-      setListings(seed);
-      return;
-    }
     if (currentRole !== "seller" || !organizationId) {
       setListings([]);
       return;
@@ -206,18 +128,11 @@ export function ListingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refreshListings().catch(() => setListings([]));
-  }, [isDemoSession, currentRole, organizationId]);
-
-  const addListing: ListingsContextValue["addListing"] = (l) => {
-    const now = new Date();
-    const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-    setListings((prev) => [{ ...l, id: `lst-${Date.now()}`, updatedAt }, ...prev]);
-  };
+  }, [currentRole, organizationId]);
 
   const value = useMemo<ListingsContextValue>(
     () => ({
       listings,
-      addListing,
       refreshListings,
       publicCount: listings.filter((l) => l.status === "public").length,
     }),

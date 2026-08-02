@@ -26,6 +26,7 @@ import {
 } from "../../data/negotiation";
 import { useRequests, type SentRequest } from "../../store/RequestsContext";
 import { useNegotiation } from "../../store/NegotiationContext";
+import { useAiChangeSummary } from "../../hooks/useAiChangeSummary";
 
 const TIMELINE = [
   {
@@ -111,6 +112,7 @@ export function NegotiatingPage() {
     [requests],
   );
   const finalDiff = getVersionDiff("v4");
+  const changeSummary = useAiChangeSummary(finalDiff?.changes);
 
   const goFinalReview = () => {
     if (activeRequest) {
@@ -212,7 +214,9 @@ export function NegotiatingPage() {
               AI 변경 요약
             </div>
             <ul className="mt-3 space-y-2">
-              {finalDiff?.aiSummary.map((line, index) => (
+              {changeSummary.loading && <li className="text-sm text-muted-foreground">AI가 변경 내용을 요약하는 중입니다.</li>}
+              {changeSummary.error && <li className="text-sm text-destructive">{changeSummary.error}</li>}
+              {changeSummary.lines.map((line, index) => (
                 <li key={line} className="flex gap-2 text-sm leading-6">
                   <span className="font-bold" style={{ color: "var(--ocean)" }}>{index + 1}</span>
                   <span>{line}</span>

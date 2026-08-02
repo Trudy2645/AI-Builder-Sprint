@@ -219,6 +219,16 @@ def build_context(*, template_store: str | None = "template-store"):
     repository = FakeContractGenerationRepository()
     provider = FakeAIProvider()
     provider.queue_structured_output("contract_generate", valid_draft())
+    provider.queue_structured_output(
+        "public_summary",
+        {
+            "lines": [
+                "계약 핵심 요약입니다.",
+                "기간과 가격을 확인하세요.",
+                "취소 조건을 확인하세요.",
+            ]
+        },
+    )
     provider.search_result = FileSearchResult(
         hits=[
             FileSearchHit(
@@ -293,7 +303,11 @@ def test_same_input_and_idempotency_key_returns_same_result_without_second_ai_ca
 
     assert repeated.status_code == 200
     assert repeated.json()["data"] == first.json()["data"]
-    assert [call[0] for call in provider.calls].count("language_model") == 1
+    assert [call[0] for call in provider.calls].count("language_model") == 2
+    assert [request.task_type for request in provider.structured_requests] == [
+        "contract_generate",
+        "public_summary",
+    ]
 
 
 def test_same_key_with_different_input_conflicts(client: TestClient, generation_context) -> None:
