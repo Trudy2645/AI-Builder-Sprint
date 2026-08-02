@@ -22,7 +22,7 @@ import { VersionBadge } from "../../components/contract/VersionBadge";
 import { useApp } from "../../context/AppContext";
 import { useExploreCtx } from "../../hooks/useExploreCtx";
 import { getContract, type Contract } from "../../data/contracts";
-import { friendlyApiError, getPublicListingAsContract } from "../../lib/api";
+import { friendlyApiError, getPublicListingAsContract, getPublicSourceDocumentUrl } from "../../lib/api";
 
 type DocLang = "ko" | "en" | "ja" | "zh";
 type ClauseTranslation = [title: string, text: string, reason?: string, recommendation?: string];
@@ -149,6 +149,13 @@ export function ContractDocumentPage() {
     if (demoContract || !id) return;
     void getPublicListingAsContract(id).then(setServerContract).catch((error: unknown) => setLoadError(friendlyApiError(error)));
   }, [demoContract, id]);
+  const [sourcePdfUrl, setSourcePdfUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!id || demoContract) return;
+    void getPublicSourceDocumentUrl(id)
+      .then((result) => setSourcePdfUrl(result.download_url))
+      .catch(() => setSourcePdfUrl(null));
+  }, [demoContract, id]);
   const contract = demoContract ?? serverContract;
   const [activeClause, setActiveClause] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
@@ -246,6 +253,21 @@ export function ContractDocumentPage() {
       <div className="mb-5 rounded-xl border border-border bg-card p-4 sm:mb-6 sm:p-5">
         <ContractStepper current={1} />
       </div>
+
+      {sourcePdfUrl && (
+        <section className="mb-5 overflow-hidden rounded-xl border border-border bg-card sm:mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
+            <div>
+              <h3 style={{ color: "var(--navy)" }}>계약서 원문 PDF</h3>
+              <p className="mt-1 text-xs text-muted-foreground">셀러가 등록한 원본 PDF입니다. 화면에서 직접 확인할 수 있습니다.</p>
+            </div>
+            <a className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-muted" href={sourcePdfUrl} target="_blank" rel="noreferrer" download>
+              <Download className="size-4" /> PDF 다운로드
+            </a>
+          </div>
+          <iframe title="계약서 원문 PDF" src={sourcePdfUrl} className="h-[75vh] min-h-[560px] w-full" />
+        </section>
+      )}
 
       <div className="mb-5 flex flex-col items-stretch justify-between gap-3 rounded-xl border border-border bg-card p-4 sm:mb-6 sm:flex-row sm:items-center">
         <div className="flex items-center gap-2">

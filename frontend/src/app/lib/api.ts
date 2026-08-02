@@ -563,6 +563,14 @@ export function getPublicListing(listingId: string): Promise<PublicListingDetail
   return apiFetch<PublicListingDetail>(`/public/listings/${listingId}`);
 }
 
+export function getPublicSourceDocumentUrl(listingId: string): Promise<{ document_id: string; download_url: string; expires_at: string }> {
+  const token = getAccessToken();
+  if (!token) throw new ApiError({ code: "AUTH_REQUIRED", message: "Login required." });
+  return apiFetch(`/public/listings/${listingId}/source-document-url`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
 export async function getPublicListingAsContract(listingId: string): Promise<import("../data/contracts").Contract> {
   const listing = await getPublicListing(listingId);
   return {
