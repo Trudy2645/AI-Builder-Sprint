@@ -10,7 +10,14 @@ import { RiskReviewStep, analyzeDraft } from "../../components/listings/RiskRevi
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
 import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
-import { friendlyApiError, uploadAndProcessSourceContract, type ContractProcessingStage } from "../../lib/api";
+import {
+  finalizeSellerListing,
+  friendlyApiError,
+  hasApiSession,
+  saveSellerListing,
+  uploadAndProcessSourceContract,
+  type ContractProcessingStage,
+} from "../../lib/api";
 
 const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
 
@@ -61,6 +68,9 @@ export function UploadOcrPage() {
   const [analysisNotes, setAnalysisNotes] = useState<string[]>([]);
   const [extractedValues, setExtractedValues] = useState<Record<string, unknown> | null>(null);
   const [analysisStage, setAnalysisStage] = useState<ContractProcessingStage>("uploading");
+  const [serverListingId, setServerListingId] = useState<string | null>(null);
+  const [serverListingVersionNo, setServerListingVersionNo] = useState(1);
+  const [publishing, setPublishing] = useState(false);
 
   const patch = (p: Partial<ListingDraft>) => setDraft((d) => ({ ...d, ...p }));
 
@@ -68,8 +78,12 @@ export function UploadOcrPage() {
     if (!file) return;
     setAnalyzing(true);
     setAnalyzed(false);
+    setServerListingId(null);
+    setServerListingVersionNo(1);
     try {
       const result = await uploadAndProcessSourceContract(file, setAnalysisStage);
+      setServerListingId(result.listingId);
+      setServerListingVersionNo(result.listingVersionNo);
       setDraft((d) => ({ ...d, ...candidateToDraft(result.listingCandidate) }));
       setAnalysisNotes([...result.confirmationRequired, ...result.validationWarnings]);
       setExtractedValues(result.extraction);
@@ -145,11 +159,31 @@ export function UploadOcrPage() {
       settlement: draft.settlement || "계약서 기준(셀러 확인 필요)",
     } as ListingDraft;
     const risks = analyzeDraft(publishableDraft).length;
-    // 셀러 공고는 항상 공개한다. 임시저장 버튼은 호환성을 위해 남겨도
-    // 실제 상태는 공개로 저장해 바이어 화면에서 즉시 조회되도록 한다.
-    addListing(draftToListing(publishableDraft, "public", risks));
-    toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
-    navigate("/seller/listings");
+    const serverDraft = {
+      ...publishableDraft,
+      category: (publishableDraft.category || "accommodation") as Exclude<ListingDraft["category"], "">,
+      district: publishableDraft.district || "부산",
+    };
+    setPublishing(true);
+    try {
+      if (serverListingId) {
+        await finalizeSellerListing(
+          serverListingId,
+          serverDraft,
+          !asDraft && publishableDraft.available,
+          serverListingVersionNo,
+        );
+      } else if (hasApiSession()) {
+        await saveSellerListing(serverDraft, !asDraft && publishableDraft.available);
+      }
+      addListing(draftToListing(serverDraft, asDraft ? "draft" : "public", risks));
+      toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
+      navigate("/seller/listings");
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    } finally {
+      setPublishing(false);
+    }
   };
 
   return (
@@ -319,7 +353,7 @@ export function UploadOcrPage() {
           </Button>
         ) : (
           <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-            <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => publish(false)}>
+            <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => void publish(false)} disabled={publishing}>
               <Globe className="size-4" />
               {t("pub.publish")}
             </Button>

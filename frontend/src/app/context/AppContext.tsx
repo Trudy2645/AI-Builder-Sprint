@@ -13,7 +13,12 @@ interface AppContextValue {
   currentRole: Role | null;
   isDemoSession: boolean;
   login: (role: Role, company?: string, isDemo?: boolean) => void;
-  loginWithSession: (role: Role, company: string, accessToken: string) => void;
+  loginWithSession: (
+    role: Role,
+    company: string,
+    accessToken: string,
+    organizationId?: string | null,
+  ) => void;
   logout: () => void;
 }
 
@@ -57,13 +62,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setAccessToken(null);
     window.localStorage.removeItem(sessionKey);
+    window.localStorage.removeItem("busanlink.refresh_token");
+    window.localStorage.removeItem("busanlink.organization_id");
     setCurrentRole(null);
     setCompanyName("");
     setIsDemoSession(false);
   };
 
-  const loginWithSession = (role: Role, company: string, accessToken: string) => {
+  const loginWithSession = (
+    role: Role,
+    company: string,
+    accessToken: string,
+    organizationId?: string | null,
+  ) => {
     setAccessToken(accessToken);
+    if (organizationId) window.localStorage.setItem("busanlink.organization_id", organizationId);
     login(role, company, false);
   };
 

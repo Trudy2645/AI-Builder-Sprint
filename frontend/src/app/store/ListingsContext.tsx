@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApp } from "../context/AppContext";
 import type { Category } from "../data/contracts";
+import { getSellerListings, hasApiSession, type SellerListingSummary } from "../lib/api";
 
 // 계약 공고 상태: 임시저장 / AI 검토 필요 / 공개 중 / 공개 중지 / 기간 만료
 export type ListingStatus = "draft" | "needsReview" | "public" | "paused" | "expired";
@@ -131,6 +132,27 @@ export function ListingsProvider({ children }: { children: ReactNode }) {
     } catch {
       setListings([]);
     }
+
+    let active = true;
+    getSellerListings()
+      .then((items) => {
+        if (active) setListings(items.map(fromServerListing));
+      })
+      .catch(() => {
+        if (!active) return;
+        // Keep the local demo board usable if the optional API session expires.
+        if (isDemoSession) {
+          try {
+            const saved = window.localStorage.getItem("busanlink.seller.listings");
+            setListings(saved ? JSON.parse(saved) as Listing[] : seed);
+          } catch {
+            setListings(seed);
+          }
+        } else {
+          setListings([]);
+        }
+      });
+    return () => { active = false; };
   }, [isDemoSession]);
   const addListing: ListingsContextValue["addListing"] = (l) => {
     const now = new Date();

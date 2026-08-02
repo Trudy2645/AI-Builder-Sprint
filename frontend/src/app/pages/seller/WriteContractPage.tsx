@@ -11,6 +11,7 @@ import { PublishSettingsStep } from "../../components/listings/PublishSettingsSt
 import { useApp } from "../../context/AppContext";
 import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
 import { formatKRW } from "../../data/contracts";
+import { friendlyApiError, hasApiSession, saveSellerListing } from "../../lib/api";
 
 const STEPS = ["wz.product", "wz.supply", "wz.terms", "wz.generate", "wz.risk", "wz.publish"];
 
@@ -24,6 +25,7 @@ export function WriteContractPage() {
   const [applied, setApplied] = useState<Record<string, boolean>>({});
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   const patch = (p: Partial<ListingDraft>) => setDraft((d) => ({ ...d, ...p }));
 
@@ -51,7 +53,7 @@ export function WriteContractPage() {
       }
     }
     if (step === 1) {
-      if ([draft.start, draft.end, draft.quantity, draft.priceUnit, draft.unitPrice].some(isBlank)) {
+      if ([draft.availabilityStart, draft.availabilityEnd, draft.quantity, draft.priceUnit, draft.unitPrice].some(isBlank)) {
         toast.error("다음 단계로 가기 전에 공급 기간, 공급 수량, 단가 기준, 단가를 입력해주세요.");
         return false;
       }
@@ -78,7 +80,7 @@ export function WriteContractPage() {
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
 
-  const publish = (asDraft: boolean) => {
+  const publish = async (asDraft: boolean) => {
     const requiredForPublish = [
       draft.productName,
       draft.category,
@@ -94,9 +96,24 @@ export function WriteContractPage() {
       return;
     }
     const risks = analyzeDraft(draft).length;
-    addListing(draftToListing(draft, asDraft ? "draft" : "public", risks));
-    toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
-    navigate("/seller/listings");
+    const serverDraft = {
+      ...draft,
+      category: (draft.category || "accommodation") as Exclude<ListingDraft["category"], "">,
+      district: draft.district || "부산",
+    };
+    setPublishing(true);
+    try {
+      if (hasApiSession()) {
+        await saveSellerListing(serverDraft, !asDraft && draft.available);
+      }
+      addListing(draftToListing(serverDraft, asDraft ? "draft" : "public", risks));
+      toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
+      navigate("/seller/listings");
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const price = parseInt(draft.unitPrice, 10) || 0;
@@ -219,11 +236,11 @@ export function WriteContractPage() {
           </Button>
         ) : (
           <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-            <Button variant="outline" className="gap-1.5 whitespace-nowrap" onClick={() => publish(true)}>
+            <Button variant="outline" className="gap-1.5 whitespace-nowrap" onClick={() => void publish(true)} disabled={publishing}>
               <Save className="size-4" />
               {t("pub.saveDraft")}
             </Button>
-            <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => publish(false)}>
+            <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => void publish(false)} disabled={publishing}>
               <Globe className="size-4" />
               {t("pub.publish")}
             </Button>

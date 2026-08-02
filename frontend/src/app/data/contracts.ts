@@ -39,6 +39,7 @@ export interface Contract {
     settlement: string;
   };
   clauses: Clause[];
+  attentionRequiredCount?: number;
 }
 
 export const CATEGORIES: { value: Category | "all"; labelKey: string }[] = [
