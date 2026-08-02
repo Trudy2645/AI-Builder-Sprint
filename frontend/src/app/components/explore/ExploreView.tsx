@@ -116,17 +116,16 @@ export function ExploreView({ base }: { base: string }) {
 
   useEffect(() => {
     let active = true;
-    getPublicListings()
+    const refresh = () => getPublicListings()
       .then((listings) => {
-        if (active) setServerContracts(listings.map(toContract));
+        if (active) { setServerContracts(listings.map(toContract)); setLoadError(null); }
       })
-      .catch((error: unknown) => {
-        if (active) setLoadError(friendlyApiError(error));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
+      .catch((error: unknown) => { if (active) setLoadError(friendlyApiError(error)); })
+      .finally(() => { if (active) setLoading(false); });
+    refresh();
+    const timer = window.setInterval(refresh, 5000);
+    window.addEventListener("focus", refresh);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, []);
 
   const reset = () => {
