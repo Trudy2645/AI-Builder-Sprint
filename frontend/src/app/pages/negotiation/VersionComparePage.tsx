@@ -37,7 +37,7 @@ export function VersionComparePage() {
     if (role === "buyer") {
       navigate(`${base}/explore/${NEGOTIATION_CONTRACT_ID}/revise`);
     } else {
-      navigate(`${base}/received/rcv-summer`);
+      navigate(`${base}/received/rcv-coastline`);
     }
   };
 

@@ -14,13 +14,6 @@ import { RequestAsIsPage } from "./pages/requests/RequestAsIsPage";
 import { RevisionRequestPage } from "./pages/requests/RevisionRequestPage";
 import { SentRequestsPage } from "./pages/requests/SentRequestsPage";
 import { BuyerMyPage } from "./pages/BuyerMyPage";
-import {
-  BuyerContractCompletePage,
-  BuyerContractsHomePage,
-  BuyerContractStatusPage,
-  BuyerContractUploadPage,
-  BuyerContractWritePage,
-} from "./pages/buyer/BuyerContractFlowPages";
 import { SellerDashboardPage } from "./pages/seller/SellerDashboardPage";
 import { ListingsManagePage } from "./pages/seller/ListingsManagePage";
 import { CreateMethodPage } from "./pages/seller/CreateMethodPage";
@@ -62,14 +55,6 @@ const buyerExploreRoutes = [
   { path: "explore/:id/revise", element: <RevisionRequestPage /> },
 ];
 
-const buyerContractRoutes = [
-  { path: "contracts", element: <BuyerContractsHomePage /> },
-  { path: "contracts/upload", element: <BuyerContractUploadPage /> },
-  { path: "contracts/write", element: <BuyerContractWritePage /> },
-  { path: "contracts/:id/status", element: <BuyerContractStatusPage /> },
-  { path: "contracts/:id/complete", element: <BuyerContractCompletePage /> },
-];
-
 const buyerNegotiationRoutes = [
   { path: "negotiating", element: <NegotiatingPage /> },
 ];
@@ -96,8 +81,7 @@ const buyerChildren = buyerNav
     (item) =>
       item.path !== "/buyer/explore" &&
       item.path !== "/buyer/negotiating" &&
-      item.path !== "/buyer/signing" &&
-      item.path !== "/buyer/contracts",
+      item.path !== "/buyer/signing",
   )
   .map((item) => ({
     path: item.path.replace("/buyer/", ""),
@@ -158,7 +142,6 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/buyer/explore" replace /> },
       ...buyerExploreRoutes,
-      ...buyerContractRoutes,
       ...buyerNegotiationRoutes,
       ...signingRoutes,
       ...buyerChildren,

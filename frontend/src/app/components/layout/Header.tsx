@@ -146,12 +146,12 @@ export function Header({
                 )}
                 <DropdownMenuItem
                   className="flex flex-col items-start gap-1 whitespace-normal py-2.5"
-                  onClick={() => navigate("/seller/received/rcv-summer")}
+                  onClick={() => navigate("/seller/received/rcv-coastline")}
                 >
                   <span style={{ fontSize: "13px", lineHeight: 1.5 }}>
                     {t("notif.revision")
                       .replace("{buyer}", "GlobalTrip Japan")
-                      .replace("{title}", "2026 부산 여름 객실 공급 계약")
+                      .replace("{title}", "2026 해운대 단체 객실 공급 계약")
                       .replace("{count}", "3")}
                   </span>
                   <span className="whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 600 }}>

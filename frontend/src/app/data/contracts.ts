@@ -6,7 +6,7 @@ export interface RiskInfo {
 }
 
 export interface Clause {
-  no: string; // e.g. "제3조"
+  no: string;
   title: string;
   text: string;
   risk?: RiskInfo;
@@ -17,19 +17,19 @@ export interface Contract {
   seller: string;
   title: string;
   category: Category;
-  district: string; // 부산 구 단위
-  start: string; // YYYY.MM.DD
+  district: string;
+  start: string;
   end: string;
-  unitPrice: number; // KRW
-  priceUnit: string; // 단위 라벨 (예: 객실당 / 1인당)
-  quantityLabel: string; // 공급 수량 라벨
-  capacity: number; // 수용/공급 인원 또는 실 수
-  available: boolean; // 계약 가능 여부
-  popularity: number; // 인기순 정렬용
-  createdOrder: number; // 최신순 정렬용 (클수록 최신)
-  recommendScore: number; // 추천순 정렬용
+  unitPrice: number;
+  priceUnit: string;
+  quantityLabel: string;
+  capacity: number;
+  available: boolean;
+  popularity: number;
+  createdOrder: number;
+  recommendScore: number;
   image: string;
-  aiSummary: string[]; // 3줄 요약
+  aiSummary: string[];
   details: {
     period: string;
     supplyQuantity: string;
@@ -57,314 +57,280 @@ export const DISTRICTS = [
   "서구",
   "남구",
   "동구",
+  "강서구",
   "기장군",
 ];
 
 export const contracts: Contract[] = [
   {
-    id: "ocean-stay-2026-summer",
+    id: "coastline-hotel-room-2026",
     seller: "해운대 오션스테이",
-    title: "2026 부산 여름 객실 공급 계약",
+    title: "2026 해운대 단체 객실 공급 계약",
     category: "accommodation",
     district: "해운대구",
     start: "2026.07.01",
     end: "2026.08.31",
-    unitPrice: 145000,
+    unitPrice: 146000,
     priceUnit: "객실당",
-    quantityLabel: "주말 객실 최대 30실",
-    capacity: 30,
+    quantityLabel: "1일 최대 32실",
+    capacity: 32,
     available: true,
-    popularity: 98,
+    popularity: 97,
     createdOrder: 100,
     recommendScore: 99,
     image:
-      "https://images.unsplash.com/photo-1769847778899-649ebe5bed2a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+      "https://images.unsplash.com/photo-1566073771259-6a8506099945?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     aiSummary: [
-      "성수기 주말 객실 30실을 객실당 145,000원에 안정적으로 확보할 수 있는 계약입니다.",
-      "무료 취소 기한과 노쇼 처리 기준이 명확하지 않아 협의가 필요합니다.",
-      "정산 지급일과 지급 주체가 불명확해 AI가 확인 필요 조항 3개를 표시했습니다.",
+      "숙박 예약 약관의 예약확정·취소·노쇼·현장결제 구조를 바탕으로 만든 단체 객실 공급 계약입니다.",
+      "객실 사정에 따른 예약 거절 또는 조건 변경 가능성이 있어 확정 시점을 명확히 확인해야 합니다.",
+      "노쇼와 보증금·부대비용 정산 기준을 계약서에 구체화할 필요가 있습니다.",
     ],
     details: {
       period: "2026.07.01 ~ 2026.08.31",
-      supplyQuantity: "주말 객실 최대 30실",
-      unitPrice: "객실당 145,000원 (VAT 별도)",
-      cancellation: "무료 취소 가능 · 기한 협의 필요",
-      noShow: "기준 미정",
-      settlement: "추후 정산 · 지급일 협의 필요",
+      supplyQuantity: "1일 최대 32실 · 객실당 기준 인원 2명",
+      unitPrice: "객실당 146,000원 (VAT 별도)",
+      cancellation: "체크인 7일 전까지 무료 취소",
+      noShow: "객실 1박 공급가 100% 청구",
+      settlement: "매월 말 마감 후 익월 15일 지급",
     },
     clauses: [
       {
         no: "제1조",
         title: "계약의 목적",
-        text: "본 계약은 셀러(해운대 오션스테이)가 바이어에게 2026년 여름 성수기 객실을 공급하고, 바이어가 이를 판매·유통하는 데 필요한 조건을 정함을 목적으로 한다.",
+        text: "본 계약은 셀러가 바이어에게 해운대 지역 단체 관광객용 객실을 공급하고, 바이어가 이를 여행 일정에 맞게 배정·이용하는 조건을 정함을 목적으로 한다.",
       },
       {
         no: "제2조",
-        title: "공급 기간 및 수량",
-        text: "공급 기간은 2026년 7월 1일부터 8월 31일까지로 하며, 주말(금·토) 기준 최대 30실을 공급한다. 평일 객실은 상호 협의에 따라 추가 공급할 수 있다.",
+        title: "예약 요청 및 확정",
+        text: "바이어의 예약 요청은 객실 공급에 대한 청약이며, 셀러가 객실 타입·투숙일·인원·요금을 확인하고 확정 통지를 보낸 때 예약이 성립한다.",
+        risk: {
+          reason: "예약 요청과 예약 확정의 시점이 다르면, 바이어가 요청만으로 객실이 확보되었다고 오해할 수 있습니다.",
+          recommendation: "예약 성립 시점을 '셀러의 확정 통지 도달 시'로 명시하고, 확정 전에는 객실 확보가 보장되지 않음을 표시하세요.",
+        },
       },
       {
         no: "제3조",
-        title: "공급 단가",
-        text: "객실 공급 단가는 객실당 145,000원(VAT 별도)으로 한다.",
+        title: "공급 기간 및 수량",
+        text: "공급 기간은 2026년 7월 1일부터 8월 31일까지이며, 셀러는 1일 최대 32실을 공급한다. 객실 수량은 확정 통지서에 기재된 객실 수를 기준으로 한다.",
       },
       {
         no: "제4조",
-        title: "취소 및 환불",
-        text: "바이어는 필요에 따라 예약을 무료로 취소할 수 있다.",
+        title: "요금 및 부대비용",
+        text: "객실 공급 단가는 객실당 146,000원으로 한다. 세금, 봉사료, 리조트피, 객실 파손 보증금, 미니바 등 부대비용은 별도 고지된 기준에 따라 정산한다.",
         risk: {
-          reason: "무료 취소가 가능한 기한과 이후 수수료 기준이 없어 셀러가 체크인 직전까지 취소 위험을 부담할 수 있습니다.",
-          recommendation: "체크인 7일 전까지 무료 취소하고 이후 취소 시 객실 1박 요금의 50%를 부과하도록 기준을 명시하세요.",
+          reason: "숙박 상품은 세금·봉사료·보증금·부대비용이 추가될 수 있어 총 계약 금액과 실제 청구액이 달라질 수 있습니다.",
+          recommendation: "계약서에 포함 비용과 불포함 비용을 분리하고, 현장 추가 비용의 청구 주체와 정산 방식을 명시하세요.",
         },
       },
       {
         no: "제5조",
-        title: "노쇼(No-show) 처리",
-        text: "노쇼 발생 시 처리 기준은 별도로 정하지 않는다.",
-        risk: {
-          reason: "예약자가 방문하지 않은 경우의 비용 기준이 없어 노쇼 발생 시 정산 범위를 두고 분쟁이 생길 수 있습니다.",
-          recommendation: "노쇼 발생 시 해당 객실의 1박 요금 100%를 부과하도록 명시하세요.",
-        },
+        title: "변경·취소 및 노쇼",
+        text: "바이어는 체크인 7일 전까지 무료로 객실 수량을 변경하거나 취소할 수 있다. 이후 취소는 취소 객실의 1박 공급가 50%, 노쇼는 해당 객실 1박 공급가 100%를 청구한다.",
       },
       {
         no: "제6조",
-        title: "정산 및 지급",
-        text: "객실 이용 금액은 추후 정산한다.",
+        title: "오버부킹 및 조건 변경",
+        text: "셀러 사정으로 확정 객실 제공이 어려운 경우 셀러는 동급 이상 대체 객실을 제공하거나 바이어와 협의하여 예약을 취소하고 이미 지급된 금액을 환급한다.",
         risk: {
-          reason: "대금 지급 시점과 지급 주체가 명확하지 않아 정산 지연이나 미수금 분쟁이 발생할 수 있습니다.",
-          recommendation: "매월 말 이용 내역을 마감하고 익월 15일까지 바이어가 셀러에게 지급하도록 명시하세요.",
+          reason: "대체 객실의 등급, 위치, 차액 기준이 모호하면 단체 일정 변경 비용을 누가 부담하는지 분쟁이 생길 수 있습니다.",
+          recommendation: "대체 객실은 동일 지역·동급 이상으로 제한하고, 낮은 등급 대체 시 차액 환급과 이동 비용 부담 기준을 추가하세요.",
         },
+      },
+      {
+        no: "제7조",
+        title: "정산 및 지급",
+        text: "셀러와 바이어는 매월 말 이용 내역을 확인하고, 바이어는 다음 달 15일까지 확정된 공급 대금을 셀러에게 지급한다.",
       },
       {
         no: "제8조",
         title: "분쟁 해결",
-        text: "본 계약과 관련하여 분쟁이 발생하는 경우 부산지방법원을 제1심 관할 법원으로 한다.",
+        text: "본 계약과 관련한 분쟁은 당사자 협의를 우선하며, 합의가 어려운 경우 대한민국 법령과 관할 법원 기준에 따른다.",
       },
     ],
   },
   {
-    id: "gwangan-seabreeze",
-    seller: "광안 씨브리즈 호텔",
-    title: "2026 광안리 오션뷰 객실 공급 계약",
-    category: "accommodation",
-    district: "수영구",
-    start: "2026.06.15",
-    end: "2026.09.15",
-    unitPrice: 128000,
-    priceUnit: "객실당",
-    quantityLabel: "주중·주말 객실 최대 40실",
-    capacity: 40,
+    id: "bluewave-surf-lesson-2026",
+    seller: "송정 블루웨이브 서프",
+    title: "2026 송정 단체 서핑 강습 공급 계약",
+    category: "activity",
+    district: "해운대구",
+    start: "2026.06.01",
+    end: "2026.09.30",
+    unitPrice: 68000,
+    priceUnit: "1인당",
+    quantityLabel: "1일 최대 45명",
+    capacity: 45,
     available: true,
-    popularity: 84,
-    createdOrder: 92,
-    recommendScore: 90,
+    popularity: 82,
+    createdOrder: 96,
+    recommendScore: 88,
     image:
-      "https://images.unsplash.com/photo-1575907789733-c3dda018bae7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+      "https://images.unsplash.com/photo-1502680390469-be75c86b636f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     aiSummary: [
-      "광안대교 오션뷰 객실 40실을 객실당 128,000원에 장기간 확보하는 계약입니다.",
-      "취소·노쇼 조건이 표준적이며 바이어에게 유리한 편입니다.",
-      "정산 주기가 60일로 다소 길어 현금 흐름 측면에서 확인이 필요합니다.",
+      "여행 체험 플랫폼 약관의 주문 확인·전자증빙·공급업체 책임·취소 환불 구조를 바탕으로 만든 액티비티 계약입니다.",
+      "전자바우처 제시와 집합 시간 미준수 시 환불 제한 조건이 포함되어 있습니다.",
+      "기상 악화와 안전사고 처리 기준은 보험 및 대체 일정 조항을 더 명확히 해야 합니다.",
     ],
     details: {
-      period: "2026.06.15 ~ 2026.09.15",
-      supplyQuantity: "주중·주말 객실 최대 40실",
-      unitPrice: "객실당 128,000원 (VAT 별도)",
-      cancellation: "체크인 5일 전까지 무료 취소",
-      noShow: "객실 1박 요금의 80% 청구",
-      settlement: "매월 말 마감 후 익익월 15일 지급",
+      period: "2026.06.01 ~ 2026.09.30",
+      supplyQuantity: "1일 최대 45명 · 강사 1명당 최대 6명",
+      unitPrice: "1인당 68,000원 (장비 대여 포함)",
+      cancellation: "이용 3일 전까지 무료 취소",
+      noShow: "강습료 전액 청구",
+      settlement: "매월 말 마감 후 익월 15일 지급",
     },
     clauses: [
       {
         no: "제1조",
         title: "계약의 목적",
-        text: "셀러가 바이어에게 광안리 오션뷰 객실을 공급하는 조건을 정한다.",
+        text: "본 계약은 셀러가 바이어의 단체 여행객에게 서핑 강습과 장비 대여 서비스를 제공하는 조건을 정함을 목적으로 한다.",
       },
       {
         no: "제2조",
-        title: "공급 기간 및 수량",
-        text: "2026년 6월 15일부터 9월 15일까지 주중·주말 최대 40실을 공급한다.",
+        title: "주문 확인 및 이용권",
+        text: "바이어의 요청은 셀러 확인을 거쳐 확정되며, 확정 후 바이어는 참가자에게 전자 이용권 또는 예약번호를 전달한다. 참가자는 이용 당일 지정 장소에서 이용권과 신분 확인 자료를 제시한다.",
       },
       {
         no: "제3조",
-        title: "정산 및 지급",
-        text: "정산은 매월 말 마감 후 익익월(60일) 15일에 지급한다.",
-        risk: {
-          reason:
-            "정산 주기가 60일로 업계 표준(30일)보다 길어, 바이어의 운전자금 부담이 증가할 수 있습니다.",
-          recommendation:
-            "정산 주기를 익월 15일(30일)로 단축하거나, 60일 유지 시 조기 정산 할인 조건을 추가할 것을 권장합니다.",
-        },
+        title: "강습 인원 및 운영 기준",
+        text: "셀러는 1일 최대 45명까지 강습을 제공하며, 강사 1명당 참가자는 최대 6명으로 한다. 강습에는 슈트, 보드, 기본 안전 교육이 포함된다.",
       },
       {
         no: "제4조",
-        title: "취소 및 노쇼",
-        text: "체크인 5일 전까지 무료 취소하며, 노쇼 시 1박 요금의 80%를 청구한다.",
-      },
-    ],
-  },
-  {
-    id: "marina-yacht-tour",
-    seller: "부산 마리나 요트클럽",
-    title: "2026 요트 선셋 투어 좌석 공급 계약",
-    category: "tour",
-    district: "수영구",
-    start: "2026.05.01",
-    end: "2026.10.31",
-    unitPrice: 89000,
-    priceUnit: "1인당",
-    quantityLabel: "1회당 최대 20석",
-    capacity: 20,
-    available: true,
-    popularity: 76,
-    createdOrder: 88,
-    recommendScore: 82,
-    image:
-      "https://images.unsplash.com/photo-1712739034224-2904f23c4c5f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    aiSummary: [
-      "수영만 요트 선셋 투어 좌석을 1인당 89,000원에 공급받는 체험형 계약입니다.",
-      "우천·기상 악화 시 취소·환불 기준이 명확하게 규정되어 있습니다.",
-      "안전사고 배상 책임의 범위가 셀러에게 유리하게 설정되어 확인이 필요합니다.",
-    ],
-    details: {
-      period: "2026.05.01 ~ 2026.10.31",
-      supplyQuantity: "1회 운항당 최대 20석",
-      unitPrice: "1인당 89,000원 (VAT 포함)",
-      cancellation: "투어 3일 전까지 무료 취소",
-      noShow: "좌석 요금 전액 청구",
-      settlement: "매월 말 마감 후 익월 20일 지급",
-    },
-    clauses: [
-      { no: "제1조", title: "계약의 목적", text: "요트 선셋 투어 좌석 공급 조건을 정한다." },
-      {
-        no: "제2조",
-        title: "안전사고 배상 책임",
-        text: "투어 중 발생한 안전사고에 대한 배상 책임은 이용객의 고의·과실이 없는 경우에 한하여 셀러가 부담하되, 배상 한도는 1인당 500만 원으로 제한한다.",
+        title: "취소 및 환불",
+        text: "바이어는 이용 3일 전까지 무료 취소할 수 있다. 이용 2일 전 취소는 총액의 50%, 전일 또는 당일 취소와 노쇼는 총액의 100%를 청구한다.",
         risk: {
-          reason:
-            "배상 한도를 1인당 500만 원으로 제한하고 있어, 중대 사고 발생 시 바이어(여행사)가 추가 배상 책임에 노출될 수 있습니다.",
-          recommendation:
-            "셀러의 영업배상책임보험 가입을 계약 조건으로 명시하고, 보험 한도 내에서는 별도 상한을 두지 않도록 조정할 것을 권장합니다.",
+          reason: "단체 액티비티는 참가자 변동이 잦아 취소 기한과 부분 취소 기준이 없으면 정산 분쟁이 발생할 수 있습니다.",
+          recommendation: "전체 취소와 일부 인원 취소를 분리하고, 확정 인원 대비 10% 이내 인원 변동은 이용 1일 전까지 허용하는 조항을 검토하세요.",
         },
       },
-      { no: "제3조", title: "기상 악화 시 처리", text: "기상 악화로 운항이 취소되면 전액 환불 또는 일정 변경한다." },
-    ],
-  },
-  {
-    id: "songjeong-surf",
-    seller: "송정 서핑클럽",
-    title: "2026 송정 서핑 강습 상품 공급 계약",
-    category: "activity",
-    district: "해운대구",
-    start: "2026.06.01",
-    end: "2026.09.30",
-    unitPrice: 65000,
-    priceUnit: "1인당",
-    quantityLabel: "1일 최대 40명",
-    capacity: 40,
-    available: true,
-    popularity: 71,
-    createdOrder: 80,
-    recommendScore: 74,
-    image:
-      "https://images.unsplash.com/photo-1601505804121-45e2c5506c94?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    aiSummary: [
-      "송정 해변 서핑 강습(장비 포함) 상품을 1인당 65,000원에 공급받는 계약입니다.",
-      "강사 대 수강생 비율(1:5)이 명시되어 서비스 품질이 보장됩니다.",
-      "취소 정책이 이용 1일 전 기준으로 짧아 확인이 필요합니다.",
-    ],
-    details: {
-      period: "2026.06.01 ~ 2026.09.30",
-      supplyQuantity: "1일 최대 40명 (강사 1인당 5명)",
-      unitPrice: "1인당 65,000원 (장비 대여 포함)",
-      cancellation: "이용 1일 전까지 무료 취소",
-      noShow: "강습료 전액 청구",
-      settlement: "매월 말 마감 후 익월 15일 지급",
-    },
-    clauses: [
-      { no: "제1조", title: "계약의 목적", text: "서핑 강습 상품 공급 조건을 정한다." },
       {
-        no: "제2조",
-        title: "취소 정책",
-        text: "이용 1일 전까지 무료 취소가 가능하며, 당일 취소 시 강습료 전액을 청구한다.",
+        no: "제5조",
+        title: "전자 이용권 및 집합 시간",
+        text: "참가자가 전자 이용권, 예약번호 또는 셀러가 요구한 확인 자료를 제시하지 못하거나 집합 시간 이후 도착하여 강습에 참여하지 못한 경우 환불이 제한될 수 있다.",
         risk: {
-          reason:
-            "무료 취소 기한이 이용 1일 전으로 짧아, 단체 예약 변경 시 바이어의 취소 수수료 부담이 커질 수 있습니다.",
-          recommendation:
-            "단체(10인 이상) 예약에 한해 무료 취소 기한을 이용 3일 전으로 완화하는 조항 추가를 권장합니다.",
+          reason: "전자 이용권 분실이나 지각을 전액 환불 불가로만 처리하면 바이어 입장에서 과도한 부담이 될 수 있습니다.",
+          recommendation: "셀러가 예약자 명단으로 참가자 확인이 가능한 경우에는 이용권 재확인 절차를 제공하도록 수정하세요.",
         },
+      },
+      {
+        no: "제6조",
+        title: "기상 악화 및 안전",
+        text: "태풍, 풍랑, 낙뢰, 현장 안전 판단 등으로 강습이 어렵다고 셀러가 판단한 경우 일정 변경 또는 환불을 제공한다. 참가자는 안전 교육과 강사 지시에 따라야 한다.",
+        risk: {
+          reason: "기상 악화 판단 주체가 셀러에게만 있으면 바이어가 일정 변경 가능성을 사전에 예측하기 어렵습니다.",
+          recommendation: "기상청 특보, 해수욕장 통제, 현장 안전 책임자 판단을 취소 기준으로 명시하고, 대체 일정 우선 제공 후 불가 시 환불하도록 정리하세요.",
+        },
+      },
+      {
+        no: "제7조",
+        title: "보험 및 사고 처리",
+        text: "셀러는 영업배상책임보험 또는 이에 준하는 보험에 가입하고, 사고 발생 시 응급 조치와 보험 접수에 협조한다. 참가자의 고의·중과실 또는 안전 지시 위반으로 발생한 손해는 참가자 또는 바이어가 부담할 수 있다.",
+        risk: {
+          reason: "보험 종류와 보상 한도가 표시되지 않으면 사고 발생 시 바이어가 추가 책임에 노출될 수 있습니다.",
+          recommendation: "보험명, 보상 한도, 자기부담금, 보상 제외 사유를 계약서 또는 별첨으로 제공하도록 추가하세요.",
+        },
+      },
+      {
+        no: "제8조",
+        title: "정산 및 지급",
+        text: "이용 완료 내역은 매월 말 확정하고, 바이어는 다음 달 15일까지 확정 금액을 셀러에게 지급한다.",
       },
     ],
   },
   {
-    id: "busan-city-tour",
-    seller: "부산 시티투어 파트너스",
-    title: "2026 부산 시티 하이라이트 투어 공급 계약",
-    category: "tour",
-    district: "부산진구",
-    start: "2026.04.01",
+    id: "route-rental-van-2026",
+    seller: "김해공항 루트렌탈",
+    title: "2026 김해공항 단체 밴 렌탈 계약",
+    category: "vehicle_rental",
+    district: "강서구",
+    start: "2026.03.01",
     end: "2026.12.31",
-    unitPrice: 210000,
-    priceUnit: "1인당",
-    quantityLabel: "1일 최대 25명",
-    capacity: 25,
-    available: false,
-    popularity: 88,
-    createdOrder: 70,
-    recommendScore: 86,
-    image:
-      "https://images.unsplash.com/photo-1769847760685-f940834048fd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    aiSummary: [
-      "숙박·투어·식사를 묶은 1박 2일 부산 시티 투어를 1인당 210,000원에 공급받는 계약입니다.",
-      "성수기·비수기 요금이 분리되어 있어 가격 예측이 용이합니다.",
-      "현재 공급사 사정으로 신규 계약이 일시 마감된 상태입니다.",
-    ],
-    details: {
-      period: "2026.04.01 ~ 2026.12.31",
-      supplyQuantity: "1일 최대 25명",
-      unitPrice: "1인당 210,000원 (숙박·식사 포함)",
-      cancellation: "출발 5일 전까지 무료 취소",
-      noShow: "투어 요금의 70% 청구",
-      settlement: "매월 말 마감 후 익월 15일 지급",
-    },
-    clauses: [
-      { no: "제1조", title: "계약의 목적", text: "부산 시티 투어 상품 공급 조건을 정한다." },
-      { no: "제2조", title: "요금 구성", text: "성수기·비수기 요금을 분리 적용하며 세부 요금표는 별첨한다." },
-    ],
-  },
-  {
-    id: "gijang-glamping",
-    seller: "기장 오션 글램핑",
-    title: "2026 기장 오션뷰 글램핑 공급 계약",
-    category: "accommodation",
-    district: "기장군",
-    start: "2026.05.01",
-    end: "2026.10.31",
-    unitPrice: 175000,
-    priceUnit: "1동당",
-    quantityLabel: "1일 최대 15동",
-    capacity: 15,
+    unitPrice: 132000,
+    priceUnit: "차량 1대·1일",
+    quantityLabel: "1일 최대 12대",
+    capacity: 96,
     available: true,
-    popularity: 69,
-    createdOrder: 96,
-    recommendScore: 78,
+    popularity: 74,
+    createdOrder: 92,
+    recommendScore: 84,
     image:
-      "https://images.unsplash.com/photo-1697983586877-1ae4e3656f6b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+      "https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     aiSummary: [
-      "기장 해안 글램핑 15동을 1동당 175,000원에 공급받는 계약입니다.",
-      "바비큐·조식 옵션이 포함되어 부가 상품 구성이 용이합니다.",
-      "취소·정산 조건이 표준적이며 특이 위험 조항은 없습니다.",
+      "공정거래위원회 자동차대여표준약관 구조를 바탕으로 만든 외국인 단체 밴 렌탈 계약입니다.",
+      "보험·차량손해면책·사고 처리·휴차손해 산정 기준이 핵심 확인 항목입니다.",
+      "대체 차량 기준과 반환 지연·연료 정산 기준을 계약서에 명확히 둘 필요가 있습니다.",
     ],
     details: {
-      period: "2026.05.01 ~ 2026.10.31",
-      supplyQuantity: "1일 최대 15동",
-      unitPrice: "1동당 175,000원 (조식 포함)",
-      cancellation: "체크인 7일 전까지 무료 취소",
-      noShow: "1박 요금 기준 청구",
-      settlement: "매월 말 마감 후 익월 15일 지급",
+      period: "2026.03.01 ~ 2026.12.31",
+      supplyQuantity: "1일 최대 12대 · 차량당 최대 8명",
+      unitPrice: "차량 1대·1일 132,000원 (VAT 별도)",
+      cancellation: "대여 24시간 전까지 무료 취소",
+      noShow: "예약금 환급 불가",
+      settlement: "예약금 10% 이내 · 잔금 이용 전 정산",
     },
     clauses: [
-      { no: "제1조", title: "계약의 목적", text: "오션뷰 글램핑 공급 조건을 정한다." },
-      { no: "제2조", title: "취소 및 정산", text: "체크인 7일 전까지 무료 취소하며, 정산은 익월 15일에 지급한다." },
+      {
+        no: "제1조",
+        title: "계약의 목적",
+        text: "본 계약은 셀러가 바이어에게 관광 일정에 필요한 차량을 대여하고, 바이어가 차량을 사용한 뒤 반환하는 조건을 정함을 목적으로 한다.",
+      },
+      {
+        no: "제2조",
+        title: "예약 및 대여 조건",
+        text: "바이어는 차량 종류, 대여 요금, 대여 장소, 대여 기간, 반환 장소, 운전자 정보, 예약금 등 주요 조건을 확인한 뒤 계약 요청을 보낸다.",
+      },
+      {
+        no: "제3조",
+        title: "요금 및 정산",
+        text: "대여 요금은 차량 1대 1일 단가를 기준으로 산정한다. 대여 기간 연장, 반환 장소 변경, 추가 운전자 등록 등 바이어 요청으로 발생한 추가 비용은 별도로 정산한다.",
+      },
+      {
+        no: "제4조",
+        title: "예약 취소 및 대체 차량",
+        text: "바이어가 대여 시작 24시간 전까지 취소하면 예약금을 환급한다. 셀러 사유로 예약 차량을 제공할 수 없으면 동급 이상 차량을 제안하거나 예약금을 환급한다.",
+        risk: {
+          reason: "대체 차량의 등급, 좌석 수, 요금 차액 기준이 없으면 일정 운영과 비용 정산에서 분쟁이 생길 수 있습니다.",
+          recommendation: "대체 차량은 예약 차량과 동일하거나 더 높은 좌석 수와 등급을 갖춘 차량으로 제한하고, 낮은 요금 차량 제공 시 차액을 환급하세요.",
+        },
+      },
+      {
+        no: "제5조",
+        title: "보험 및 차량손해면책",
+        text: "셀러는 대여 차량에 기본 자동차보험을 가입한다. 차량손해면책 또는 자기차량손해 담보는 바이어 선택 항목으로 제공하며, 보상 범위와 면책금은 계약 전에 고지한다.",
+        risk: {
+          reason: "보험 보상 범위와 면책금이 불명확하면 사고 발생 시 바이어가 예상하지 못한 비용을 부담할 수 있습니다.",
+          recommendation: "보험 종류, 대인·대물 보상 한도, 자기차량손해 가입 여부, 면책금, 보상 제외 사유를 서면으로 고지하도록 명시하세요.",
+        },
+      },
+      {
+        no: "제6조",
+        title: "차량 인도 전 점검",
+        text: "셀러와 바이어는 차량 인도 시 외관, 연료 또는 충전 상태, 타이어, 등화장치, 유리, 좌석 안전벨트, 안전 장비를 함께 확인하고 체크리스트에 기록한다.",
+      },
+      {
+        no: "제7조",
+        title: "금지 행위 및 운전자 제한",
+        text: "등록되지 않은 운전자, 무면허 운전, 음주 또는 약물 영향 상태의 운전, 유상 운송, 전대, 담보 제공, 경주 또는 시험 운전, 불법 목적 사용은 금지된다.",
+      },
+      {
+        no: "제8조",
+        title: "사고 처리 및 휴차손해",
+        text: "사고가 발생하면 바이어는 즉시 셀러에게 알리고 보험 처리에 협조한다. 바이어 귀책으로 차량 수리가 필요한 경우 셀러는 객관적인 산정 근거를 제시해 휴차손해를 청구할 수 있다.",
+        risk: {
+          reason: "휴차손해 산정 근거가 없으면 수리 기간의 영업 손실 청구가 과도하게 계산될 수 있습니다.",
+          recommendation: "수리 견적서, 수리 기간 확인서, 해당 차량의 통상 대여요금 등 객관 자료를 첨부한 경우에만 휴차손해를 청구하도록 수정하세요.",
+        },
+      },
+      {
+        no: "제9조",
+        title: "반환 및 연료 정산",
+        text: "바이어는 약정 시간과 장소에 차량을 반환한다. 연료 또는 충전량이 인도 시점보다 부족하면 부족분을 정산하며, 반환 지연 시 지연료와 회수 비용을 부담할 수 있다.",
+        risk: {
+          reason: "반환 지연료와 연료 정산 단가 기준이 사전에 정해져 있지 않으면 사후 비용 분쟁이 생길 수 있습니다.",
+          recommendation: "반환 지연료는 시간당 또는 1일 대여 단가 기준으로 산정하고, 연료 부족분은 반환일 기준 셀러 고지 단가로 정산하도록 명시하세요.",
+        },
+      },
     ],
   },
 ];

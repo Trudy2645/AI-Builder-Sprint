@@ -43,15 +43,15 @@ interface BuyerContractsContextValue {
 const BuyerContractsContext = createContext<BuyerContractsContextValue | null>(null);
 
 export const DEFAULT_BUYER_CONTRACT_DRAFT: BuyerContractDraft = {
-  title: "해운대 오션스테이 여름 객실 공급",
+  title: "해운대 오션스테이 단체 객실 공급",
   buyerName: "GlobalTrip Japan",
   sellerName: "해운대 오션스테이",
   category: "숙박",
   startDate: "2026-07-01",
   endDate: "2026-08-31",
   peopleCount: 30,
-  quantity: 30,
-  unitPrice: 145000,
+  quantity: 15,
+  unitPrice: 146000,
   cancellationPolicy: "체크인 7일 전까지 무료 취소",
   settlementPolicy: "월 마감 후 15일 이내",
 };
