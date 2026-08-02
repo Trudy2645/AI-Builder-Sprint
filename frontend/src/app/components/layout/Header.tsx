@@ -61,8 +61,7 @@ export function Header({
   const homePath = role === "buyer" ? "/buyer/explore" : "/seller/dashboard";
   const { requests } = useRequests();
   const directCompletion = requests.find((request) => request.type === "asis" && request.status === "completed");
-  // 셀러는 수정 요청과 조건 그대로 체결 완료 알림을 확인한다.
-  const sellerNotif = role === "seller" && isDemoSession;
+  const sellerNotif = role === "seller" && Boolean(directCompletion);
   const displayName = companyName || "계정 정보 없음";
 
   return (
