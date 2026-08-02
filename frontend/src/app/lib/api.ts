@@ -184,6 +184,7 @@ export async function uploadAndProcessSourceContract(
     });
     if (result.status === "ready") {
       onStage?.("finalizing");
+      await updateSellerListingTerms(listing.listing_id, result.listing_candidate?.terms);
       await publishSellerListing(listing.listing_id);
       return {
         listingId: listing.listing_id,
@@ -204,6 +205,24 @@ export async function publishSellerListing(listingId: string): Promise<void> {
   const session = getApiSession();
   await apiFetch(`/seller/listings/${listingId}/complete`, { method: "POST", headers: authenticatedHeaders(session) });
   await apiFetch(`/seller/listings/${listingId}/publish`, { method: "POST", headers: authenticatedHeaders(session) });
+}
+
+export async function updateSellerListingTerms(listingId: string, terms: Record<string, unknown> = {}): Promise<void> {
+  const session = getApiSession();
+  const body = {
+    base_price_amount_minor: Number(terms.base_price_amount_minor) || 0,
+    currency: String(terms.currency || "KRW"),
+    price_unit: String(terms.price_unit || "객실당"),
+    supply_quantity_description: String(terms.quantity || "공급 수량은 바이어 요청 시 확정"),
+    maximum_people: Number(terms.maximum_people) || 12,
+    cancellation_policy: String(terms.cancellation_policy || "계약서 기준"),
+    refund_policy: String(terms.refund_policy || "계약서 기준"),
+    no_show_policy: String(terms.no_show_policy || terms.refund_policy || "계약서 기준"),
+    settlement_policy: String(terms.settlement_terms || "양 당사자 협의"),
+    liability_policy: String(terms.liability_policy || "계약서 기준"),
+    termination_policy: String(terms.termination_policy || "계약서 기준"),
+  };
+  await apiFetch(`/seller/listings/${listingId}/terms`, { method: "PATCH", headers: authenticatedHeaders(session, { "Content-Type": "application/json" }), body: JSON.stringify(body) });
 }
 
 export type PublicListing = {
