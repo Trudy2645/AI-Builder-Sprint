@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from app.ai.schemas import (
     DocumentInput,
     DocumentParseResult,
     ExtractedSection,
+    InformationExtractionResult,
     LanguageModelRequest,
     ListingMapping,
 )
@@ -47,6 +49,7 @@ from app.schemas.document_processing import DocumentProcessAccepted, DocumentPro
 _PARSE_MODEL = "document-parse"
 _EXTRACT_MODEL = "information-extract"
 _ARTIFACT_BUCKET = "ai-artifacts"
+_EXTRACT_CHECKPOINT_SCHEMA = "information-extraction-result-v1"
 _PROCESSABLE_MIME_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -174,18 +177,57 @@ class DocumentProcessingService:
         )
 
     async def _run_parse(self, document: ProcessingDocumentRecord, job_id: UUID) -> None:
+        extract_job: ProcessingJobRecord | None = None
         try:
             await self._repository.mark_job_processing(job_id)
             source = await self._read_source(document)
             if document.mime_type == "application/pdf" and b"/Encrypt" in source:
                 raise DocumentEncryptedError
-            parsed = await self._parse_provider.parse_document(
-                DocumentInput(
-                    filename=document.original_filename or f"{document.id}.bin",
-                    mime_type=document.mime_type or "application/octet-stream",
-                    content=source,
-                )
+            document_input = DocumentInput(
+                filename=document.original_filename or f"{document.id}.bin",
+                mime_type=document.mime_type or "application/octet-stream",
+                content=source,
             )
+            extract_job = await self._ensure_job(
+                document.id,
+                "information_extract",
+                _EXTRACT_MODEL,
+                self._prompt_version,
+            )
+            await self._repository.mark_job_processing(extract_job.id)
+            try:
+                extraction_result = await self._load_extraction_checkpoint(document.id, extract_job)
+            except Exception as exc:
+                extraction_result = exc
+            if extraction_result is None:
+                parsed_result, extraction_result = await asyncio.gather(
+                    self._parse_provider.parse_document(document_input),
+                    self._extract_provider.request_information_extraction(document_input),
+                    return_exceptions=True,
+                )
+                if not isinstance(extraction_result, BaseException):
+                    try:
+                        await self._save_extraction_checkpoint(
+                            document.id,
+                            extract_job.id,
+                            extraction_result,
+                        )
+                    except Exception as exc:
+                        extraction_result = exc
+            else:
+                (parsed_result,) = await asyncio.gather(
+                    self._parse_provider.parse_document(document_input),
+                    return_exceptions=True,
+                )
+            if isinstance(parsed_result, BaseException):
+                if isinstance(extraction_result, BaseException):
+                    await self._safe_fail(
+                        document.id,
+                        extract_job.id,
+                        self._failure_code(extraction_result),
+                    )
+                raise parsed_result
+            parsed = parsed_result
             artifact_id = uuid4()
             artifact_bytes = parsed.model_dump_json().encode()
             artifact_hash = hashlib.sha256(artifact_bytes).hexdigest()
@@ -211,14 +253,15 @@ class DocumentProcessingService:
                     "page_count": len(parsed.pages),
                 },
             )
-            extract_job = await self._ensure_job(
-                document.id,
-                "information_extract",
-                _EXTRACT_MODEL,
-                self._prompt_version,
-            )
-            if extract_job.status == "queued":
-                await self._run_extract(document, extract_job.id, parsed, source, artifact_id)
+            if extract_job.status in {"queued", "processing"}:
+                await self._run_extract(
+                    document,
+                    extract_job.id,
+                    parsed,
+                    source,
+                    artifact_id,
+                    extraction_result,
+                )
         except DocumentEncryptedError:
             await self._safe_fail(document.id, job_id, "DOCUMENT_ENCRYPTED")
         except Exception as exc:  # provider/storage failures are normalized below
@@ -231,9 +274,18 @@ class DocumentProcessingService:
         parsed: DocumentParseResult | None = None,
         source: bytes | None = None,
         artifact_id: UUID | None = None,
+        extraction_result: InformationExtractionResult | BaseException | None = None,
     ) -> None:
         try:
             await self._repository.mark_job_processing(job_id)
+            extract_job = await self._ensure_job(
+                document.id,
+                "information_extract",
+                _EXTRACT_MODEL,
+                self._prompt_version,
+            )
+            if extract_job.id != job_id:
+                raise AIProviderInvalidResponseError
             parse_job = await self._ensure_job(document.id, "document_parse", _PARSE_MODEL, None)
             if parse_job.status != "succeeded":
                 raise AIProviderInvalidResponseError
@@ -248,14 +300,27 @@ class DocumentProcessingService:
                     raise AIProviderInvalidResponseError
                 artifact_bytes = await self._read_source(artifact)
                 parsed = DocumentParseResult.model_validate_json(artifact_bytes)
-            if source is None:
-                source = await self._read_source(document)
-            extraction = await self._extract_provider.extract_information(
-                DocumentInput(
-                    filename=document.original_filename or f"{document.id}.bin",
-                    mime_type=document.mime_type or "application/octet-stream",
-                    content=source,
-                ),
+            if extraction_result is None:
+                extraction_result = await self._load_extraction_checkpoint(document.id, extract_job)
+            if extraction_result is None:
+                if source is None:
+                    source = await self._read_source(document)
+                extraction_result = await self._extract_provider.request_information_extraction(
+                    DocumentInput(
+                        filename=document.original_filename or f"{document.id}.bin",
+                        mime_type=document.mime_type or "application/octet-stream",
+                        content=source,
+                    )
+                )
+                await self._save_extraction_checkpoint(
+                    document.id,
+                    job_id,
+                    extraction_result,
+                )
+            elif isinstance(extraction_result, BaseException):
+                raise extraction_result
+            extraction = self._extract_provider.map_information_extraction(
+                extraction_result,
                 parsed,
             )
             confirmation_required, warnings = self._validate_extraction(extraction, parsed)
@@ -284,12 +349,72 @@ class DocumentProcessingService:
         except Exception as exc:  # provider/storage/schema failures are normalized below
             await self._safe_fail(document.id, job_id, self._failure_code(exc))
 
+    async def _save_extraction_checkpoint(
+        self,
+        document_id: UUID,
+        job_id: UUID,
+        extraction_result: InformationExtractionResult,
+    ) -> None:
+        checkpoint_id = uuid4()
+        checkpoint_bytes = extraction_result.model_dump_json().encode()
+        if len(checkpoint_bytes) > self._max_document_size_bytes:
+            raise AIProviderInvalidResponseError
+        checkpoint_hash = hashlib.sha256(checkpoint_bytes).hexdigest()
+        checkpoint_path = f"documents/{document_id}/extractions/{checkpoint_id}.json"
+        await self._storage.put_object(
+            _ARTIFACT_BUCKET,
+            checkpoint_path,
+            checkpoint_bytes,
+            "application/json",
+        )
+        await self._repository.update_job_result_metadata(
+            job_id,
+            {
+                "checkpoint_schema_version": _EXTRACT_CHECKPOINT_SCHEMA,
+                "checkpoint_storage_bucket": _ARTIFACT_BUCKET,
+                "checkpoint_storage_object_path": checkpoint_path,
+                "checkpoint_content_sha256": checkpoint_hash,
+                "checkpoint_size_bytes": len(checkpoint_bytes),
+                "provider_request_id": extraction_result.provider_request_id,
+            },
+        )
+
+    async def _load_extraction_checkpoint(
+        self,
+        document_id: UUID,
+        job: ProcessingJobRecord,
+    ) -> InformationExtractionResult | None:
+        metadata = job.result_metadata
+        checkpoint_path = metadata.get("checkpoint_storage_object_path")
+        if checkpoint_path is None:
+            return None
+        checkpoint_bucket = metadata.get("checkpoint_storage_bucket")
+        checkpoint_hash = metadata.get("checkpoint_content_sha256")
+        checkpoint_schema = metadata.get("checkpoint_schema_version")
+        expected_prefix = f"documents/{document_id}/extractions/"
+        if (
+            checkpoint_bucket != _ARTIFACT_BUCKET
+            or not isinstance(checkpoint_path, str)
+            or not checkpoint_path.startswith(expected_prefix)
+            or not isinstance(checkpoint_hash, str)
+            or checkpoint_schema != _EXTRACT_CHECKPOINT_SCHEMA
+        ):
+            raise AIProviderInvalidResponseError
+        checkpoint_bytes = await self._read_object(checkpoint_bucket, checkpoint_path)
+        if hashlib.sha256(checkpoint_bytes).hexdigest() != checkpoint_hash:
+            raise AIProviderInvalidResponseError
+        return InformationExtractionResult.model_validate_json(checkpoint_bytes)
+
     async def _read_source(self, document: ProcessingDocumentRecord) -> bytes:
+        return await self._read_object(
+            document.storage_bucket,
+            document.storage_object_path,
+        )
+
+    async def _read_object(self, storage_bucket: str, storage_object_path: str) -> bytes:
         chunks: list[bytes] = []
         size = 0
-        async for chunk in self._storage.iter_object(
-            document.storage_bucket, document.storage_object_path
-        ):
+        async for chunk in self._storage.iter_object(storage_bucket, storage_object_path):
             size += len(chunk)
             if size > self._max_document_size_bytes:
                 raise DocumentTooLargeError
