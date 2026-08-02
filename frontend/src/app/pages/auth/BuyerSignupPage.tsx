@@ -11,11 +11,12 @@ import { useEmailVerify } from "../../components/auth/useEmailVerify";
 import { Button } from "../../components/ui/button";
 import { useApp } from "../../context/AppContext";
 import type { Lang } from "../../i18n/translations";
+import { friendlyApiError, signup } from "../../lib/api";
 
 const STEPS = ["signup.step.role", "signup.step.account", "signup.step.company", "signup.step.done"];
 
 export function BuyerSignupPage() {
-  const { t, setCompanyName, setLang } = useApp();
+  const { t, setCompanyName, setLang, loginWithSession } = useApp();
   const navigate = useNavigate();
   const email = useEmailVerify();
 
@@ -34,6 +35,8 @@ export function BuyerSignupPage() {
   const [currency, setCurrency] = useState("");
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const countryOptions = [
     { value: "jp", label: t("field.country") === "국가" ? "일본" : "Japan" },
@@ -92,12 +95,35 @@ export function BuyerSignupPage() {
     }
   };
 
-  const onSubmit = (ev: React.FormEvent) => {
+  const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-    if (validateCompany()) {
+    if (!validateCompany()) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const result = await signup({
+        role: "buyer",
+        email: email.email,
+        password,
+        password_confirmation: passwordConfirm,
+        display_name: contactName,
+        phone,
+        country_code: country === "other" ? "US" : country.toUpperCase(),
+        locale: `${language}-${language.toUpperCase()}`.replace("KO-KO", "ko-KR").replace("EN-EN", "en-US").replace("JA-JA", "ja-JP").replace("ZH-ZH", "zh-CN"),
+        affiliation_name: company,
+        business_type: businessType,
+        default_group_name: company,
+        preferred_currency: currency,
+      });
+      if (!result.session) throw new Error("Signup session was not returned.");
       setCompanyName(company.trim());
       setLang(language as Lang);
+      loginWithSession("buyer", company.trim(), result.session.access_token);
       navigate("/signup/complete?role=buyer");
+    } catch (error) {
+      setSubmitError(friendlyApiError(error));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -231,7 +257,8 @@ export function BuyerSignupPage() {
             <Button type="button" variant="outline" className="flex-1" onClick={() => setStep(1)}>
               {t("common.back")}
             </Button>
-            <Button type="submit" className="flex-1" style={{ background: "var(--navy)" }}>
+            {submitError && <p className="w-full text-sm text-destructive">{submitError}</p>}
+            <Button type="submit" disabled={submitting} className="flex-1" style={{ background: "var(--navy)" }}>
               {t("signup.submit")}
             </Button>
           </div>

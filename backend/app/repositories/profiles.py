@@ -25,6 +25,8 @@ class ProfileRecord:
     active_business_role: str
     created_at: datetime
     updated_at: datetime
+    affiliation_name: str | None = None
+    business_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +42,9 @@ class OrganizationRecord:
     created_at: datetime
     updated_at: datetime
     verified_at: datetime | None
+    representative_name: str | None = None
+    business_address: str | None = None
+    supply_categories: list[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +54,7 @@ class OrganizationMembershipRecord:
     organization_type: str
     verification_status: str
     role: str
+    job_title: str | None = None
 
 
 class ProfileRepository(Protocol):
@@ -88,8 +94,17 @@ class SqlAlchemyProfileRepository:
         "locale",
         "preferred_currency",
         "default_group_name",
+        "affiliation_name",
+        "business_type",
     }
-    _ORGANIZATION_COLUMNS = {"name", "legal_name", "business_registration_no"}
+    _ORGANIZATION_COLUMNS = {
+        "name",
+        "legal_name",
+        "business_registration_no",
+        "representative_name",
+        "business_address",
+        "supply_categories",
+    }
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -101,7 +116,8 @@ class SqlAlchemyProfileRepository:
                     """
                     select id, username, display_name, phone, country_code, locale,
                            preferred_currency, default_group_name, active_organization_id,
-                           active_business_role, created_at, updated_at
+                           active_business_role, created_at, updated_at, affiliation_name,
+                           business_type
                     from public.profiles
                     where id = :user_id
                     """
@@ -150,7 +166,7 @@ class SqlAlchemyProfileRepository:
                 text(
                     """
                     select om.organization_id, o.name as organization_name,
-                           o.organization_type, o.verification_status, om.role
+                           o.organization_type, o.verification_status, om.role, om.job_title
                     from public.organization_members om
                     join public.organizations o on o.id = om.organization_id
                     where om.user_id = :user_id
@@ -171,7 +187,7 @@ class SqlAlchemyProfileRepository:
                 text(
                     """
                     select om.organization_id, o.name as organization_name,
-                           o.organization_type, o.verification_status, om.role
+                           o.organization_type, o.verification_status, om.role, om.job_title
                     from public.organization_members om
                     join public.organizations o on o.id = om.organization_id
                     where om.user_id = :user_id and om.organization_id = :organization_id
@@ -191,7 +207,8 @@ class SqlAlchemyProfileRepository:
                     """
                     select id, organization_type, name, legal_name, business_registration_no,
                            verification_status, rating_average, rating_count, created_at,
-                           updated_at, verified_at
+                           updated_at, verified_at, representative_name, business_address,
+                           supply_categories
                     from public.organizations
                     where id = :organization_id
                     """
@@ -209,9 +226,20 @@ class SqlAlchemyProfileRepository:
         safe_changes = {
             key: value for key, value in changes.items() if key in self._ORGANIZATION_COLUMNS
         }
+        if "supply_categories" in safe_changes:
+            safe_changes["supply_categories"] = [
+                getattr(value, "value", value) for value in safe_changes["supply_categories"]
+            ]
         if not safe_changes:
             return await self.get_organization(organization_id)
-        assignments = ", ".join(f"{key} = :{key}" for key in safe_changes)
+        assignments = ", ".join(
+            (
+                "supply_categories = cast(:supply_categories as public.contract_category[])"
+                if key == "supply_categories"
+                else f"{key} = :{key}"
+            )
+            for key in safe_changes
+        )
         try:
             result = await self._session.execute(
                 text(

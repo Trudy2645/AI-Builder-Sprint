@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Banknote,
   CalendarRange,
@@ -29,14 +29,55 @@ import { useApp } from "../../context/AppContext";
 import {
   CATEGORIES,
   DISTRICTS,
-  contracts,
   formatKRW,
   type Category,
   type Contract,
 } from "../../data/contracts";
+import { friendlyApiError, getPublicListings, type PublicListing } from "../../lib/api";
 
 type Sort = "recommended" | "latest" | "popular" | "priceLow" | "priceHigh";
 const PRICE_MAX = 250000;
+
+const categoryByApiCategory: Record<PublicListing["category"], Category> = {
+  accommodation: "stay",
+  activity: "leisure",
+  tour: "package",
+  vehicle_rental: "sports",
+};
+
+function toContract(listing: PublicListing): Contract {
+  const price = listing.base_price?.amount_minor ?? 0;
+  const currency = listing.base_price?.currency ?? "KRW";
+  const period = `${listing.availability.start_date ?? "미정"} ~ ${listing.availability.end_date ?? "미정"}`;
+  return {
+    id: listing.id,
+    seller: listing.seller.name,
+    title: listing.title,
+    category: categoryByApiCategory[listing.category],
+    district: listing.district,
+    start: listing.availability.start_date ?? "미정",
+    end: listing.availability.end_date ?? "미정",
+    unitPrice: price,
+    priceUnit: listing.base_price?.unit ?? "기준 단가",
+    quantityLabel: "상세 페이지에서 공급 조건을 확인하세요",
+    capacity: Number.MAX_SAFE_INTEGER,
+    available: listing.contract_available,
+    popularity: 0,
+    createdOrder: 0,
+    recommendScore: 0,
+    image: listing.hero_image_url ?? "",
+    aiSummary: [listing.ai_summary ?? "AI 요약이 아직 준비되지 않았습니다."],
+    details: {
+      period,
+      supplyQuantity: "상세 페이지에서 확인",
+      unitPrice: `${price.toLocaleString("ko-KR")} ${currency}`,
+      cancellation: "상세 페이지에서 확인",
+      noShow: "상세 페이지에서 확인",
+      settlement: "상세 페이지에서 확인",
+    },
+    clauses: [],
+  };
+}
 
 function toDate(s: string) {
   return new Date(s.replace(/\./g, "-"));
@@ -69,6 +110,24 @@ export function ExploreView({ base }: { base: string }) {
   const [price, setPrice] = useState<[number, number]>([0, PRICE_MAX]);
   const [availableOnly, setAvailableOnly] = useState(false);
   const [sort, setSort] = useState<Sort>("recommended");
+  const [serverContracts, setServerContracts] = useState<Contract[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getPublicListings()
+      .then((listings) => {
+        if (active) setServerContracts(listings.map(toContract));
+      })
+      .catch((error: unknown) => {
+        if (active) setLoadError(friendlyApiError(error));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   const reset = () => {
     setCategory("all");
@@ -82,7 +141,7 @@ export function ExploreView({ base }: { base: string }) {
   };
 
   const results = useMemo(() => {
-    const list: Contract[] = contracts.filter((c) => {
+    const list: Contract[] = serverContracts.filter((c) => {
       const keyword = search.trim().toLocaleLowerCase();
       if (keyword && !`${c.seller} ${c.title}`.toLocaleLowerCase().includes(keyword)) return false;
       if (category !== "all" && c.category !== category) return false;
@@ -104,7 +163,7 @@ export function ExploreView({ base }: { base: string }) {
       priceHigh: (a, b) => b.unitPrice - a.unitPrice,
     };
     return [...list].sort(sorters[sort]);
-  }, [search, category, district, guests, from, to, price, availableOnly, sort]);
+  }, [search, category, district, guests, from, to, price, availableOnly, sort, serverContracts]);
 
   const categoryLabel = CATEGORIES.find((c) => c.value === category);
   const hasPriceFilter = price[0] > 0 || price[1] < PRICE_MAX;
@@ -282,7 +341,18 @@ export function ExploreView({ base }: { base: string }) {
           </Select>
         </div>
 
-        {results.length === 0 ? (
+        {loadError && (
+          <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+            <div className="font-semibold">공고를 불러오지 못했습니다</div>
+            <p className="mt-1">{loadError}</p>
+            <Button className="mt-3" size="sm" variant="outline" onClick={() => window.location.reload()}>
+              다시 시도
+            </Button>
+          </div>
+        )}
+        {loading ? (
+          <div className="rounded-2xl border border-dashed border-border bg-card p-16 text-center text-muted-foreground">공고를 불러오는 중입니다…</div>
+        ) : results.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card p-16 text-center text-muted-foreground">{t("explore.empty")}</div>
         ) : (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">

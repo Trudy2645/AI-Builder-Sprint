@@ -145,6 +145,8 @@ def test_buyer_reads_own_profile(api_client: TestClient) -> None:
         "locale": "ja-JP",
         "preferred_currency": "JPY",
         "default_group_name": "Busan Friends",
+        "affiliation_name": None,
+        "business_type": None,
         "role": "buyer",
         "created_at": "2026-07-29T00:00:00Z",
         "updated_at": "2026-07-29T00:00:00Z",

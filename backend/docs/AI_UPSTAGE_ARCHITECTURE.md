@@ -83,6 +83,20 @@ MVP의 `단체서명`은 참가자 전원이 각각 전자서명하는 방식이
 
 ## 3. 최종 아키텍처
 
+공통 구현은 `backend/app/ai` 아래에서 provider, task, agent, tool, prompt, schema를 분리한다.
+개발·테스트 기본 provider는 `fake`이며 `AI_PROVIDER=upstage`와 API key를 명시한 환경에서만
+실제 Upstage adapter를 구성한다.
+
+```text
+backend/app/ai/
+├── providers/      # protocol, deterministic fake, Upstage HTTP adapter
+├── schemas/        # Pydantic provider input/output
+├── tasks/          # 고정 task registry
+├── agents/         # contract_review 전용
+├── tools/          # 네 개 도구 allowlist
+└── prompts/v1/     # versioned prompt constants
+```
+
 ```mermaid
 flowchart TD
     UI["셀러 작성/업로드 또는 바이어 공개 계약 조회"] --> API["FastAPI Workflow Orchestrator"]
@@ -254,6 +268,10 @@ Document Parse 결과를 다음 JSON schema로 변환한다.
 ```
 
 confidence가 낮거나 서로 충돌하는 값은 자동 확정하지 않고 seller confirmation 항목으로 보낸다.
+Upstage Universal Extraction의 confidence 원문은 `high`/`low` 등급이므로 adapter에서 내부
+검증용 값 `1.0`/`0.0`으로 정규화한다. 이는 확률 추정치가 아니라 provider 등급의 손실 없는
+이진 매핑이다. API에는 `location=true`, `location_granularity=element`를 전달하고 반환된 page와
+정규화 좌표를 `source_page`, `bbox`로 보존한다.
 
 `price`, `service_period`, `cancellation`, `refund`, `safety`, `compensation`, `liability`는 과제 요구사항의 필수 top-level key다. 문서에 항목이 없더라도 key를 생략하지 않고 `null`, `missing=true`로 반환해 누락 위험을 탐지한다. 정산, 노쇼, 최소 인원, 기상 취소 등은 카테고리별 확장 field로 함께 추출한다.
 
@@ -295,15 +313,15 @@ RAG는 두 저장소를 논리적으로 분리한다.
 | `official_contract_knowledge` | 공식 법령·표준약관·공식 분쟁 기준·관광업 공식 지침 | 위험 설명의 외부 근거 후보 |
 | `busan_link_templates` | 팀이 승인한 개인 관광객용 자동차 렌탈·액티비티·투어·숙박 계약 템플릿과 clause library | 계약 생성과 대안 문구 |
 
-선택적 세 번째 저장소:
+선택적 네 번째 저장소:
 
 | 저장소 | 자료 | 조건 |
 | --- | --- | --- |
 | `approved_historical_contracts` | 비식별화되고 사용 승인을 받은 과거 계약 | 개인정보 제거와 사용 권한이 확인된 경우만 |
 
-MVP에서는 세 번째 저장소를 만들지 않는다. 셀러가 업로드한 사용자 계약서는 공용 Vector Store에 올리지 않고 Document Parse/Information Extract 결과를 조항별로 직접 분석한다. 실제 provider 기능명이 Universal Extraction이면 adapter 내부에서만 매핑한다. Vector Store는 검수된 공식 근거 PDF와 팀 승인 템플릿에만 사용한다.
+MVP에서는 과거 계약 저장소를 만들지 않는다. 셀러가 업로드한 사용자 계약서는 공용 Vector Store에 올리지 않고 Document Parse/Information Extract 결과를 조항별로 직접 분석한다. 실제 provider 기능명이 Universal Extraction이면 adapter 내부에서만 매핑한다. Vector Store는 검수된 공식 근거 PDF, 팀 승인 템플릿, 승인 판례만 사용한다.
 
-공식 자료는 PDF를 그대로 Files API에 업로드한다. Markdown 변환은 필수가 아니며, 텍스트가 없는 스캔 PDF나 검색 품질이 기준에 미달한 문서만 Document Parse/OCR 또는 정규화 대상으로 돌린다. 국내여행 표준약관은 `common`에 한 번 저장하지만 검색 metadata는 `contract_categories=["tour"]`로 제한한다.
+공식 자료는 PDF를 그대로 Files API에 업로드한다. 텍스트가 없는 스캔 PDF나 provider가 직접 index하지 못한 장문 PDF만 Document Parse/OCR, 정규화 PDF 또는 page-marked text 파생물로 재시도한다. 파생물을 쓰더라도 원본 PDF와 source hash는 immutable Storage에 유지한다. 국내여행 표준약관은 `common`에 한 번 저장하지만 검색 metadata는 `contract_categories=["tour"]`로 제한한다.
 
 문서 metadata:
 
@@ -380,6 +398,8 @@ MVP에서는 세 번째 저장소를 만들지 않는다. 셀러가 업로드한
 
 ```
 Storage upload 완료
+→ POST /documents/{id}/complete로 파일 검증
+→ POST /documents/{id}/process로 비용 작업 명시적 시작
 → Document Parse
 → Information Extract
 → seller 확인이 필요한 낮은 confidence 값 표시
@@ -398,7 +418,9 @@ DB/API 연결:
 - `listing_versions`, `listing_clauses`
 - `ai_analysis_runs`, `ai_findings`
 - `POST /documents/{id}/complete`
+- `POST /documents/{id}/process`
 - `GET /ai-jobs/{id}`
+- `GET /documents/{id}/processing-result`
 
 ### 6.2 셀러가 직접 작성
 
@@ -407,10 +429,19 @@ listing_terms 입력
 → 규칙 엔진으로 필수값 확인
 → 템플릿 File Search
 → Solar contract_generate 고정 함수
+→ JSON Schema와 숫자·날짜·단위 보존 검사
 → 새 listing version 생성
 → seller ContractReviewAgent
 → 셀러 수정
 ```
+
+`contract_generate`는 `base_version_no`와 Idempotency-Key를 기준으로 실행을 선점하고 listing을
+`processing`으로 전이한다. 승인 metadata가 명시된 template hit만 참고 문맥으로 사용하며 공식
+법적 근거로 표시하지 않는다. Solar 출력은 조항 순서·key·title·body만 반환하고, version 번호,
+hash, 상태 전이와 DB 저장은 애플리케이션 코드가 담당한다. 입력에 없는 숫자나 날짜가 추가되거나
+단가·기간·수량·단위가 누락되면 저장하지 않고 `draft`로 복구한다. 성공 시 기존 version을
+수정하지 않고 새 version과 clauses를 하나의 transaction으로 저장한 뒤 `ready`로 전이하며 자동
+게시하지 않는다.
 
 `임시저장`은 필수값이 없어도 가능하다. `작성 완료`에서만 필수값과 AI 처리 상태를 검사한다.
 
@@ -441,7 +472,7 @@ AI가 하지 않는 일:
 - 예상 금액 직접 계산
 - 공개되지 않은 셀러 분석 결과 노출
 
-추천순은 검증 상태, 정보 완성도, 계약 가능 여부, 인기도를 backend score로 계산한다. 예상 가격도 기준 단가·수량·기간·환율을 코드로 계산하고 Solar는 설명만 생성한다.
+추천순은 검증 상태, 정보 완성도, 계약 가능 여부, 인기도를 backend score로 계산한다. 계약 가능 여부는 별도 boolean이 아니라 `published=true`, `paused=false`로 계산한다. 예상 가격은 사용자가 명시한 인원·과금 수량·단위·박수·기간과 기준 단가·환율을 코드로 계산하고 Solar는 설명만 생성한다. 공개 화면의 반복 preview 계산은 기본적으로 저장하지 않고 계약 요청에 사용된 계산만 snapshot한다.
 
 ### 6.5 바이어가 계약서 원문을 검토
 
@@ -482,6 +513,11 @@ Solar가 만든 `suggested_text`는 자동으로 계약서에 쓰지 않는다.
 
 `suggested_text_hash`와 분석 대상 version을 함께 검사해 오래된 추천 문구가 최신 계약에 잘못 적용되지 않게 한다. 적용·기각·사용자 편집은 모두 audit event에 남긴다.
 
+구현 API는 셀러 조직 구성원만 호출할 수 있고 모든 action POST에 `Idempotency-Key`를 요구한다.
+적용은 원본 조항과 version을 수정하지 않고 새 version/clauses를 생성한 뒤 seller와 buyer 관점
+`risk_analysis` job을 각각 큐에 넣는다. 기각은 finding 상태와 사유만 변경한다. 감사 event에는
+계약 문구 원문 대신 version id, SHA-256, 사용자 편집 여부를 기록한다.
+
 ### 6.8 전자서명
 
 AI는 서명자를 대신해 동의하거나 서명을 실행하지 않는다.
@@ -510,6 +546,12 @@ AI가 할 수 있는 일:
 | `zh-CN` | 중국어 간체 | 외국인 바이어 설명·요약 |
 
 한국어로 근거를 확정한 뒤 다른 언어로 번역한다. 번역 결과는 `listing/contract/finding version + locale + prompt_version + source_hash`로 cache하며 금액·날짜·백분율·근거 번호의 보존을 코드로 검증한다.
+
+구현된 `localize_explain`은 Agent 도구가 아니라 고정 Solar task다. 공개된 현재 listing version과
+최신 공개 buyer finding만 입력으로 사용하며, Pydantic schema 통과 후 금액·통화·ISO 날짜·비율·
+수량·조항 순서·finding/evidence 참조와 셀러명·지역명을 Python 코드로 비교한다. locale별 job과
+DB transaction을 분리해 부분 실패가 다른 locale cache에 영향을 주지 않는다. 공개 조회는 저장된
+검증 결과만 반환하고 cache miss에서는 모델을 호출하지 않고 canonical 한국어로 fallback한다.
 
 ## 7. 표준 중간 데이터
 
@@ -581,6 +623,12 @@ flowchart LR
 검색 결과가 없거나 관련성이 낮으면 `grounding_status=insufficient_evidence`로 저장하고 근거가 있는 것처럼 표현하지 않는다.
 
 화면의 `[1]`, `[2]` 근거 번호는 저장된 evidence id를 가리킨다. 번호 클릭 시 내부 viewer가 immutable Storage snapshot의 `page_start`로 이동하고, 가능한 경우 bbox로 해당 문장을 하이라이트한다. 공식 원문 URL도 별도 버튼으로 제공한다.
+
+구현 검색은 `official_contract_knowledge`, `busan_link_templates`, `case_reference`를 서로 다른
+Vector Store로 유지한다. `status=active`, 시행일, `party_type=B2C_individual`, 현재 category와
+선택적 activity subtype을 provider attribute filter로 제한하고, 채택 직전 PostgreSQL registry에서
+동일 범위를 다시 검증한다. provider page가 없으면 immutable 원본 PDF에서 excerpt 위치를
+결정하고, page를 찾지 못한 결과는 clickable evidence나 grounded finding으로 저장하지 않는다.
 
 ## 8. 위험도와 중요도
 
@@ -660,8 +708,8 @@ sha256(
 | 결과 | 저장 |
 | --- | --- |
 | 원본 계약 파일 | Supabase Storage `contract-documents` |
-| 큰 parse 결과 | Storage `parsed/{document_id}.json` |
-| 추출 핵심값 | `documents.extracted_data`, listing terms/version |
+| 큰 parse 결과 | private Storage `ai-artifacts/documents/{document_id}/parsed/*.json` |
+| 추출 핵심값 | `documents.extracted_data`의 셀러 확인 후보 |
 | job 상태 | `ai_jobs` |
 | 분석 실행 정보 | `ai_analysis_runs` |
 | Agent 반복·종료 정보 | `ai_analysis_runs.execution_mode/agent_name/iterations_used/stop_reason` |
@@ -685,10 +733,13 @@ sha256(
 
 | API/이벤트 | AI job | 동기/비동기 | 사용자 결과 |
 | --- | --- | --- | --- |
-| `POST /documents/{id}/complete` | document_parse → information_extract → rule_check → contract_review Agent | 비동기 | 요금·기간·취소·환불·안전·보상·책임 추출 및 근거 기반 검토 진행률 |
+| `POST /documents/{id}/complete` | 없음 | 동기 | Storage object의 MIME·크기·SHA-256 검증과 `uploaded` 전이 |
+| `POST /documents/{id}/process` | document_parse → information_extract | 비동기 | 7개 필수 영역과 셀러 확인용 공고 후보 |
 | `POST /ai-findings/{id}/apply` | safeguard apply → new version → re-analysis | 비동기 | 적용된 새 version과 재분석 job |
 | `POST /seller/listings/{id}/generate` | contract_generate 고정 함수 → contract_review Agent | 비동기 | 계약 초안과 셀러 finding |
 | `POST /seller/listings/{id}/analyses` | contract_review Agent | 비동기 | 특정 version 재분석 |
+| `POST /contracts/{id}/analyses` | contract_review Agent | 비동기 | 계약 당사자 관점의 특정 version 분석 |
+| `GET /ai-analysis-runs/{id}` | 모델 호출 없음 | 동기 | 권한이 확인된 run과 finding |
 | `POST /seller/listings/{id}/complete` | rule validation | 동기 | 필수값 누락 목록 |
 | `POST /seller/listings/{id}/publish` | buyer analysis + summary + localization 확인 | 혼합 | 공개 가능 또는 준비 중 |
 | `GET /public/listings` | 모델 호출 없음 | 동기 | 저장된 요약/번역 |

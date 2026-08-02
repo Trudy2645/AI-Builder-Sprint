@@ -21,6 +21,9 @@ export interface RevisionItem {
   requested: string;
   reason: string;
   attachment?: string;
+  // 셀러가 RevisionReviewPage에서 내린 조항별 검토 결과 (협상 중 화면에서 사용).
+  sellerDecision?: "accept" | "reject" | "counter";
+  sellerResponse?: string; // 셀러의 최종 응답 문구 (수락=바이어 요청안, 대안=셀러 제안 문구, 거절=기존 유지)
 }
 
 export interface SentRequest {
