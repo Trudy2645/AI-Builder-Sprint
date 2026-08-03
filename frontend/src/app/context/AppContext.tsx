@@ -1,7 +1,6 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { translate, type Lang } from "../i18n/translations";
-import { setAccessToken } from "../lib/api";
-import { getAccessToken } from "../lib/api";
+import { ApiError, apiFetch, getAccessToken, setAccessToken } from "../lib/api";
 
 export type Role = "buyer" | "seller";
 
@@ -20,12 +19,13 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 const sessionKey = "busan-link-session";
+const organizationIdKey = "busanlink.organization_id";
 
 type StoredSession = { role: Role; companyName: string };
 
 function readStoredSession(): StoredSession | null {
   try {
-    const value = window.localStorage.getItem(sessionKey);
+    const value = window.sessionStorage.getItem(sessionKey);
     if (!value) return null;
     const parsed: unknown = JSON.parse(value);
     if (
@@ -49,19 +49,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentRole, setCurrentRole] = useState<Role | null>(authenticatedSession?.role ?? null);
   const [isDemoSession, setIsDemoSession] = useState(false);
 
+  // The stored UI role is only a convenience.  The authenticated user returned
+  // by the server is authoritative, especially after switching demo accounts.
+  useEffect(() => {
+    if (!authenticatedSession) return;
+
+    let cancelled = false;
+    void apiFetch<{ role: Role; display_name: string; organizations: Array<{ id: string }> }>("/me")
+      .then((me) => {
+        if (cancelled) return;
+        const organizationId = me.organizations[0]?.id;
+        if (organizationId) window.sessionStorage.setItem(organizationIdKey, organizationId);
+        else window.sessionStorage.removeItem(organizationIdKey);
+
+        if (me.role !== authenticatedSession.role) {
+          setCurrentRole(me.role);
+          setCompanyName(me.display_name);
+          window.sessionStorage.setItem(sessionKey, JSON.stringify({ role: me.role, companyName: me.display_name }));
+        }
+      })
+      .catch((error: unknown) => {
+        // An expired/invalid token must not leave a misleading protected UI on
+        // screen.  Transient server failures keep the current session intact.
+        if (!cancelled && error instanceof ApiError && error.code === "AUTH_REQUIRED") logout();
+      });
+
+    return () => { cancelled = true; };
+  // Run once for the persisted session. Login flows set state explicitly.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const login = (role: Role, company?: string, isDemo = false) => {
     setCurrentRole(role);
     setCompanyName(company ?? "");
     setIsDemoSession(isDemo);
     if (!isDemo) {
-      window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
+      window.sessionStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
     }
   };
 
   const logout = () => {
     setAccessToken(null);
-    window.localStorage.removeItem("busanlink.organization_id");
-    window.localStorage.removeItem(sessionKey);
+    window.sessionStorage.removeItem(organizationIdKey);
+    window.sessionStorage.removeItem(sessionKey);
     setCurrentRole(null);
     setCompanyName("");
     setIsDemoSession(false);
@@ -69,7 +99,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loginWithSession = (role: Role, company: string, accessToken: string, organizationId?: string | null) => {
     setAccessToken(accessToken);
-    if (organizationId) window.localStorage.setItem("busanlink.organization_id", organizationId);
+    if (organizationId) window.sessionStorage.setItem(organizationIdKey, organizationId);
+    else window.sessionStorage.removeItem(organizationIdKey);
     login(role, company, false);
   };
 

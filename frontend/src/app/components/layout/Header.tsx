@@ -310,8 +310,8 @@ export function Header({
             <DropdownMenuItem
               onClick={() => {
                 void loginWithDemoRole(otherRole).then((session) => {
-                  loginWithSession(otherRole, session.email, session.accessToken, session.organizationId);
-                  window.setTimeout(() => navigate(`/${otherRole}`), 0);
+                  loginWithSession(session.role, session.email, session.accessToken, session.organizationId);
+                  window.setTimeout(() => navigate(`/${session.role}`), 0);
                 });
               }}
             >

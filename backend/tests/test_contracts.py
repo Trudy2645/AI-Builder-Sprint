@@ -456,6 +456,19 @@ def test_listing_without_current_version_is_rejected(
     assert response.json()["error"]["code"] == "LISTING_VERSION_REQUIRED"
 
 
+def test_seller_member_cannot_create_contract_as_its_own_buyer(
+    contract_client: TestClient,
+    contract_repository: FakeContractRepository,
+) -> None:
+    contract_repository.memberships.add((BUYER_ID, ORGANIZATION_ID))
+
+    response = post_request(contract_client, key="seller-cannot-self-contract")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CONTRACT_PARTY_CONFLICT"
+    assert contract_repository.created_data == []
+
+
 def test_server_recalculates_price_and_rejects_client_total(
     contract_client: TestClient,
     contract_repository: FakeContractRepository,

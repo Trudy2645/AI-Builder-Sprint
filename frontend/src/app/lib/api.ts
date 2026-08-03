@@ -25,29 +25,42 @@ export class ApiError extends Error {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const accessTokenKey = "busan-link-access-token";
+const organizationIdKey = "busanlink.organization_id";
+const refreshTokenKey = "busanlink.refresh_token";
+
+function authStorage(): Storage {
+  // Authentication must be per tab: a buyer and seller can work side by side
+  // without one tab replacing the other's credentials.
+  return window.sessionStorage;
+}
 
 export function setAccessToken(token: string | null): void {
   if (token) {
-    window.localStorage.setItem(accessTokenKey, token);
-    // Keep the legacy key in sync while existing sessions migrate.
-    window.localStorage.setItem("busanlink.access_token", token);
+    authStorage().setItem(accessTokenKey, token);
+    // Remove the old shared-tab credentials rather than falling back to them.
+    window.localStorage.removeItem(accessTokenKey);
+    window.localStorage.removeItem("busanlink.access_token");
     activeSession = null;
   }
   else {
+    authStorage().removeItem(accessTokenKey);
+    authStorage().removeItem(refreshTokenKey);
+    authStorage().removeItem(organizationIdKey);
     window.localStorage.removeItem(accessTokenKey);
     window.localStorage.removeItem("busanlink.access_token");
+    window.localStorage.removeItem(refreshTokenKey);
+    window.localStorage.removeItem(organizationIdKey);
     activeSession = null;
   }
 }
 
 export function getAccessToken(): string | null {
-  return window.localStorage.getItem(accessTokenKey)
-    ?? window.localStorage.getItem("busanlink.access_token");
+  return authStorage().getItem(accessTokenKey);
 }
 
 type ApiSession = {
   accessToken: string;
-  organizationId: string;
+  organizationId?: string;
 };
 
 let activeSession: ApiSession | null = null;
@@ -55,6 +68,7 @@ let activeSession: ApiSession | null = null;
 type UploadedDocumentProcessingResult = {
   listingId: string;
   listingVersionNo: number;
+  sourceDocumentId: string;
   listingCandidate: {
     title?: string;
     category?: "vehicle_rental" | "activity" | "tour" | "accommodation";
@@ -72,29 +86,27 @@ function requestIdempotencyKey(prefix: string): string {
 function getApiSession(): ApiSession {
   if (activeSession) return activeSession;
   const accessToken = getAccessToken()
-    ?? window.localStorage.getItem("busanlink.access_token")
     ?? import.meta.env.VITE_API_ACCESS_TOKEN;
-  const organizationId = window.localStorage.getItem("busanlink.organization_id")
+  const organizationId = authStorage().getItem(organizationIdKey)
     ?? import.meta.env.VITE_SELLER_ORGANIZATION_ID;
-  if (!accessToken || !organizationId) {
+  if (!accessToken) {
     throw new Error("API 로그인 정보가 없습니다. 로그인 후 다시 시도해 주세요.");
   }
-  return { accessToken, organizationId };
+  return { accessToken, organizationId: organizationId ?? undefined };
 }
 
 export function hasApiSession(): boolean {
   const accessToken = getAccessToken()
-    ?? window.localStorage.getItem("busanlink.access_token")
     ?? import.meta.env.VITE_API_ACCESS_TOKEN;
-  const organizationId = window.localStorage.getItem("busanlink.organization_id")
+  const organizationId = authStorage().getItem(organizationIdKey)
     ?? import.meta.env.VITE_SELLER_ORGANIZATION_ID;
-  return Boolean(accessToken && organizationId);
+  return Boolean(accessToken);
 }
 
 function authenticatedHeaders(session: ApiSession, headers: HeadersInit = {}): Headers {
   const result = new Headers(headers);
   result.set("Authorization", `Bearer ${session.accessToken}`);
-  result.set("X-Organization-Id", session.organizationId);
+  if (session.organizationId) result.set("X-Organization-Id", session.organizationId);
   return result;
 }
 
@@ -126,7 +138,7 @@ export async function apiFetch<Data>(path: string, init: RequestInit = {}): Prom
   if (accessToken && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
-  const organizationId = window.localStorage.getItem("busanlink.organization_id");
+  const organizationId = authStorage().getItem(organizationIdKey);
   if (organizationId && !headers.has("X-Organization-Id")) {
     headers.set("X-Organization-Id", organizationId);
   }
@@ -229,6 +241,7 @@ export async function uploadAndProcessSourceContract(
       return {
         listingId: listing.listing_id,
         listingVersionNo: listing.version_no,
+        sourceDocumentId: upload.document.id,
         listingCandidate: result.listing_candidate,
         confirmationRequired: result.confirmation_required,
         validationWarnings: result.validation_warnings,
@@ -948,10 +961,11 @@ export function createSignatureRequest(
   });
 }
 
-export function dispatchSignatureRequest(contractId: string, versionId: string): Promise<SignatureRequest> {
+export function dispatchSignatureRequest(contractId: string, versionId: string, fields: Array<Record<string, unknown>> = [], sourcePdfBase64?: string): Promise<SignatureRequest> {
   return apiFetch<SignatureRequest>(`/contracts/${contractId}/versions/${versionId}/signature-requests/dispatch`, {
     method: "POST",
-    headers: { "Idempotency-Key": crypto.randomUUID() },
+    headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ fields, source_pdf_base64: sourcePdfBase64 }),
   });
 }
 
@@ -1239,6 +1253,7 @@ export type AuthenticatedDemoSession = {
   accessToken: string;
   refreshToken: string;
   email: string;
+  role: Role;
   organizationId?: string;
 };
 
@@ -1251,15 +1266,16 @@ export async function loginWithDemoRole(role: "buyer" | "seller"): Promise<Authe
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
   });
-  const me = await apiFetch<{ organizations: Array<{ id: string }> }>("/me", {
+  const me = await apiFetch<{ role: Role; organizations: Array<{ id: string }> }>("/me", {
     headers: { Authorization: `Bearer ${result.session.access_token}` },
   });
   const organizationId = me.organizations[0]?.id;
   setAccessToken(result.session.access_token);
-  window.localStorage.setItem("busanlink.refresh_token", result.session.refresh_token);
-  if (organizationId) window.localStorage.setItem("busanlink.organization_id", organizationId);
-  activeSession = { accessToken: result.session.access_token, organizationId: organizationId ?? "" };
-  return { accessToken: result.session.access_token, refreshToken: result.session.refresh_token, email: result.email, organizationId };
+  authStorage().setItem(refreshTokenKey, result.session.refresh_token);
+  if (organizationId) authStorage().setItem(organizationIdKey, organizationId);
+  else authStorage().removeItem(organizationIdKey);
+  activeSession = { accessToken: result.session.access_token, organizationId };
+  return { accessToken: result.session.access_token, refreshToken: result.session.refresh_token, email: result.email, role: me.role, organizationId };
 }
 
 export type BuyerSigningField = {

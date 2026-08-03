@@ -1178,7 +1178,8 @@ MODUSIGN_TEMPLATE_ID=<busan-link-template-id>
 발송 PDF와 서명 위치는 다음 규칙을 따른다.
 
 - 수정 계약은 해당 `contract_version_id`에 연결된 `ready` 상태의 `draft_pdf`만 발송한다.
-- `as_is` 계약만 공고의 `source_contract` 원본 PDF로 fallback할 수 있다.
+- `as_is` 계약은 승인 버전의 `draft_pdf`가 없을 때 셀러가 공고에 올린 `source_contract`
+  원본 PDF를 fallback으로 사용한다.
 - 최종 PDF에 `바이어 서명` 또는 `예약자 서명` 텍스트가 한 번 존재하면 모두싸인
   `position.anchor`를 우선 사용한다.
 - 이미지 PDF는 셀러가 저장한 정규화 수동 좌표 또는 단일 OCR 서명 마커의 bounding box만

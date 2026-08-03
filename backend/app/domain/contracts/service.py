@@ -1,3 +1,5 @@
+import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -154,6 +156,18 @@ class ContractService:
                     status.HTTP_404_NOT_FOUND,
                     "PROFILE_NOT_FOUND",
                     "Buyer profile was not found.",
+                )
+            try:
+                is_listing_seller = await self._repository.is_seller_member(
+                    actor.id, source.seller_organization_id
+                )
+            except ContractRepositoryUnavailableError as exc:
+                self._database_unavailable(exc)
+            if is_listing_seller:
+                self._raise(
+                    status.HTTP_403_FORBIDDEN,
+                    "CONTRACT_PARTY_CONFLICT",
+                    "A seller organization member cannot create a contract as the buyer.",
                 )
             estimate = await self._price_calculator.calculate(
                 ListingPriceTermsRecord(
@@ -451,6 +465,7 @@ class ContractService:
         source_page_count: int | None = None,
         source_field_candidates: list[dict[str, Any]] | None = None,
         source_page_texts: list[str] | None = None,
+        source_fields: list[ModusignParticipantField] | None = None,
     ) -> SignatureRequestCreated:
         if source_pdf is None and not template_id:
             self._raise(
@@ -466,10 +481,10 @@ class ContractService:
                 "VERSION_CONFLICT",
                 "Only the current contract version can be sent for signature.",
             )
-        source_fields: list[ModusignParticipantField] | None = None
-        if source_pdf is not None:
+        resolved_source_fields = source_fields
+        if source_pdf is not None and resolved_source_fields is None:
             try:
-                source_fields = self._source_pdf_fields(
+                resolved_source_fields = self._source_pdf_fields(
                     source_field_candidates,
                     source_page_count,
                     source_page_texts,
@@ -534,7 +549,7 @@ class ContractService:
                     buyer=ModusignParticipant(
                         role="바이어", name=payload.buyer.name, email=payload.buyer.email
                     ),
-                    buyer_fields=source_fields or [],
+                    buyer_fields=resolved_source_fields or [],
                 )
             else:
                 provider_document = await client.create_signature_request(
@@ -558,8 +573,9 @@ class ContractService:
             await self._mark_signature_failed(signature_request.id)
             if isinstance(exc, ModusignRequestError):
                 logger.warning(
-                    "Modusign signature request rejected: status=%s",
+                    "Modusign signature request rejected: status=%s detail=%s",
                     exc.status_code,
+                    exc.detail[:1000],
                 )
                 self._raise(
                     status.HTTP_502_BAD_GATEWAY,
@@ -607,6 +623,8 @@ class ContractService:
         client: ModusignClient,
         template_id: str | None,
         storage: StorageProvider,
+        manual_fields: list[dict[str, Any]] | None = None,
+        source_pdf_base64: str | None = None,
     ) -> SignatureRequestCreated:
         try:
             contacts = await self._repository.get_signature_contacts(
@@ -655,8 +673,113 @@ class ContractService:
                 "FINAL_CONTRACT_PDF_UNAVAILABLE",
                 "The final PDF could not be prepared for signing.",
             )
+        if source_pdf_base64:
+            try:
+                uploaded_pdf = base64.b64decode(source_pdf_base64, validate=True)
+            except (binascii.Error, ValueError):
+                self._raise(
+                    status.HTTP_400_BAD_REQUEST,
+                    "INVALID_SOURCE_PDF",
+                    "The selected contract PDF could not be read.",
+                )
+            if not uploaded_pdf.startswith(b"%PDF"):
+                self._raise(
+                    status.HTTP_400_BAD_REQUEST,
+                    "INVALID_SOURCE_PDF",
+                    "The selected contract PDF is invalid.",
+                )
+            source_pdf = uploaded_pdf
         stored_candidates = source.extracted_data.get("signature_field_candidates")
-        candidates = [
+        manual_source_fields: list[ModusignParticipantField] | None = None
+        if manual_fields:
+            # The placement UI stores normalized coordinates. Keep every field
+            # the seller placed and send it directly to Modusign; the old
+            # signature-candidate selector only supported one OCR signature.
+            manual_source_fields = []
+            for field in manual_fields:
+                field_type = str(field.get("field_type", "")).upper()
+                # Preserve the actual Modusign field type. In particular,
+                # SIGNING_DATE is filled automatically by Modusign, whereas a
+                # TEXT field forces the buyer to enter an arbitrary date.
+                if field_type not in {
+                    "TEXT",
+                    "SIGNATURE",
+                    "CHECKBOX",
+                    "SIGNING_DATE",
+                    "DATE",
+                    "IMAGE",
+                    "DROPDOWN",
+                    "NAME",
+                    "COMPANY_NAME",
+                    "ADDRESS",
+                }:
+                    continue
+                position = field.get("position")
+                if not isinstance(position, dict):
+                    continue
+                size = field.get("size")
+                manual_source_fields.append(
+                    ModusignParticipantField(
+                        field_type=field_type,
+                        data_label=str(field.get("data_label") or "buyer_field"),
+                        position=position,
+                        size=size if isinstance(size, dict) else None,
+                        required=bool(field.get("required", True)),
+                        signature_types=["SIGN"] if field_type == "SIGNATURE" else None,
+                        text_style=(
+                            {
+                                "size": min(
+                                    (
+                                        4,
+                                        5,
+                                        6,
+                                        7,
+                                        8,
+                                        9,
+                                        10,
+                                        11,
+                                        12,
+                                        13,
+                                        14,
+                                        15,
+                                        16,
+                                        17,
+                                        18,
+                                        24,
+                                        30,
+                                        36,
+                                        48,
+                                        60,
+                                    ),
+                                    key=lambda value: abs(value - int(field.get("font_size", 12))),
+                                ),
+                                "font": "NOTO_SANS",
+                                "align": str(field.get("text_align", "LEFT")).upper(),
+                            }
+                            if field_type
+                            in {
+                                "TEXT",
+                                "SIGNING_DATE",
+                                "DATE",
+                                "DROPDOWN",
+                                "NAME",
+                                "COMPANY_NAME",
+                                "ADDRESS",
+                            }
+                            else None
+                        ),
+                        options=(
+                            [
+                                {"value": str(option["value"])}
+                                for option in field.get("options", [])
+                                if isinstance(option, dict) and option.get("value")
+                            ]
+                            if field_type == "DROPDOWN" and isinstance(field.get("options"), list)
+                            else None
+                        ),
+                    )
+                )
+        candidates = manual_fields or [
             candidate
             for candidate in stored_candidates or []
             if isinstance(candidate, dict)
@@ -706,6 +829,7 @@ class ContractService:
             source_page_count,
             candidates if isinstance(candidates, list) else [],
             source_page_texts,
+            manual_source_fields,
         )
 
     @staticmethod

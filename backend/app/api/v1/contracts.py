@@ -25,6 +25,7 @@ from app.schemas.contracts import (
     ContractDetail,
     ContractRequestCreate,
     ContractRequestCreated,
+    ContractSignatureDispatchCreate,
     ContractSignatureRequestCreate,
     ContractVersionApprovalsResponse,
     ContractVersionApproveResponse,
@@ -208,6 +209,7 @@ async def dispatch_contract_signature_request(
     settings: Annotated[Settings, Depends(get_settings)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
     organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+    payload: ContractSignatureDispatchCreate | None = None,
 ) -> SuccessEnvelope[SignatureRequestCreated]:
     result = await service.dispatch_signature_request_from_snapshots(
         contract_id,
@@ -218,6 +220,8 @@ async def dispatch_contract_signature_request(
         client,
         settings.modusign_template_id,
         storage,
+        manual_fields=[field.model_dump() for field in (payload.fields if payload else [])],
+        source_pdf_base64=payload.source_pdf_base64 if payload else None,
     )
     return typed_envelope(request, result)
 

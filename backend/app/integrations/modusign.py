@@ -49,6 +49,7 @@ class ModusignParticipantField:
     required: bool = True
     signature_types: list[str] | None = None
     text_style: dict[str, Any] | None = None
+    options: list[dict[str, str]] | None = None
 
     def as_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -63,6 +64,8 @@ class ModusignParticipantField:
             payload["signatureTypes"] = self.signature_types
         if self.text_style is not None:
             payload["textStyle"] = self.text_style
+        if self.options is not None:
+            payload["options"] = self.options
         return payload
 
 

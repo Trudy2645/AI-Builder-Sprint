@@ -27,6 +27,7 @@ import { RevisionReviewPage } from "./pages/seller/RevisionReviewPage";
 import { SellerNegotiatingPage } from "./pages/seller/SellerNegotiatingPage";
 import { SellerContractsPage } from "./pages/seller/SellerContractsPage";
 import { SellerMyPage } from "./pages/seller/SellerMyPage";
+import { SignatureFieldPlacementPage } from "./pages/seller/SignatureFieldPlacementPage";
 import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { FinalApprovePage } from "./pages/negotiation/FinalApprovePage";
 import { ESignaturePage } from "./pages/negotiation/ESignaturePage";
@@ -74,6 +75,10 @@ const signingRoutes = [
   { path: "signing/compare", element: <VersionComparePage /> },
   { path: "signing/sign", element: <ESignaturePage /> },
   { path: "signing/complete", element: <CompletionPage /> },
+];
+
+const sellerSignatureSetupRoutes = [
+  { path: "signing/place-fields", element: <SignatureFieldPlacementPage /> },
 ];
 
 // Buyer nav items that now have dedicated pages instead of placeholders.
@@ -165,6 +170,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/seller/dashboard" replace /> },
       ...sellerListingRoutes,
+      ...sellerSignatureSetupRoutes,
       ...signingRoutes,
       ...sellerChildren,
     ],

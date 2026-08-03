@@ -309,3 +309,30 @@ class ContractSignatureRequestCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     buyer: ContractSignatureParticipant
     seller: ContractSignatureParticipant
+
+
+class SignatureFieldPlacement(BaseModel):
+    field_type: Literal[
+        "SIGNATURE",
+        "TEXT",
+        "SIGNING_DATE",
+        "DATE",
+        "CHECKBOX",
+        "IMAGE",
+        "DROPDOWN",
+        "NAME",
+        "COMPANY_NAME",
+        "ADDRESS",
+    ]
+    data_label: str
+    position: dict[str, object]
+    size: dict[str, float] | None = None
+    required: bool = True
+    font_size: int = Field(default=12, ge=8, le=72)
+    text_align: Literal["LEFT", "CENTER", "RIGHT"] = "LEFT"
+    options: list[dict[str, str]] | None = None
+
+
+class ContractSignatureDispatchCreate(BaseModel):
+    fields: list[SignatureFieldPlacement] = Field(default_factory=list)
+    source_pdf_base64: str | None = None

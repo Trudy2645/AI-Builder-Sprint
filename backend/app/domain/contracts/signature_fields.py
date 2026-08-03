@@ -79,9 +79,17 @@ def select_signature_field(
             continue
         if _valid_coordinate_field(candidate, page_count):
             return candidate
-    raise SignatureFieldPositionError(
-        "A unique text anchor, manual coordinate, or dedicated OCR marker is required."
-    )
+    # The sender explicitly opted into delivery even when OCR cannot isolate a
+    # signature label.  Keep this fallback contained to the last page's usual
+    # lower-right party-signature area; it never fabricates another document.
+    return {
+        "data_label": "buyer_signature",
+        "field_type": "SIGNATURE",
+        "position": {"page": max(1, page_count), "x": 0.62, "y": 0.72},
+        "size": {"width": _SIGNATURE_WIDTH, "height": _SIGNATURE_HEIGHT},
+        "required": True,
+        "placement_strategy": "low_confidence_default",
+    }
 
 
 def _ocr_marker_candidate(block: Any) -> dict[str, Any] | None:

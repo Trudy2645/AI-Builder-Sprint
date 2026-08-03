@@ -9,12 +9,8 @@ from app.ai.schemas import BoundingBox, DocumentParseResult, ParsedBlock, Parsed
 from app.api.dependencies import get_contract_service, get_modusign_client, get_storage_provider
 from app.core.auth import get_current_user
 from app.core.config import Settings, get_settings
-from app.core.errors import AppError
 from app.domain.contracts.service import ContractService
-from app.domain.contracts.signature_fields import (
-    SignatureFieldPositionError,
-    signature_field_candidates,
-)
+from app.domain.contracts.signature_fields import signature_field_candidates
 from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.exchange_rates import FakeExchangeRateProvider
@@ -142,6 +138,21 @@ class FakeModusignClient:
         assert len(participants) == 1
         assert participants[0].role == "바이어"
         assert participants[0].email == "buyer@example.test"
+        return {"id": "modusign-doc-1", "status": "ON_PROCESSING"}
+
+    async def create_signature_request_from_pdf(
+        self,
+        *,
+        title: str,
+        pdf_bytes: bytes,
+        buyer: ModusignParticipant,
+        buyer_fields: list[object],
+    ) -> dict[str, str]:
+        self.calls += 1
+        assert title == "Busan tour contract"
+        assert pdf_bytes.startswith(b"%PDF")
+        assert buyer.email == "buyer@example.test"
+        assert len(buyer_fields) == 1
         return {"id": "modusign-doc-1", "status": "ON_PROCESSING"}
 
     async def get_document(self, document_id: str) -> dict[str, object]:
@@ -273,8 +284,9 @@ def test_table_level_ocr_bbox_is_not_used_as_a_signature_coordinate() -> None:
     )
 
     assert signature_field_candidates(parsed) == []
-    with pytest.raises(SignatureFieldPositionError):
-        ContractService._source_pdf_fields([], 1, [])
+    fields = ContractService._source_pdf_fields([], 1, [])
+    assert fields[0].position == {"page": 1, "x": 0.62, "y": 0.72}
+    assert fields[0].size == {"width": 0.20, "height": 0.06}
 
 
 def test_isolated_ocr_marker_uses_its_real_bbox() -> None:
@@ -321,7 +333,7 @@ def test_manual_coordinate_is_validated_and_used() -> None:
     assert fields[0].position == {"page": 2, "x": 0.55, "y": 0.75}
 
 
-def test_legacy_guessed_or_out_of_bounds_coordinate_is_rejected() -> None:
+def test_invalid_candidates_fall_back_to_last_page_buyer_signature_area() -> None:
     candidates = [
         {
             "data_label": "buyer_signature",
@@ -338,12 +350,12 @@ def test_legacy_guessed_or_out_of_bounds_coordinate_is_rejected() -> None:
         },
     ]
 
-    with pytest.raises(SignatureFieldPositionError):
-        ContractService._source_pdf_fields(candidates, 1, [])
+    fields = ContractService._source_pdf_fields(candidates, 1, [])
+    assert fields[0].position == {"page": 1, "x": 0.62, "y": 0.72}
 
 
 @pytest.mark.asyncio
-async def test_source_pdf_without_trustworthy_position_fails_before_request_is_persisted(
+async def test_source_pdf_without_trustworthy_position_uses_sender_opt_in_fallback(
     signature_repository: FakeSignatureRepository,
 ) -> None:
     service = ContractService(
@@ -352,25 +364,24 @@ async def test_source_pdf_without_trustworthy_position_fails_before_request_is_p
     )
     provider = FakeModusignClient()
 
-    with pytest.raises(AppError) as error:
-        await service.create_signature_request(
-            CONTRACT_ID,
-            VERSION_ID,
-            ContractSignatureRequestCreate.model_validate(_payload()),
-            AuthenticatedUser(id=BUYER_ID, email="buyer@example.test"),
-            None,
-            "missing-position",
-            provider,  # type: ignore[arg-type]
-            "template-1",
-            source_pdf=b"%PDF-1.7\n",
-            source_page_count=1,
-            source_field_candidates=[],
-            source_page_texts=[],
-        )
+    created = await service.create_signature_request(
+        CONTRACT_ID,
+        VERSION_ID,
+        ContractSignatureRequestCreate.model_validate(_payload()),
+        AuthenticatedUser(id=BUYER_ID, email="buyer@example.test"),
+        None,
+        "missing-position",
+        provider,  # type: ignore[arg-type]
+        "template-1",
+        source_pdf=b"%PDF-1.7\n",
+        source_page_count=1,
+        source_field_candidates=[],
+        source_page_texts=[],
+    )
 
-    assert error.value.code == "SIGNATURE_FIELD_POSITION_REQUIRED"
-    assert signature_repository.requests == {}
-    assert provider.calls == 0
+    assert created.status == "in_progress"
+    assert len(signature_repository.requests) == 1
+    assert provider.calls == 1
 
 
 def test_creates_persisted_signature_request(
