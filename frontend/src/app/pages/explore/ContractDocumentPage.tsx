@@ -77,7 +77,7 @@ function severityLabel(severity: DisplayFinding["severity"]): string {
 }
 
 export function ContractDocumentPage() {
-  const { t } = useApp();
+  const { lang, t } = useApp();
   const { base, isGuest } = useExploreCtx();
   const { id } = useParams();
   const location = useLocation();
@@ -107,6 +107,13 @@ export function ContractDocumentPage() {
   const [zoom, setZoom] = useState(100);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const selectedLocale: DocumentLanguage = lang === "ko" ? "ko-KR" : lang === "en" ? "en-US" : lang === "ja" ? "ja-JP" : "zh-CN";
+
+  // The global language selector also controls full-contract translation.
+  // Users can still choose a different document language using the local buttons.
+  useEffect(() => {
+    setLanguage(selectedLocale);
+  }, [selectedLocale]);
 
   useEffect(() => {
     if (!id) {
@@ -122,7 +129,7 @@ export function ContractDocumentPage() {
       setError(null);
       setListing(null);
       setPreview(null);
-      setLanguage("ko-KR");
+      setLanguage(selectedLocale);
       setTranslations({});
       setAssistantFindings(null);
       setAssistantError(null);
@@ -155,7 +162,7 @@ export function ContractDocumentPage() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, selectedLocale]);
 
   useEffect(() => {
     setSourcePdfUrl(null);

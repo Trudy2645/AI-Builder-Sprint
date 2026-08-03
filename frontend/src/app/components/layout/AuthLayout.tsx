@@ -23,17 +23,17 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         className="relative hidden w-[45%] flex-col justify-between overflow-hidden p-12 lg:flex"
         style={{ background: "linear-gradient(160deg, var(--navy) 0%, var(--ocean) 100%)" }}
       >
-        <Link to="/explore" aria-label="계약 탐색 첫 페이지로 이동" className="w-fit rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
+        <Link to="/explore" aria-label={t("auth.exploreHome")} className="w-fit rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
           <Logo />
         </Link>
         <div className="text-white">
           <div style={{ fontSize: "30px", fontWeight: 700, lineHeight: 1.35 }}>
-            부산 관광 공급 계약을
+            {t("auth.heroTitle").split("\n")[0]}
             <br />
-            더 빠르고 안전하게
+            {t("auth.heroTitle").split("\n")[1]}
           </div>
           <p className="mt-4 max-w-md" style={{ color: "rgba(255,255,255,0.85)" }}>
-            공고 탐색, AI 위험 조항 검토, 수정 협상, 전자서명까지 한 곳에서.
+            {t("auth.heroDescription")}
           </p>
         </div>
         <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "12px" }}>
@@ -45,7 +45,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       <div className="flex flex-1 flex-col">
         <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
           <div className="lg:hidden">
-            <Link to="/explore" aria-label="계약 탐색 첫 페이지로 이동" className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Link to="/explore" aria-label={t("auth.exploreHome")} className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <Logo />
             </Link>
           </div>

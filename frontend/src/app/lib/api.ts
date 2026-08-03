@@ -1292,7 +1292,16 @@ export async function loginWithDemoRole(role: "buyer" | "seller"): Promise<Authe
   if (organizationId) authStorage().setItem(organizationIdKey, organizationId);
   else authStorage().removeItem(organizationIdKey);
   activeSession = { accessToken: result.session.access_token, organizationId };
-  return { accessToken: result.session.access_token, refreshToken: result.session.refresh_token, email: result.email, role: me.role, organizationId };
+  // Some locally running API builds do not yet include `role` in `/me`.
+  // The selected demo account is authoritative for this flow, so keep the
+  // requested role as a fallback instead of navigating to `/undefined`.
+  return {
+    accessToken: result.session.access_token,
+    refreshToken: result.session.refresh_token,
+    email: result.email,
+    role: me.role ?? role,
+    organizationId,
+  };
 }
 
 export type BuyerSigningField = {

@@ -121,7 +121,7 @@ erDiagram
 
 `organizations`와 `organization_members`는 MVP에서 셀러 업체와 그 담당자 권한에 사용한다. 기존 `organization_type=buyer` 값은 이전 스키마 호환을 위해 남아 있을 수 있지만 신규 개인 바이어 가입에서는 생성하지 않는다.
 
-셀러는 `pending` 상태에서도 draft 공고를 만들 수 있지만 `verified` 전에는 publish할 수 없다. 실제 검증 자동화가 없는 MVP에서는 관리자 seed 또는 승인 script로 상태를 바꾼다.
+셀러는 `pending` 상태에서도 공고를 작성하고 publish할 수 있다. `verification_status`는 사업자 검증 진행 상태를 표시하는 운영 정보다.
 
 ## 4. 셀러 공고
 
@@ -500,7 +500,7 @@ MVP 공식 자료는 PDF를 그대로 Upstage Files/Vector Store에 적재한다
 - 공개 browsing은 FastAPI의 `/public` endpoint가 service role로 필요한 컬럼만 projection한다. 기간이 유효한 `published`와 `paused`만 조회하며 `paused`에는 `contract_available=false`를 계산해 반환한다.
 - 브라우저가 Supabase 테이블을 직접 조회해 계약 원문이나 내부 finding을 가져가지 않는다.
 - seller listing 쓰기는 seller organization member만 가능하다.
-- `publish`는 organization이 verified인지 domain service에서 확인한다.
+- `publish`는 seller organization membership과 공고의 필수 항목·상태를 확인한다.
 - 계약/수정 요청/서명 정보는 `buyer_user_id = auth.uid()`인 개인 바이어 또는 seller organization 구성원만 접근한다.
 - organization 검증 문서는 해당 seller organization의 owner/admin과 승인된 운영 검증자만 접근한다.
 - `profiles`, `notifications`는 본인만 조회한다.

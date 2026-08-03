@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { translate, type Lang } from "../i18n/translations";
+import { useTranslation } from "react-i18next";
+import { LANGUAGE_STORAGE_KEY, initialLanguage, i18n } from "../i18n/i18n";
+import { type Lang } from "../i18n/translations";
 import { ApiError, apiFetch, getAccessToken, setAccessToken } from "../lib/api";
 
 export type Role = "buyer" | "seller";
@@ -44,7 +46,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // A remembered UI role alone is not authentication.  Do not render protected
   // pages as logged in after the API token has been removed or expired.
   const authenticatedSession = storedSession && getAccessToken() ? storedSession : null;
-  const [lang, setLang] = useState<Lang>("ko");
+  const { t: translate } = useTranslation();
+  const [lang, setLangState] = useState<Lang>(initialLanguage);
   const [companyName, setCompanyName] = useState<string>(authenticatedSession?.companyName ?? "");
   const [currentRole, setCurrentRole] = useState<Role | null>(authenticatedSession?.role ?? null);
   const [isDemoSession, setIsDemoSession] = useState(false);
@@ -79,6 +82,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const setLang = (nextLanguage: Lang) => {
+    setLangState(nextLanguage);
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+    document.documentElement.lang = nextLanguage === "ko" ? "ko-KR" : nextLanguage === "en" ? "en-US" : nextLanguage === "ja" ? "ja-JP" : "zh-CN";
+    void i18n.changeLanguage(nextLanguage);
+  };
+
+  useEffect(() => {
+    document.documentElement.lang = lang === "ko" ? "ko-KR" : lang === "en" ? "en-US" : lang === "ja" ? "ja-JP" : "zh-CN";
+  }, [lang]);
+
   const login = (role: Role, company?: string, isDemo = false) => {
     setCurrentRole(role);
     setCompanyName(company ?? "");
@@ -108,7 +122,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       lang,
       setLang,
-      t: (key: string) => translate(key, lang),
+      t: (key: string) => translate(key),
       companyName,
       setCompanyName,
       currentRole,

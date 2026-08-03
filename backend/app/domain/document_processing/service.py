@@ -633,8 +633,10 @@ class DocumentProcessingService:
                     system_prompt=(
                         "You normalize an accommodation contract into seller listing fields. "
                         "Use only supplied extracted values and source text; never invent values. "
-                        "Keep prices and dates unchanged. Separate cancellation from refund only "
-                        "when the source clearly distinguishes them. Return null when absent."
+                        "Keep prices, dates, and the source language unchanged. Never translate, "
+                        "summarize, or paraphrase text: Korean source text must be returned in "
+                        "Korean. Separate cancellation from refund only when the source clearly "
+                        "distinguishes them. Return null when absent."
                     ),
                     input_data={
                         "extracted": extraction.model_dump(mode="json"),

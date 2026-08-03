@@ -7,10 +7,10 @@ export const LANGUAGES: { code: Lang; label: string }[] = [
   { code: "zh", label: "中文" },
 ];
 
-type Dict = Record<string, string>;
+export type TranslationDictionary = Record<string, string>;
 
 // Flat dictionary keyed by string id. Each entry has all 4 languages.
-const strings: Record<string, Dict> = {
+export const strings: Record<string, TranslationDictionary> = {
   "brand.tagline": {
     ko: "부산 관광 B2B 계약 플랫폼",
     en: "Busan Tourism B2B Contract Platform",
@@ -42,6 +42,10 @@ const strings: Record<string, Dict> = {
   "header.currentRole": { ko: "현재 역할", en: "Current role", ja: "現在の役割", zh: "当前角色" },
   "header.switchRole": { ko: "역할 전환", en: "Switch role", ja: "役割切替", zh: "切换角色" },
   "header.logout": { ko: "로그아웃", en: "Log out", ja: "ログアウト", zh: "退出登录" },
+  "header.hideSidebar": { ko: "사이드바 숨기기", en: "Hide sidebar", ja: "サイドバーを閉じる", zh: "隐藏侧边栏" },
+  "header.showSidebar": { ko: "사이드바 열기", en: "Show sidebar", ja: "サイドバーを開く", zh: "显示侧边栏" },
+  "header.goHome": { ko: "첫 페이지로 이동", en: "Go to home", ja: "ホームへ移動", zh: "前往首页" },
+  "header.calendar": { ko: "계약 일정", en: "Contract calendar", ja: "契約スケジュール", zh: "合约日程" },
 
   // Buyer nav
   "nav.buyer.explore": { ko: "계약 탐색", en: "Explore Contracts", ja: "契約を探す", zh: "浏览合约" },
@@ -111,6 +115,19 @@ const strings: Record<string, Dict> = {
     zh: "发布公告并签订供应合约的釜山本地供应商。",
   },
   "auth.selectThisRole": { ko: "이 역할로 시작", en: "Continue with this role", ja: "この役割で開始", zh: "以此角色开始" },
+  "auth.exploreHome": { ko: "계약 탐색 첫 페이지로 이동", en: "Go to the contract explorer home", ja: "契約検索のホームへ移動", zh: "前往合约浏览首页" },
+  "auth.heroTitle": {
+    ko: "부산 관광 공급 계약을\n더 빠르고 안전하게",
+    en: "Busan tourism supply contracts,\nfaster and safer",
+    ja: "釜山観光の供給契約を\nより速く、より安全に",
+    zh: "釜山旅游供应合约\n更快、更安全",
+  },
+  "auth.heroDescription": {
+    ko: "공고 탐색, AI 위험 조항 검토, 수정 협상, 전자서명까지 한 곳에서.",
+    en: "Explore listings, review AI risk clauses, negotiate revisions, and e-sign in one place.",
+    ja: "公告検索、AIリスク条項の確認、修正交渉、電子署名までを一か所で。",
+    zh: "从浏览公告、AI 风险条款审查、修订协商到电子签名，一站完成。",
+  },
 
   // Signup step labels
   "signup.step.role": { ko: "역할 선택", en: "Role", ja: "役割選択", zh: "选择角色" },

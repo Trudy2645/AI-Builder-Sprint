@@ -81,19 +81,19 @@ export function Header({
               variant="ghost"
               size="icon"
               className="shrink-0"
-              aria-label={sidebarOpen ? "사이드바 숨기기" : "사이드바 열기"}
+              aria-label={sidebarOpen ? t("header.hideSidebar") : t("header.showSidebar")}
               aria-expanded={sidebarOpen}
               onClick={onToggleSidebar}
             >
               {sidebarOpen ? <PanelLeftClose className="size-5" /> : <PanelLeftOpen className="size-5" />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{sidebarOpen ? "사이드바 숨기기" : "사이드바 열기"}</TooltipContent>
+          <TooltipContent>{sidebarOpen ? t("header.hideSidebar") : t("header.showSidebar")}</TooltipContent>
         </Tooltip>
         <button
           type="button"
           className="shrink-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="첫 페이지로 이동"
+          aria-label={t("header.goHome")}
           onClick={() => navigate(homePath)}
         >
           <Logo className="[&>span]:hidden sm:[&>span]:inline" />
@@ -138,7 +138,7 @@ export function Header({
         {/* Contract calendar */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="계약 일정">
+            <Button variant="ghost" size="icon" aria-label={t("header.calendar")}>
               <CalendarDays className="size-5" />
             </Button>
           </DropdownMenuTrigger>

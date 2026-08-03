@@ -688,8 +688,6 @@ class SqlAlchemySellerListingRepository:
                     or row["status"] not in allowed_sources[target_status]
                 ):
                     raise SellerListingStateConflictError
-                if target_status == "published" and row["verification_status"] != "verified":
-                    raise SellerListingStateConflictError("seller_not_verified")
                 changed = row["status"] != target_status
                 if changed:
                     if target_status == "published":

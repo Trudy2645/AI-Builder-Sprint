@@ -318,7 +318,7 @@ Figma의 `셀러 검토 중`은 `seller_review`, `협상 중`은 `revision_reque
 - 바이어는 개인 profile만 생성하며 buyer organization을 자동 생성하지 않는다.
 - `default_group_name`은 선택 항목이며 법인·단체 계정이나 별도 계약 당사자를 의미하지 않는다.
 - `affiliation_name`과 `business_type`도 선택 정보다. 개인 바이어의 소속·활동 맥락을 표시할 뿐 계약 당사자를 조직으로 바꾸지 않는다.
-- 셀러 organization은 `pending`으로 생성된다. draft 작성은 가능하지만 `verified` 전에는 publish할 수 없다.
+- 셀러 organization은 `pending`으로 생성된다. 검증 상태와 무관하게 공고를 작성하고 publish할 수 있다.
 - Figma에서 고른 사업자등록증 파일은 가입 성공 후 발급된 organization id로 인증된 upload URL을 받아 업로드한다. 가입 전 임시 공개 업로드나 base64 파일을 signup JSON에 넣지 않는다.
 - `username`은 표시/검색용 별칭이다. MVP 로그인 식별자는 이메일을 사용한다.
 
@@ -1421,8 +1421,8 @@ backend/app/
 | 4 | `feature/seller-listings` | `feat(seller): 셀러 공고 조회 기능 추가` | `GET /seller/listings`<br>`GET /seller/listings/{id}` | 전체 공고 상태 목록과 편집 상세를 반환한다. seller organization member만 접근한다. |
 | 4 | `feature/seller-listings` | `feat(listings): 공고 임시저장과 버전 관리 추가` | `POST /seller/listings`<br>`PATCH /seller/listings/{id}/terms` | manual/upload 생성 방식과 필수값이 부족해도 가능한 임시저장을 구현한다. `base_version_no`로 동시 수정 충돌을 검사한다. |
 | 4 | `feature/seller-listings` | `feat(listings): 공고 작성 완료와 화면 정보 편집 추가` | `POST /seller/listings/{id}/complete`<br>`PATCH /seller/listings/{id}/presentation` | 작성 완료 필수값 검증과 회사명·공개 제목·대표 이미지·설명·가격 표시 기준 편집을 구현한다. complete는 `ready`까지만 전환한다. |
-| 4 | `feature/seller-listings` | `feat(listings): 공고 공개 상태 전이 추가` | `POST /seller/listings/{id}/publish`<br>`POST /seller/listings/{id}/pause`<br>`POST /seller/listings/{id}/archive` | verified seller만 publish할 수 있다. 유효하지 않은 상태 전이는 `INVALID_STATE_TRANSITION`을 반환한다. |
-| 4 | `feature/seller-listings` | `test(listings): 셀러 소유권과 상태 전이 검증` | 위 seller listing API | 다른 셀러의 공고 접근, 미검증 publish, 필수값 누락, pause/publish 재개, archived 변경 차단을 테스트한다. |
+| 4 | `feature/seller-listings` | `feat(listings): 공고 공개 상태 전이 추가` | `POST /seller/listings/{id}/publish`<br>`POST /seller/listings/{id}/pause`<br>`POST /seller/listings/{id}/archive` | seller organization member는 공고를 publish할 수 있다. 유효하지 않은 상태 전이는 `INVALID_STATE_TRANSITION`을 반환한다. |
+| 4 | `feature/seller-listings` | `test(listings): 셀러 소유권과 상태 전이 검증` | 위 seller listing API | 다른 셀러의 공고 접근, pending seller publish, 필수값 누락, pause/publish 재개, archived 변경 차단을 테스트한다. |
 | 5 | `feat/documents-storage` | `feat(storage): add signed upload and download URLs` | `POST /documents/upload-url`<br>`POST /documents/{id}/download-url` | listing/contract 소유권을 확인한 후 짧은 만료시간의 Supabase Storage signed URL을 발급한다. 파일은 FastAPI 메모리를 통과해 업로드하지 않는다. |
 | 5 | `feat/documents-storage` | `feat(documents): complete uploaded documents` | `POST /documents/{id}/complete`<br>`GET /documents/{id}` | 업로드 object의 크기·MIME·hash를 확인하고 `uploaded` 상태로 만든다. PDF/DOCX/JPG/PNG와 최대 용량 제한을 적용한다. |
 | 5 | `feat/documents-storage` | `test(documents): validate ownership and file metadata` | 위 document API | 다른 조직 파일 접근, MIME 위조, 크기 초과, 존재하지 않는 Storage object를 테스트한다. |
