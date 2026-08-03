@@ -43,7 +43,7 @@ export function AppShell({ role }: { role: Role }) {
           if (window.innerWidth < 1024) setSidebarOpen(false);
         }} />
         <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1320px] px-4 py-5 sm:px-5 md:px-6 md:py-6 lg:px-8 lg:py-8">
+          <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 md:px-8 md:py-7 lg:px-10 lg:py-9">
             <Outlet />
           </div>
         </main>

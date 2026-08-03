@@ -1,6 +1,5 @@
 import {
   Globe,
-  Inbox,
   MessagesSquare,
   PenLine,
   FileCheck2,
@@ -28,14 +27,14 @@ interface Stat {
   path: string;
 }
 
-type DashboardRequestStatus = "new" | "negotiating" | "signing" | "signed";
+type DashboardRequestStatus = "final_approval" | "negotiating" | "signing" | "signed";
 
-const requestStatusLabel: Record<"new" | "negotiating" | "signing" | "signed", string> = {
-  new: "새 요청", negotiating: "협상 중", signing: "서명 대기", signed: "체결 완료",
+const requestStatusLabel: Record<DashboardRequestStatus, string> = {
+  final_approval: "최종안 승인 및 서명 대기", negotiating: "협상 중", signing: "서명 대기", signed: "체결 완료",
 };
 
-const requestStatusTone: Record<"new" | "negotiating" | "signing" | "signed", { bg: string; color: string }> = {
-  new: { bg: "var(--info-soft)", color: "var(--ocean)" },
+const requestStatusTone: Record<DashboardRequestStatus, { bg: string; color: string }> = {
+  final_approval: { bg: "var(--info-soft)", color: "var(--ocean)" },
   negotiating: { bg: "var(--warning-soft)", color: "var(--warning)" },
   signing: { bg: "var(--success-soft)", color: "var(--teal)" },
   signed: { bg: "var(--success-soft)", color: "var(--success)" },
@@ -47,23 +46,23 @@ export function SellerDashboardPage() {
   const { listings, publicCount } = useListings();
   const company = companyName || "계정 정보 없음";
   const { requests: sellerRequests } = useRequests();
-  const newRequestCount = sellerRequests.filter((request) => request.status === "reviewing").length;
+  const finalApprovalCount = sellerRequests.filter((request) => request.status === "final_review" && !request.sellerApproved).length;
   const negotiatingCount = sellerRequests.filter((request) => request.status === "negotiating").length;
   const signingCount = sellerRequests.filter((request) => request.status === "signing").length;
   const signedThisMonthCount = sellerRequests.filter((request) => request.status === "completed" && request.createdAt.slice(0, 7) === new Date().toISOString().slice(0, 7).replace("-", ".")).length;
 
   const stats: Stat[] = [
     { key: "public", labelKey: "sdash.stat.public", value: publicCount, icon: Globe, color: "var(--success)", bg: "var(--success-soft)", path: "/seller/listings?status=public" },
-    { key: "newReq", labelKey: "sdash.stat.newReq", value: newRequestCount, icon: Inbox, color: "var(--ocean)", bg: "var(--info-soft)", path: "/seller/received?status=new" },
-    { key: "negotiating", labelKey: "sdash.stat.negotiating", value: negotiatingCount, icon: MessagesSquare, color: "var(--warning)", bg: "var(--warning-soft)", path: "/seller/received?status=negotiating" },
-    { key: "signing", labelKey: "sdash.stat.signing", value: signingCount, icon: PenLine, color: "var(--teal)", bg: "var(--success-soft)", path: "/seller/received?status=signing" },
-    { key: "monthlyClosed", labelKey: "sdash.stat.monthlyClosed", value: signedThisMonthCount, icon: FileCheck2, color: "var(--navy)", bg: "var(--info-soft)", path: "/seller/received?status=signed" },
+    { key: "finalApproval", labelKey: "sdash.stat.newReq", value: finalApprovalCount, icon: PenLine, color: "var(--ocean)", bg: "var(--info-soft)", path: "/seller/signing" },
+    { key: "negotiating", labelKey: "sdash.stat.negotiating", value: negotiatingCount, icon: MessagesSquare, color: "var(--warning)", bg: "var(--warning-soft)", path: "/seller/negotiating" },
+    { key: "signing", labelKey: "sdash.stat.signing", value: signingCount, icon: PenLine, color: "var(--teal)", bg: "var(--success-soft)", path: "/seller/contracts" },
+    { key: "monthlyClosed", labelKey: "sdash.stat.monthlyClosed", value: signedThisMonthCount, icon: FileCheck2, color: "var(--navy)", bg: "var(--info-soft)", path: "/seller/contracts" },
   ];
 
   const recent = listings.slice(0, 5);
   const recentRequests = sellerRequests.slice(0, 4).flatMap((request) => {
-    const displayStatus: DashboardRequestStatus | null = request.status === "reviewing"
-      ? "new"
+    const displayStatus: DashboardRequestStatus | null = request.status === "final_review" && !request.sellerApproved
+      ? "final_approval"
       : request.status === "negotiating"
         ? "negotiating"
         : request.status === "signing"
@@ -110,10 +109,10 @@ export function SellerDashboardPage() {
       <div className="mt-8 overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex flex-col items-start justify-between gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:px-6">
           <div className="min-w-0">
-            <h3 className="flex items-start gap-2 break-words" style={{ color: "var(--navy)" }}><BellRing className="mt-1 size-4 shrink-0" style={{ color: "var(--ocean)" }} />받은 계약 요청</h3>
-            <p className="mt-1 text-xs text-muted-foreground">바이어의 수정 요청과 조건 그대로 체결된 계약 알림을 확인하세요.</p>
+            <h3 className="flex items-start gap-2 break-words" style={{ color: "var(--navy)" }}><BellRing className="mt-1 size-4 shrink-0" style={{ color: "var(--ocean)" }} />계약 요청 현황</h3>
+            <p className="mt-1 text-xs text-muted-foreground">수정 요청은 협상 관리에서, 최종 승인과 서명은 해당 단계에서 진행하세요.</p>
           </div>
-          <Button variant="ghost" size="sm" className="gap-1 whitespace-nowrap" onClick={() => navigate("/seller/received")}>전체 보기<ArrowRight className="size-4" /></Button>
+          <Button variant="ghost" size="sm" className="gap-1 whitespace-nowrap" onClick={() => navigate("/seller/negotiating")}>협상 관리<ArrowRight className="size-4" /></Button>
         </div>
         <div className="hidden overflow-x-auto lg:block">
           <div className="grid min-w-[900px] grid-cols-[1fr_1.2fr_1.7fr_1fr_1fr_.8fr] gap-4 border-b bg-muted/40 px-6 py-3 text-xs font-semibold text-muted-foreground">
@@ -126,7 +125,7 @@ export function SellerDashboardPage() {
               <div className="truncate text-sm">{row.title}</div>
               <div className="text-sm text-muted-foreground">{row.period}</div>
               <div><Badge className="whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge></div>
-              <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
+              <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(row.displayStatus === "final_approval" || row.displayStatus === "signing" ? "/seller/signing" : row.displayStatus === "negotiating" ? `/seller/negotiating/contract/${row.contractId}` : "/seller/contracts")}>상세 보기</Button>
             </div>
           ))}
         </div>
@@ -141,7 +140,7 @@ export function SellerDashboardPage() {
                 </div>
                 <Badge className="shrink-0 whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge>
               </div>
-              <Button size="sm" variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
+              <Button size="sm" variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => navigate(row.displayStatus === "final_approval" || row.displayStatus === "signing" ? "/seller/signing" : row.displayStatus === "negotiating" ? `/seller/negotiating/contract/${row.contractId}` : "/seller/contracts")}>상세 보기</Button>
             </div>
           ))}
         </div>

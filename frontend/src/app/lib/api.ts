@@ -291,7 +291,7 @@ function positiveInteger(value: string): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function sellerListingTerms(draft: SellerListingDraftInput): Record<string, unknown> {
+export function sellerListingTerms(draft: SellerListingDraftInput): Record<string, unknown> {
   const priceUnit = PRICE_UNIT_MAP[draft.priceUnit] ?? PRICE_UNIT_MAP["1인당"];
   return {
     service_start_date: draft.availabilityStart || null,
@@ -360,6 +360,64 @@ export async function updateSellerListingTerms(
     method: "PATCH",
     headers: authenticatedHeaders(session, { "Content-Type": "application/json" }),
     body: JSON.stringify({ base_version_no: baseVersionNo, terms: body }),
+  });
+}
+
+export type AIJob = {
+  id: string;
+  status: "queued" | "processing" | "succeeded" | "failed";
+  result_resource_id: string | null;
+  failure_code: string | null;
+};
+
+export type ContractReviewFinding = {
+  id: string;
+  viewer_role: "buyer" | "seller";
+  clause_id: string | null;
+  category: string;
+  severity: "high" | "medium" | "low" | "none";
+  importance: "high" | "medium" | "low";
+  title: string;
+  explanation: string;
+  suggested_text: string | null;
+  suggested_text_hash: string | null;
+  grounding_status: "grounded" | "insufficient_evidence" | "not_required";
+  confidence: number | null;
+  source_location: Record<string, unknown>;
+  evidence: Array<Record<string, unknown>>;
+  disclaimer: string;
+  is_public: boolean;
+  model_name: string;
+  prompt_version: string;
+};
+
+export type ContractReviewRun = {
+  id: string;
+  job_id: string | null;
+  status: "queued" | "processing" | "succeeded" | "failed";
+  findings: ContractReviewFinding[];
+};
+
+export function getAIJob(jobId: string): Promise<AIJob> {
+  return apiFetch<AIJob>(`/ai-jobs/${jobId}`);
+}
+
+export function getContractReviewRun(runId: string): Promise<ContractReviewRun> {
+  return apiFetch<ContractReviewRun>(`/ai-analysis-runs/${runId}`);
+}
+
+export function startSellerListingReview(
+  listingId: string,
+  versionId: string,
+): Promise<{ job_id: string }> {
+  const session = getApiSession();
+  return apiFetch<{ job_id: string }>(`/seller/listings/${listingId}/analyses`, {
+    method: "POST",
+    headers: new Headers([
+      ...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(),
+      ["Idempotency-Key", requestIdempotencyKey("listing-review")],
+    ]),
+    body: JSON.stringify({ version_id: versionId, viewer_role: "seller", analysis_types: ["risk", "missing_terms"] }),
   });
 }
 
@@ -772,6 +830,20 @@ export function getRevisionRequest(revisionRequestId: string): Promise<RevisionR
   return apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
 }
 
+export function respondRevisionRequest(
+  revisionRequestId: string,
+  payload: { decision: "accepted" | "rejected"; message?: string },
+): Promise<{ revision_request_id: string; status: string; contract_id: string }> {
+  return apiFetch(`/revision-requests/${revisionRequestId}/respond`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("revision-response"),
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function sendRevisionRequest(revisionRequestId: string): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
   return apiFetch(`/revision-requests/${revisionRequestId}/send`, {
     method: "POST",
@@ -795,6 +867,36 @@ export type SellerRevisionRequestListItem = {
 
 export function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
   return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
+}
+
+export function getBuyerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
+  return apiFetch<SellerRevisionRequestListItem[]>(
+    "/me/revision-requests?status=sent&status=countered&status=accepted&status=rejected&status=partially_accepted",
+  );
+}
+
+export type NotificationItem = {
+  id: string;
+  notification_type: string;
+  title: string;
+  body: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+};
+
+export function getNotifications(): Promise<{ items: NotificationItem[]; unread_count: number }> {
+  return apiFetch<{ items: NotificationItem[]; unread_count: number }>("/notifications");
+}
+
+export function markNotificationRead(notificationId: string): Promise<NotificationItem> {
+  return apiFetch<NotificationItem>(`/notifications/${notificationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ read: true }),
+  });
 }
 
 export function decideRevisionRequest(

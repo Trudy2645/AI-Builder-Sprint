@@ -90,14 +90,14 @@ export function RequestAsIsPage() {
       return;
     }
     try {
-      await createPublicContractRequest(contract.id, {
+      const created = await createPublicContractRequest(contract.id, {
         people: parseInt(guests, 10) || 1, quantity: roomsNum, quantity_unit: quantityUnit,
         nights: nightsNum, start_date: startDate, end_date: endDate, currency,
         request_message: message, initial_request_kind: "as_is",
       });
-      toast.success("계약 요청이 서버에 저장되었습니다. 셀러 검토가 끝난 뒤 전자서명을 진행할 수 있습니다.");
+      toast.success("계약 요청을 보냈습니다. 최종 계약 내용을 확인해 주세요.");
       await refreshRequests();
-      navigate("/buyer/sent");
+      navigate(`/buyer/sent/contract/${created.contract_id}`, { replace: true });
     } catch (error) { toast.error(friendlyApiError(error)); }
   };
 

@@ -462,6 +462,115 @@ async def test_unknown_tool_is_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_clause_context_accepts_semantic_clause_key() -> None:
+    provider = FakeAIProvider()
+    tools = ContractReviewTools(
+        clauses=clauses(),
+        category="accommodation",
+        provider=provider,
+        official_vector_store_id=None,
+        template_vector_store_id=None,
+    )
+
+    result = await tools.execute(
+        "get_clause_context",
+        {"clause_key": "cancellation", "adjacent_count": 0},
+    )
+
+    assert result.content["clause"]["id"] == str(CLAUSE_ID)
+    assert result.content["clause"]["clause_key"] == "cancellation"
+
+
+@pytest.mark.asyncio
+async def test_provider_style_submission_is_normalized() -> None:
+    provider = FakeAIProvider()
+    provider.queue_structured_output(
+        "contract_review",
+        {
+            "tool_calls": [
+                {"name": "get_clause_context", "arguments": {"clause_key": "cancellation"}}
+            ]
+        },
+    )
+    provider.queue_structured_output(
+        "contract_review",
+        {
+            "tool_calls": [
+                {
+                    "name": "submit_review",
+                    "arguments": {
+                        "review_id": "review-1",
+                        "findings": [
+                            {
+                                "clause_key": "cancellation",
+                                "risk_rating": 3,
+                                "finding": "취소 조건의 적용 범위를 확인해야 합니다.",
+                                "grounding_status": "partial_evidence",
+                            }
+                        ],
+                        "review_summary": "검토 완료",
+                    },
+                }
+            ]
+        },
+    )
+    tools = ContractReviewTools(
+        clauses=clauses(),
+        category="accommodation",
+        provider=provider,
+        official_vector_store_id=None,
+        template_vector_store_id=None,
+    )
+
+    result = await ContractReviewAgent(
+        provider, tools, model_name="solar-pro3", prompt_version="test-v1"
+    ).run(
+        target_type="listing_version",
+        target_id=LISTING_VERSION_ID,
+        viewer_role="seller",
+        category="accommodation",
+        clauses=clauses(),
+        terms=terms(),
+        rule_findings=[],
+    )
+
+    assert result.findings[0].clause_id == CLAUSE_ID
+    assert result.findings[0].severity == "medium"
+    assert result.findings[0].grounding_status == "insufficient_evidence"
+
+
+@pytest.mark.asyncio
+async def test_empty_provider_submission_completes_without_findings() -> None:
+    provider = FakeAIProvider()
+    provider.queue_structured_output(
+        "contract_review",
+        {"tool_calls": [{"name": "submit_review", "arguments": {"review_id": "review-1"}}]},
+    )
+    tools = ContractReviewTools(
+        clauses=clauses(),
+        category="accommodation",
+        provider=provider,
+        official_vector_store_id=None,
+        template_vector_store_id=None,
+    )
+
+    result = await ContractReviewAgent(
+        provider, tools, model_name="solar-pro3", prompt_version="test-v1"
+    ).run(
+        target_type="listing_version",
+        target_id=LISTING_VERSION_ID,
+        viewer_role="seller",
+        category="accommodation",
+        clauses=clauses(),
+        terms=terms(),
+        rule_findings=[],
+    )
+
+    assert result.findings == []
+    assert result.stop_reason == "completed"
+
+
+@pytest.mark.asyncio
 async def test_submit_review_more_than_once_is_rejected() -> None:
     provider = FakeAIProvider()
     submission = plan_and_submission()[1]["tool_calls"][0]

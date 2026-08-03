@@ -100,6 +100,7 @@ class RevisionService:
                 buyer_name=record.buyer_name,
                 status=record.status,
                 message=record.message,
+                response_message=record.response_message,
                 item_count=len(record.items),
                 item_summary=[item.reason for item in record.items[:3]],
                 has_unread=record.contract_id in unread_contract_ids,
@@ -127,6 +128,7 @@ class RevisionService:
                 buyer_name=record.buyer_name,
                 status=record.status,
                 message=record.message,
+                response_message=record.response_message,
                 item_count=len(record.items),
                 item_summary=[item.reason for item in record.items[:3]],
                 has_unread=record.contract_id in unread_contract_ids,
@@ -310,8 +312,8 @@ class RevisionService:
     ) -> RevisionMutationResponse:
         record = await self._revision(revision_id)
         self._authorize_revision_buyer(record, actor)
-        if record.status not in {"partially_accepted", "countered"}:
-            self._invalid_state("Only partial or countered decisions can receive a buyer response.")
+        if record.status not in {"partially_accepted", "countered", "rejected"}:
+            self._invalid_state("This revision request is not waiting for a buyer response.")
         self._ensure_base_is_current(record)
         clauses = self._apply_items(record, include_pending=False)
         return await self._mutation(
@@ -334,7 +336,9 @@ class RevisionService:
     def _detail(self, record: RevisionRequestRecord) -> RevisionRequestResponse:
         clauses = self._apply_items(record, include_pending=True)
         pending = sum(item.decision == "pending" for item in record.items)
-        requires_response = record.status in {"partially_accepted", "countered"}
+        requires_response = record.status in {"partially_accepted", "countered"} or (
+            record.status == "rejected" and record.response_message is None
+        )
         decisions = {item.decision for item in record.items}
         return RevisionRequestResponse(
             id=record.id,

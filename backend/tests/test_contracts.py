@@ -722,6 +722,9 @@ def test_seller_received_list_contains_requested_screen_fields(
         "request_kind_label": "조건 그대로",
         "status": "seller_review",
         "status_label": "셀러 검토 중",
+        "buyer_approved": False,
+        "seller_approved": False,
+        "final_approval_requested": False,
         "requested_at": NOW.isoformat().replace("+00:00", "Z"),
     }
     assert "email" not in response.text

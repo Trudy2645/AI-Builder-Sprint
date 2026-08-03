@@ -13,8 +13,10 @@ import { ContractDocumentPage } from "./pages/explore/ContractDocumentPage";
 import { RequestAsIsPage } from "./pages/requests/RequestAsIsPage";
 import { RevisionRequestPage } from "./pages/requests/RevisionRequestPage";
 import { SentRequestsPage } from "./pages/requests/SentRequestsPage";
+import { BuyerContractDetailPage } from "./pages/requests/BuyerContractDetailPage";
+import { BuyerRevisionRequestPage } from "./pages/requests/BuyerRevisionRequestPage";
+import { BuyerAdditionalRevisionPage } from "./pages/requests/BuyerAdditionalRevisionPage";
 import { BuyerMyPage } from "./pages/BuyerMyPage";
-import { BuyerContractStatusPage, BuyerContractsPage } from "./pages/buyer/BuyerContractsPage";
 import { SellerDashboardPage } from "./pages/seller/SellerDashboardPage";
 import { ListingsManagePage } from "./pages/seller/ListingsManagePage";
 import { ListingDetailPage } from "./pages/seller/ListingDetailPage";
@@ -22,13 +24,12 @@ import { ListingDocumentPage } from "./pages/seller/ListingDocumentPage";
 import { CreateMethodPage } from "./pages/seller/CreateMethodPage";
 import { UploadOcrPage } from "./pages/seller/UploadOcrPage";
 import { WriteContractPage } from "./pages/seller/WriteContractPage";
-import { ReceivedRequestsPage } from "./pages/seller/ReceivedRequestsPage";
+import { SellerReceivedRequestPage } from "./pages/seller/SellerReceivedRequestPage";
 import { RevisionReviewPage } from "./pages/seller/RevisionReviewPage";
 import { SellerNegotiatingPage } from "./pages/seller/SellerNegotiatingPage";
-import { SellerContractsPage } from "./pages/seller/SellerContractsPage";
+import { ContractsPage } from "./pages/ContractsPage";
 import { SellerMyPage } from "./pages/seller/SellerMyPage";
 import { SignatureFieldPlacementPage } from "./pages/seller/SignatureFieldPlacementPage";
-import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { FinalApprovePage } from "./pages/negotiation/FinalApprovePage";
 import { ESignaturePage } from "./pages/negotiation/ESignaturePage";
 import { CompletionPage } from "./pages/negotiation/CompletionPage";
@@ -63,16 +64,10 @@ const buyerNegotiationRoutes = [
   { path: "negotiating", element: <NegotiatingPage /> },
 ];
 
-const buyerContractRoutes = [
-  { path: "contracts", element: <BuyerContractsPage /> },
-  { path: "contracts/:id/status", element: <BuyerContractStatusPage /> },
-];
-
 // Shared final-negotiation → signing → completion flow (buyer & seller).
 // Mounted under both /buyer and /seller; pages detect the role from the URL.
 const signingRoutes = [
   { path: "signing", element: <FinalApprovePage /> },
-  { path: "signing/compare", element: <VersionComparePage /> },
   { path: "signing/sign", element: <ESignaturePage /> },
   { path: "signing/complete", element: <CompletionPage /> },
 ];
@@ -84,6 +79,7 @@ const sellerSignatureSetupRoutes = [
 // Buyer nav items that now have dedicated pages instead of placeholders.
 const buyerRealPages: Record<string, ReactNode> = {
   "/buyer/sent": <SentRequestsPage />,
+  "/buyer/contracts": <ContractsPage role="buyer" />,
   "/buyer/mypage": <BuyerMyPage />,
 };
 
@@ -94,8 +90,7 @@ const buyerChildren = buyerNav
     (item) =>
       item.path !== "/buyer/explore" &&
       item.path !== "/buyer/negotiating" &&
-      item.path !== "/buyer/signing" &&
-      item.path !== "/buyer/contracts",
+      item.path !== "/buyer/signing",
   )
   .map((item) => ({
     path: item.path.replace("/buyer/", ""),
@@ -110,15 +105,16 @@ const sellerListingRoutes = [
   { path: "listings/new", element: <CreateMethodPage /> },
   { path: "listings/new/upload", element: <UploadOcrPage /> },
   { path: "listings/new/write", element: <WriteContractPage /> },
-  { path: "received", element: <ReceivedRequestsPage /> },
-  { path: "received/:id", element: <RevisionReviewPage /> },
+  { path: "received", element: <Navigate to="/seller/negotiating" replace /> },
+  { path: "negotiating/contract/:id", element: <SellerReceivedRequestPage /> },
+  { path: "negotiating/revision/:id", element: <RevisionReviewPage /> },
 ];
 
 // Seller nav items that now have dedicated pages instead of placeholders.
 const sellerRealPages: Record<string, ReactNode> = {
   "/seller/dashboard": <SellerDashboardPage />,
   "/seller/negotiating": <SellerNegotiatingPage />,
-  "/seller/contracts": <SellerContractsPage />,
+  "/seller/contracts": <ContractsPage role="seller" />,
   "/seller/mypage": <SellerMyPage />,
 };
 
@@ -127,7 +123,6 @@ const sellerChildren = sellerNav
     (item) =>
       item.path !== "/seller/listings" &&
       item.path !== "/seller/listings/new" &&
-      item.path !== "/seller/received" &&
       item.path !== "/seller/signing",
   )
   .map((item) => ({
@@ -158,8 +153,10 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/buyer/explore" replace /> },
       ...buyerExploreRoutes,
-      ...buyerContractRoutes,
       ...buyerNegotiationRoutes,
+      { path: "sent/contract/:id/revise", element: <BuyerAdditionalRevisionPage /> },
+      { path: "sent/contract/:id", element: <BuyerContractDetailPage /> },
+      { path: "sent/revision/:id", element: <BuyerRevisionRequestPage /> },
       ...signingRoutes,
       ...buyerChildren,
     ],

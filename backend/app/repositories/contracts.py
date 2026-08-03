@@ -89,6 +89,9 @@ class ContractRecord:
     created_at: datetime
     updated_at: datetime
     cancelled_at: datetime | None
+    buyer_approved: bool = False
+    seller_approved: bool = False
+    final_approval_requested: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,32 +101,6 @@ class ContractClauseRecord:
     clause_key: str | None
     title: str
     body: str
-
-
-@dataclass(frozen=True, slots=True)
-class ContractVersionClauseRecord:
-    id: UUID
-    clause_order: int
-    clause_key: str | None
-    title: str
-    body: str
-    source_listing_clause_id: UUID | None
-
-
-@dataclass(frozen=True, slots=True)
-class ContractVersionRecord:
-    id: UUID
-    contract_id: UUID
-    version_no: int
-    title: str
-    structured_data: dict[str, Any]
-    created_by_role: str
-    creation_reason: str
-    created_from_revision_request_id: UUID | None
-    created_at: datetime
-    risk_score: int | None
-    risk_finding_count: int
-    clauses: list[ContractVersionClauseRecord]
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +193,10 @@ class ContractVersionApprovalAccessError(Exception):
     pass
 
 
+class ContractApprovalOrderError(Exception):
+    pass
+
+
 class ContractVersionConflictError(Exception):
     pass
 
@@ -253,8 +234,6 @@ class ContractRepository(Protocol):
         self, contract_version_id: UUID
     ) -> list[ContractClauseRecord]: ...
 
-    async def list_contract_versions(self, contract_id: UUID) -> list[ContractVersionRecord]: ...
-
     async def get_contract_version_approval_context(
         self, contract_id: UUID, contract_version_id: UUID
     ) -> ContractVersionApprovalContextRecord | None: ...
@@ -262,6 +241,8 @@ class ContractRepository(Protocol):
     async def list_contract_version_approvals(
         self, contract_version_id: UUID
     ) -> list[ContractVersionApprovalRecord]: ...
+
+    async def has_final_approval_request(self, contract_version_id: UUID) -> bool: ...
 
     async def approve_contract_version(
         self,
@@ -271,6 +252,14 @@ class ContractRepository(Protocol):
         actor_user_id: UUID,
         party_role: str,
     ) -> ContractVersionApprovalMutationRecord: ...
+
+    async def request_final_approval(
+        self,
+        *,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor_user_id: UUID,
+    ) -> bool: ...
 
     async def is_seller_member(self, user_id: UUID, organization_id: UUID) -> bool: ...
 
@@ -883,7 +872,27 @@ class SqlAlchemyContractRepository:
                            buyer.group_name_snapshot as buyer_group_name_snapshot,
                            buyer.signing_capacity::text as buyer_signing_capacity,
                            seller.name_snapshot as seller_name,
-                           c.created_at, c.updated_at, c.cancelled_at
+                           c.created_at, c.updated_at, c.cancelled_at,
+                           exists (
+                               select 1
+                               from public.contract_version_approvals seller_approval
+                               where seller_approval.contract_version_id = c.current_version_id
+                                 and seller_approval.party_role = 'seller'
+                           ) as seller_approved,
+                           exists (
+                               select 1
+                               from public.contract_version_approvals buyer_approval
+                               where buyer_approval.contract_version_id = c.current_version_id
+                                 and buyer_approval.party_role = 'buyer'
+                           ) as buyer_approved,
+                           exists (
+                               select 1
+                               from public.audit_events approval_request
+                               where approval_request.contract_id = c.id
+                                 and approval_request.target_type = 'contract_version'
+                                 and approval_request.target_id = c.current_version_id
+                                 and approval_request.event_type = 'final_approval_requested'
+                           ) as final_approval_requested
                     from public.contracts c
                     left join public.listings l on l.id = c.listing_id
                     join public.contract_terms ct on ct.contract_id = c.id
@@ -918,83 +927,6 @@ class SqlAlchemyContractRepository:
         except SQLAlchemyError as exc:
             raise ContractRepositoryUnavailableError from exc
         return [ContractClauseRecord(**row) for row in result.mappings().all()]
-
-    async def list_contract_versions(self, contract_id: UUID) -> list[ContractVersionRecord]:
-        try:
-            result = await self._session.execute(
-                text(
-                    """
-                    select cv.id, cv.contract_id, cv.version_no, cv.title,
-                           cv.structured_data, cv.created_from_revision_request_id,
-                           cv.created_at,
-                           case
-                               when cv.created_by = c.buyer_user_id then 'buyer'
-                               when exists (
-                                   select 1 from public.organization_members om
-                                   where om.organization_id = c.seller_organization_id
-                                     and om.user_id = cv.created_by
-                               ) then 'seller'
-                               else 'system'
-                           end as created_by_role,
-                           case
-                               when cv.version_no = 1 then 'contract_created'
-                               when cv.created_from_revision_request_id is not null
-                                   then 'revision_agreement'
-                               else 'manual_version'
-                           end as creation_reason,
-                           case when latest_run.id is null then null else coalesce(sum(
-                               case finding.severity::text
-                                   when 'high' then 3
-                                   when 'medium' then 2
-                                   when 'low' then 1
-                                   else 0
-                               end
-                           ), 0)::integer end as risk_score,
-                           count(finding.id)::integer as risk_finding_count
-                    from public.contract_versions cv
-                    join public.contracts c on c.id = cv.contract_id
-                    left join lateral (
-                        select run.id
-                        from public.ai_analysis_runs run
-                        where run.contract_version_id = cv.id
-                          and run.viewer_role = 'buyer'
-                          and run.status = 'succeeded'
-                        order by run.completed_at desc nulls last, run.created_at desc
-                        limit 1
-                    ) latest_run on true
-                    left join public.ai_findings finding
-                      on finding.analysis_run_id = latest_run.id
-                     and finding.status <> 'dismissed'
-                    where cv.contract_id = :contract_id
-                    group by cv.id, c.buyer_user_id, c.seller_organization_id, latest_run.id
-                    order by cv.version_no
-                    """
-                ),
-                {"contract_id": contract_id},
-            )
-            versions = []
-            for row in result.mappings().all():
-                clauses = await self._list_version_clauses(row["id"])
-                versions.append(ContractVersionRecord(**row, clauses=clauses))
-            return versions
-        except SQLAlchemyError as exc:
-            raise ContractRepositoryUnavailableError from exc
-
-    async def _list_version_clauses(
-        self, contract_version_id: UUID
-    ) -> list[ContractVersionClauseRecord]:
-        result = await self._session.execute(
-            text(
-                """
-                select id, clause_order, clause_key, title, body, source_listing_clause_id
-                from public.contract_clauses
-                where contract_version_id = :contract_version_id
-                order by clause_order
-                """
-            ),
-            {"contract_version_id": contract_version_id},
-        )
-        return [ContractVersionClauseRecord(**row) for row in result.mappings().all()]
 
     async def get_contract_version_approval_context(
         self, contract_id: UUID, contract_version_id: UUID
@@ -1038,6 +970,26 @@ class SqlAlchemyContractRepository:
         except SQLAlchemyError as exc:
             raise ContractRepositoryUnavailableError from exc
 
+    async def has_final_approval_request(self, contract_version_id: UUID) -> bool:
+        try:
+            result = await self._session.execute(
+                text(
+                    """
+                    select exists (
+                        select 1
+                        from public.audit_events
+                        where target_type = 'contract_version'
+                          and target_id = :contract_version_id
+                          and event_type = 'final_approval_requested'
+                    )
+                    """
+                ),
+                {"contract_version_id": contract_version_id},
+            )
+            return bool(result.scalar_one())
+        except SQLAlchemyError as exc:
+            raise ContractRepositoryUnavailableError from exc
+
     async def approve_contract_version(
         self,
         *,
@@ -1064,6 +1016,11 @@ class SqlAlchemyContractRepository:
                     actor_user_id, context.seller_organization_id
                 ):
                     raise ContractVersionApprovalAccessError
+                existing_approvals = await self._list_approvals_in_transaction(contract_version_id)
+                if party_role == "seller" and not any(
+                    approval.party_role == "buyer" for approval in existing_approvals
+                ):
+                    raise ContractApprovalOrderError
                 inserted = await self._session.execute(
                     text(
                         """
@@ -1149,6 +1106,88 @@ class SqlAlchemyContractRepository:
             raise
         except SQLAlchemyError as exc:
             logger.exception("contract version approval persistence failed")
+            raise ContractRepositoryUnavailableError from exc
+
+    async def request_final_approval(
+        self,
+        *,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor_user_id: UUID,
+    ) -> bool:
+        try:
+            if self._session.in_transaction():
+                await self._session.rollback()
+            async with self._session.begin():
+                context = await self._lock_approval_context(contract_id, contract_version_id)
+                if context is None:
+                    raise ContractVersionNotFoundError
+                if context.current_version_id != contract_version_id:
+                    raise ContractVersionConflictError
+                if context.buyer_user_id != actor_user_id:
+                    raise ContractVersionApprovalAccessError
+                if context.contract_status != "seller_review":
+                    raise ContractStateConflictError
+                approvals = await self._list_approvals_in_transaction(contract_version_id)
+                if any(approval.party_role == "seller" for approval in approvals):
+                    return False
+
+                inserted = await self._session.execute(
+                    text(
+                        """
+                        insert into public.notifications (
+                            user_id, notification_type, title, body,
+                            resource_type, resource_id, dedupe_key
+                        )
+                        select om.user_id, 'final_approval_requested', '최종 승인 요청',
+                               '바이어가 최종 계약안의 셀러 최종 승인을 요청했습니다.',
+                               'contract', :contract_id,
+                               'final-approval-request:' || :version_id
+                        from public.organization_members om
+                        where om.organization_id = :organization_id
+                        on conflict (user_id, dedupe_key)
+                            where dedupe_key is not null
+                        do nothing
+                        returning id
+                        """
+                    ),
+                    {
+                        "contract_id": contract_id,
+                        "version_id": str(contract_version_id),
+                        "organization_id": context.seller_organization_id,
+                    },
+                )
+                created = inserted.first() is not None
+                if created:
+                    await self._session.execute(
+                        text(
+                            """
+                            insert into public.audit_events (
+                                contract_id, actor_user_id, actor_role, event_type,
+                                target_type, target_id, event_data
+                            ) values (
+                                :contract_id, :actor_user_id, 'buyer',
+                                'final_approval_requested', 'contract_version',
+                                :contract_version_id, '{}'::jsonb
+                            )
+                            """
+                        ),
+                        {
+                            "contract_id": contract_id,
+                            "actor_user_id": actor_user_id,
+                            "contract_version_id": contract_version_id,
+                        },
+                    )
+                return created
+        except (
+            ContractStateConflictError,
+            ContractVersionApprovalAccessError,
+            ContractVersionConflictError,
+            ContractVersionNotFoundError,
+        ):
+            raise
+        except SQLAlchemyError as exc:
+            logger.exception("final approval request persistence failed")
             raise ContractRepositoryUnavailableError from exc
 
     async def begin_signature_request(

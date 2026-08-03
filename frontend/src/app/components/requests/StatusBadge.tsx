@@ -14,6 +14,7 @@ import type { RequestStatus } from "../../store/RequestsContext";
 const config: Record<RequestStatus, { icon: LucideIcon; color: string; bg: string }> = {
   draft: { icon: FilePenLine, color: "var(--muted-foreground)", bg: "var(--muted)" },
   reviewing: { icon: Clock, color: "var(--warning)", bg: "var(--warning-soft)" },
+  final_review: { icon: CheckCircle2, color: "var(--ocean)", bg: "var(--info-soft)" },
   responded: { icon: MessageSquareReply, color: "var(--ocean)", bg: "var(--info-soft)" },
   negotiating: { icon: MessagesSquare, color: "var(--teal)", bg: "var(--success-soft)" },
   signing: { icon: PenLine, color: "var(--navy)", bg: "var(--info-soft)" },

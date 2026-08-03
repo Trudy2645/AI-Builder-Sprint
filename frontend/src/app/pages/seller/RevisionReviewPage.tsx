@@ -327,6 +327,56 @@ export function RevisionReviewPage() {
               ? "일부 수락 완료"
               : "처리 완료";
 
+    if (revision.status === "countered") {
+      return (
+        <div className="mx-auto max-w-[820px]">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mb-4 gap-1.5 whitespace-nowrap"
+            onClick={() => navigate("/seller/negotiating")}
+          >
+            <ArrowLeft className="size-4" />
+            협상 관리
+          </Button>
+          <PageHeader
+            title="셀러 대안 전송 완료"
+            description={`${contract.listing_title} · 바이어의 응답을 기다리는 중입니다.`}
+          />
+          <div className="mb-5 rounded-xl border border-[var(--ocean)] bg-[var(--info-soft)] p-5">
+            <p className="font-semibold" style={{ color: "var(--navy)" }}>
+              셀러가 대안 조건을 보냈습니다.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              바이어가 대안을 수락하거나 추가 의견을 보내면 협상이 이어집니다.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {revision.items.map((item) => (
+              <div key={item.id} className="rounded-xl border border-border bg-card p-5">
+                <div className="text-sm font-semibold" style={{ color: "var(--navy)" }}>
+                  요청 항목 {item.item_order}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  바이어 요청: {item.requested_text ?? item.reason}
+                </p>
+                <div className="mt-3 rounded-lg border border-[var(--ocean)] bg-[var(--info-soft)] p-3 text-sm leading-6">
+                  <div className="mb-1 text-xs font-semibold" style={{ color: "var(--ocean)" }}>
+                    셀러 대안
+                  </div>
+                  {item.counter_text ?? item.seller_reason ?? "대안 조건을 확인할 수 없습니다."}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 flex justify-end rounded-xl border border-border bg-card p-4">
+            <Button variant="outline" onClick={() => navigate("/seller/negotiating")}>
+              협상 관리로 돌아가기
+            </Button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="mx-auto max-w-[720px] rounded-xl border border-border bg-card p-10 text-center">
         <h1 className="text-xl font-semibold">
@@ -337,9 +387,9 @@ export function RevisionReviewPage() {
         </p>
         <Button
           className="mt-6"
-          onClick={() => navigate("/seller/received")}
+          onClick={() => navigate("/seller/negotiating")}
         >
-          받은 요청으로 돌아가기
+          협상 관리로 돌아가기
         </Button>
       </div>
     );
@@ -494,10 +544,10 @@ export function RevisionReviewPage() {
         variant="ghost"
         size="sm"
         className="mb-4 gap-1.5 whitespace-nowrap"
-        onClick={() => navigate("/seller/received")}
+        onClick={() => navigate("/seller/negotiating")}
       >
         <ArrowLeft className="size-4" />
-        {t("recv.title")}
+        협상 관리
       </Button>
 
       <PageHeader

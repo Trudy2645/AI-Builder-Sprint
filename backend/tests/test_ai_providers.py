@@ -269,6 +269,28 @@ async def test_upstage_file_search_preserves_page_section_and_bbox() -> None:
 
 
 @pytest.mark.asyncio
+async def test_upstage_file_search_omits_empty_filters() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.read())
+        assert "filters" not in body
+        return httpx.Response(
+            200,
+            request=request,
+            json={"data": []},
+        )
+
+    request = FileSearchRequest(
+        query="취소 환불 기준",
+        vector_store_id="vs-1",
+        top_k=3,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await provider(client).search_files(request)
+
+    assert result.hits == []
+
+
+@pytest.mark.asyncio
 async def test_upstage_maps_universal_extraction_values_and_provenance() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/v1/information-extraction"
