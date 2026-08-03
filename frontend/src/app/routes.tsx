@@ -14,6 +14,7 @@ import { RequestAsIsPage } from "./pages/requests/RequestAsIsPage";
 import { RevisionRequestPage } from "./pages/requests/RevisionRequestPage";
 import { SentRequestsPage } from "./pages/requests/SentRequestsPage";
 import { BuyerMyPage } from "./pages/BuyerMyPage";
+import { BuyerContractStatusPage, BuyerContractsPage } from "./pages/buyer/BuyerContractsPage";
 import { SellerDashboardPage } from "./pages/seller/SellerDashboardPage";
 import { ListingsManagePage } from "./pages/seller/ListingsManagePage";
 import { ListingDetailPage } from "./pages/seller/ListingDetailPage";
@@ -61,6 +62,11 @@ const buyerNegotiationRoutes = [
   { path: "negotiating", element: <NegotiatingPage /> },
 ];
 
+const buyerContractRoutes = [
+  { path: "contracts", element: <BuyerContractsPage /> },
+  { path: "contracts/:id/status", element: <BuyerContractStatusPage /> },
+];
+
 // Shared final-negotiation → signing → completion flow (buyer & seller).
 // Mounted under both /buyer and /seller; pages detect the role from the URL.
 const signingRoutes = [
@@ -83,7 +89,8 @@ const buyerChildren = buyerNav
     (item) =>
       item.path !== "/buyer/explore" &&
       item.path !== "/buyer/negotiating" &&
-      item.path !== "/buyer/signing",
+      item.path !== "/buyer/signing" &&
+      item.path !== "/buyer/contracts",
   )
   .map((item) => ({
     path: item.path.replace("/buyer/", ""),
@@ -146,6 +153,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/buyer/explore" replace /> },
       ...buyerExploreRoutes,
+      ...buyerContractRoutes,
       ...buyerNegotiationRoutes,
       ...signingRoutes,
       ...buyerChildren,
