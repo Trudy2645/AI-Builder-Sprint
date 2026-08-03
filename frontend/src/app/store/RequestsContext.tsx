@@ -47,13 +47,19 @@ export interface SentRequest {
   serviceEndDate?: string;
   revisionRequestId?: string;
   revisionStatus?: SellerRevisionRequestListItem["status"];
+  revisionResponseMessage?: string | null;
   revisionItemCount?: number;
+  buyerApproved?: boolean;
+  sellerApproved?: boolean;
+  finalApprovalRequested?: boolean;
 }
 
 function requestStatus(
   status: string,
   revisionStatus?: SellerRevisionRequestListItem["status"],
   sellerApproved = false,
+  initialRequestKind?: RequestType,
+  finalApprovalRequested = false,
 ): RequestStatus {
   if (revisionStatus && ["countered", "partially_accepted"].includes(revisionStatus)) {
     return "responded";
@@ -61,8 +67,15 @@ function requestStatus(
   if (revisionStatus === "rejected") {
     return "responded";
   }
+  if (revisionStatus === "cancelled") {
+    return "closed";
+  }
+  if (revisionStatus === "accepted") {
+    return status === "signing" ? "signing" : "final_review";
+  }
   switch (status) {
-    case "seller_review": return sellerApproved ? "final_review" : "reviewing";
+    case "seller_review":
+      return sellerApproved || initialRequestKind === "asis" || finalApprovalRequested ? "final_review" : "reviewing";
     case "revision_requested": return "negotiating";
     case "signing": return "signing";
     case "signed": return "completed";
@@ -81,7 +94,7 @@ function fromBuyerContract(
     seller: item.seller_name,
     title: item.listing_title,
     type: item.initial_request_kind === "revision" ? "revision" : "asis",
-    status: requestStatus(item.status, revision?.status, item.seller_approved),
+    status: requestStatus(item.status, revision?.status, item.seller_approved, item.initial_request_kind === "as_is" ? "asis" : "revision", item.final_approval_requested),
     createdAt: item.created_at.slice(0, 10).replace(/-/g, "."),
     guests: item.requested_people,
     total: item.amount_minor ?? undefined,
@@ -90,7 +103,11 @@ function fromBuyerContract(
     serviceEndDate: item.service_end_date,
     revisionRequestId: revision?.id,
     revisionStatus: revision?.status,
+    revisionResponseMessage: revision?.response_message,
     revisionItemCount: revision?.item_count,
+    buyerApproved: item.buyer_approved,
+    sellerApproved: item.seller_approved,
+    finalApprovalRequested: item.final_approval_requested,
   };
 }
 
@@ -98,6 +115,7 @@ function fromSellerContract(
   item: SellerContractListItem,
   revision?: SellerRevisionRequestListItem,
 ): SentRequest {
+  const sellerSigningReady = item.seller_approved && ["seller_review", "signing"].includes(item.status);
   return {
     id: item.contract_id,
     contractId: item.contract_id,
@@ -105,7 +123,7 @@ function fromSellerContract(
     buyer: item.buyer_name,
     title: item.listing_title,
     type: item.initial_request_kind === "revision" ? "revision" : "asis",
-    status: item.status === "revision_requested" ? "negotiating" : requestStatus(item.status),
+    status: sellerSigningReady ? "signing" : item.status === "revision_requested" ? "negotiating" : requestStatus(item.status, revision?.status, item.seller_approved, item.initial_request_kind === "as_is" ? "asis" : "revision", item.final_approval_requested),
     createdAt: item.requested_at.slice(0, 10).replace(/-/g, "."),
     guests: item.requested_people,
     total: item.amount_minor ?? undefined,
@@ -114,7 +132,11 @@ function fromSellerContract(
     serviceEndDate: item.service_end_date,
     revisionRequestId: revision?.id,
     revisionStatus: revision?.status,
+    revisionResponseMessage: revision?.response_message,
     revisionItemCount: revision?.item_count,
+    buyerApproved: item.buyer_approved,
+    sellerApproved: item.seller_approved,
+    finalApprovalRequested: item.final_approval_requested,
   };
 }
 

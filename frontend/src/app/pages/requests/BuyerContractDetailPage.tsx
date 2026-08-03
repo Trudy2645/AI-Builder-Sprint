@@ -18,16 +18,20 @@ function formatAmount(amount: number | null, currency: string | null): string {
     : `${amount.toLocaleString("ko-KR")} ${currency ?? ""}`.trim();
 }
 
-function stepFor(status: string, sellerApproved: boolean): 2 | 3 | 4 | 5 | 6 {
-  if (status === "seller_review") return sellerApproved ? 4 : 2;
+function stepFor(status: string, buyerApproved: boolean, sellerApproved: boolean, isAsIs: boolean, finalApprovalRequested: boolean): 2 | 3 | 4 | 5 | 6 {
+  if (status === "seller_review") return buyerApproved || sellerApproved || isAsIs || finalApprovalRequested ? 4 : 2;
   if (status === "revision_requested") return 3;
   if (status === "signing") return 5;
   if (status === "signed") return 6;
   return 4;
 }
 
-function statusLabel(status: string, sellerApproved: boolean): string {
-  if (status === "seller_review") return sellerApproved ? "최종 검토 가능" : "셀러 검토 중";
+function statusLabel(status: string, buyerApproved: boolean, sellerApproved: boolean, isAsIs: boolean): string {
+  if (status === "seller_review") {
+    if (sellerApproved) return "최종안 승인 및 서명 대기";
+    if (buyerApproved) return "셀러 최종 승인 대기";
+    return isAsIs ? "최종 검토" : "셀러 검토 중";
+  }
   if (status === "revision_requested") return "협상 중";
   if (status === "signing") return "서명 대기";
   if (status === "signed") return "체결 완료";
@@ -39,7 +43,9 @@ export function BuyerContractDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [contract, setContract] = useState<ContractDetail | null>(null);
+  const [buyerApproved, setBuyerApproved] = useState(false);
   const [sellerApproved, setSellerApproved] = useState(false);
+  const [finalApprovalRequested, setFinalApprovalRequested] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,7 +61,9 @@ export function BuyerContractDetailPage() {
         setContract(detail);
         if (detail.status === "seller_review") {
           const approvals = await getContractApprovals(detail.id, detail.current_version.id);
+          setBuyerApproved(approvals.buyer.approved);
           setSellerApproved(approvals.seller.approved);
+          setFinalApprovalRequested(approvals.final_approval_requested);
         }
       })
       .catch((reason: unknown) => setError(friendlyApiError(reason)))
@@ -66,7 +74,11 @@ export function BuyerContractDetailPage() {
   if (error || !contract) return <PageHeader title="계약서를 불러올 수 없습니다" description={error ?? "잠시 후 다시 시도해 주세요."} />;
 
   const period = `${formatDate(contract.terms.start_date)} ~ ${formatDate(contract.terms.end_date)}`;
-  const canReview = contract.status === "signing" || (contract.status === "seller_review" && sellerApproved);
+  const isAsIs = contract.initial_request_kind === "as_is";
+  // An as-is request already represents the buyer's acceptance of the
+  // published terms, so the buyer should be able to open final review while
+  // the seller's final approval is still pending.
+  const canReview = contract.status === "signing" || (contract.status === "seller_review" && (sellerApproved || buyerApproved || isAsIs || finalApprovalRequested));
 
   return (
     <div className="mx-auto max-w-[960px]">
@@ -78,13 +90,13 @@ export function BuyerContractDetailPage() {
       <PageHeader title="계약서 상세" description={`${contract.listing_title} · ${contract.initial_request_kind === "as_is" ? "조건 그대로" : "수정 요청"}`} />
 
       <div className="mb-6 rounded-xl border border-border bg-card p-5">
-        <ContractStepper current={stepFor(contract.status, sellerApproved)} />
+        <ContractStepper current={stepFor(contract.status, buyerApproved, sellerApproved, isAsIs, finalApprovalRequested)} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-5">
         <div>
           <Badge className="border-transparent" style={{ background: canReview ? "var(--success-soft)" : "var(--warning-soft)", color: canReview ? "var(--success)" : "var(--warning)" }}>
-            {statusLabel(contract.status, sellerApproved)}
+            {statusLabel(contract.status, buyerApproved, sellerApproved, isAsIs)}
           </Badge>
           <h2 className="mt-3 text-xl font-semibold" style={{ color: "var(--navy)" }}>{contract.current_version.title}</h2>
           <p className="mt-1 text-sm text-muted-foreground">현재 버전 v{contract.current_version.version_no}</p>
@@ -105,7 +117,7 @@ export function BuyerContractDetailPage() {
       {!canReview && contract.status !== "signed" && (
         <div className="mb-4 flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
           <FileText className="mt-0.5 size-5 shrink-0" style={{ color: "var(--ocean)" }} />
-          <p>{contract.status === "seller_review" ? "셀러가 최종 승인하면 이 화면에서 최종 계약 내용을 확인하고 승인할 수 있습니다." : "현재 계약은 아직 최종 검토 단계가 아닙니다. 상태가 변경되면 이 화면에서 최종 검토를 시작할 수 있습니다."}</p>
+          <p>{contract.status === "seller_review" ? (buyerApproved ? "바이어 최종 승인이 완료되었습니다. 셀러의 최종 승인을 기다리는 중입니다." : isAsIs ? "조건 그대로 요청한 계약입니다. 최종 계약 내용을 확인한 뒤 바이어 최종 승인을 진행할 수 있습니다." : "셀러의 응답이 도착하면 최종 계약 내용을 확인한 뒤 바이어 최종 승인을 진행할 수 있습니다.") : "현재 계약은 아직 최종 검토 단계가 아닙니다. 상태가 변경되면 이 화면에서 최종 검토를 시작할 수 있습니다."}</p>
         </div>
       )}
 

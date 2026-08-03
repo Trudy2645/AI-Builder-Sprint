@@ -17,14 +17,13 @@ import { useApp } from "../../context/AppContext";
 import { useRequests, type RequestStatus, type SentRequest } from "../../store/RequestsContext";
 
 type Tab = "all" | RequestStatus;
-const TABS: Tab[] = ["all", "draft", "reviewing", "final_review", "responded", "negotiating", "signing", "completed", "closed"];
+const TABS: Tab[] = ["all", "draft", "reviewing", "negotiating", "final_review", "signing", "completed", "closed"];
 const tabLabel: Record<Tab, string> = {
   all: "tab.all",
   draft: "lstatus.draft",
   reviewing: "rstatus.reviewing",
-  final_review: "rstatus.final_review",
-  responded: "rstatus.responded",
   negotiating: "rstatus.negotiating",
+  final_review: "rstatus.final_review",
   signing: "rstatus.signing",
   completed: "rstatus.completed",
   closed: "rstatus.closed",
@@ -38,11 +37,21 @@ export function SentRequestsPage() {
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: requests.length };
-    for (const r of requests) c[r.status] = (c[r.status] ?? 0) + 1;
+    for (const r of requests) {
+      c[r.status] = (c[r.status] ?? 0) + 1;
+      // A seller response is part of the negotiation flow, not a separate
+      // lifecycle tab. Keep its internal status so the card can show the
+      // response badge while counting it under "협상 중".
+      if (r.status === "responded") c.negotiating = (c.negotiating ?? 0) + 1;
+    }
     return c;
   }, [requests]);
 
-  const rows = tab === "all" ? requests : requests.filter((r) => r.status === tab);
+  const rows = tab === "all"
+    ? requests
+    : requests.filter((r) => tab === "negotiating"
+      ? r.status === "negotiating" || r.status === "responded"
+      : r.status === tab);
 
   const openRequest = (request: SentRequest) => {
     if (request.type === "revision" && request.revisionRequestId) {

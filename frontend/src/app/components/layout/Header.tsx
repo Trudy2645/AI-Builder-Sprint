@@ -45,13 +45,13 @@ export function Header({
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const calendarItems = requests
-    .filter((request) => request.status === "completed" || request.status === "signing")
+    .filter((request) => request.status === "completed" || request.status === "final_review" || request.status === "signing")
     .map((request) => ({
       id: request.id,
       title: request.title,
       partner: role === "buyer" ? request.seller : request.buyer ?? "바이어",
       date: request.serviceStartDate ?? request.createdAt,
-      status: request.status === "completed" ? "체결 완료" : "서명 대기",
+      status: request.status === "completed" ? "체결 완료" : request.status === "final_review" ? "최종안 승인 및 서명 대기" : "서명 대기",
       tone: request.status === "completed" ? "var(--success)" : "var(--warning)",
     }));
   const calendarPath = role === "buyer" ? "/buyer/contracts" : "/seller/contracts";
@@ -102,9 +102,15 @@ export function Header({
     } catch {
       // Navigate even if marking read fails.
     }
-    const path = notification.resource_type === "contract" && notification.resource_id
-      ? role === "buyer" ? `/buyer/sent/contract/${notification.resource_id}` : `/seller/received/contract/${notification.resource_id}`
-      : role === "buyer" ? "/buyer/sent" : "/seller/received";
+    const path = role === "buyer"
+      ? notification.resource_type === "contract" && notification.resource_id
+        ? `/buyer/sent/contract/${notification.resource_id}`
+        : "/buyer/sent"
+      : notification.notification_type === "final_approval_requested"
+        ? "/seller/signing"
+        : notification.notification_type === "signature_requested"
+          ? "/seller/contracts"
+          : "/seller/negotiating";
     navigate(path);
   };
   const displayName = companyName || "계정 정보 없음";
@@ -308,7 +314,7 @@ export function Header({
               ))
             ) : sellerNotif ? (
               requests.filter((request) => request.status === "reviewing" || request.status === "negotiating").slice(0, 3).map((request) => (
-                <DropdownMenuItem key={request.id} className="flex flex-col items-start gap-1 whitespace-normal py-2.5" onClick={() => navigate("/seller/received")}>
+                <DropdownMenuItem key={request.id} className="flex flex-col items-start gap-1 whitespace-normal py-2.5" onClick={() => navigate("/seller/negotiating")}>
                   <span style={{ fontSize: "13px", lineHeight: 1.5 }}>{request.buyer ?? "바이어"}의 계약 요청 · {request.title}</span>
                   <span className="whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 600 }}>요청 확인 →</span>
                 </DropdownMenuItem>

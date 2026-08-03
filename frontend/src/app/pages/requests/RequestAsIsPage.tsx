@@ -11,7 +11,7 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { ContractStepper } from "../../components/contract/ContractStepper";
 import { useApp } from "../../context/AppContext";
 import { getContract, formatKRW, type Contract } from "../../data/contracts";
-import { createPublicContractRequest, friendlyApiError, getContractDetail, getPublicListingAsContract } from "../../lib/api";
+import { createPublicContractRequest, friendlyApiError, getPublicListingAsContract } from "../../lib/api";
 import { buyerProfile } from "../../data/profile";
 import { FieldError } from "../../components/auth/AuthFields";
 import { useRequests } from "../../store/RequestsContext";
@@ -95,10 +95,9 @@ export function RequestAsIsPage() {
         nights: nightsNum, start_date: startDate, end_date: endDate, currency,
         request_message: message, initial_request_kind: "as_is",
       });
-      const createdDetail = await getContractDetail(created.contract_id);
-      toast.success("셀러에게 최종 승인 요청을 보냈습니다.");
+      toast.success("계약 요청을 보냈습니다. 최종 계약 내용을 확인해 주세요.");
       await refreshRequests();
-      navigate(`/buyer/signing?contractId=${created.contract_id}&versionId=${createdDetail.current_version.id}`, { replace: true });
+      navigate(`/buyer/sent/contract/${created.contract_id}`, { replace: true });
     } catch (error) { toast.error(friendlyApiError(error)); }
   };
 

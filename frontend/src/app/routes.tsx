@@ -24,13 +24,11 @@ import { ListingDocumentPage } from "./pages/seller/ListingDocumentPage";
 import { CreateMethodPage } from "./pages/seller/CreateMethodPage";
 import { UploadOcrPage } from "./pages/seller/UploadOcrPage";
 import { WriteContractPage } from "./pages/seller/WriteContractPage";
-import { ReceivedRequestsPage } from "./pages/seller/ReceivedRequestsPage";
 import { SellerReceivedRequestPage } from "./pages/seller/SellerReceivedRequestPage";
 import { RevisionReviewPage } from "./pages/seller/RevisionReviewPage";
 import { SellerNegotiatingPage } from "./pages/seller/SellerNegotiatingPage";
 import { SellerContractsPage } from "./pages/seller/SellerContractsPage";
 import { SellerMyPage } from "./pages/seller/SellerMyPage";
-import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { FinalApprovePage } from "./pages/negotiation/FinalApprovePage";
 import { ESignaturePage } from "./pages/negotiation/ESignaturePage";
 import { CompletionPage } from "./pages/negotiation/CompletionPage";
@@ -69,7 +67,6 @@ const buyerNegotiationRoutes = [
 // Mounted under both /buyer and /seller; pages detect the role from the URL.
 const signingRoutes = [
   { path: "signing", element: <FinalApprovePage /> },
-  { path: "signing/compare", element: <VersionComparePage /> },
   { path: "signing/sign", element: <ESignaturePage /> },
   { path: "signing/complete", element: <CompletionPage /> },
 ];
@@ -102,9 +99,9 @@ const sellerListingRoutes = [
   { path: "listings/new", element: <CreateMethodPage /> },
   { path: "listings/new/upload", element: <UploadOcrPage /> },
   { path: "listings/new/write", element: <WriteContractPage /> },
-  { path: "received", element: <ReceivedRequestsPage /> },
-  { path: "received/contract/:id", element: <SellerReceivedRequestPage /> },
-  { path: "received/:id", element: <RevisionReviewPage /> },
+  { path: "received", element: <Navigate to="/seller/negotiating" replace /> },
+  { path: "negotiating/contract/:id", element: <SellerReceivedRequestPage /> },
+  { path: "negotiating/revision/:id", element: <RevisionReviewPage /> },
 ];
 
 // Seller nav items that now have dedicated pages instead of placeholders.
@@ -120,7 +117,6 @@ const sellerChildren = sellerNav
     (item) =>
       item.path !== "/seller/listings" &&
       item.path !== "/seller/listings/new" &&
-      item.path !== "/seller/received" &&
       item.path !== "/seller/signing",
   )
   .map((item) => ({

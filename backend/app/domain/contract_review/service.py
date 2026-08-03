@@ -10,7 +10,7 @@ from uuid import UUID
 from fastapi import status
 from pydantic import ValidationError
 
-from app.ai.agents import ContractReviewAgent
+from app.ai.agents import ContractReviewAgent, ContractReviewAgentInvalidOutputError
 from app.ai.prompts.v1.contract_review import CONTRACT_REVIEW_PROMPT_VERSION
 from app.ai.providers.base import (
     AIProviderInvalidResponseError,
@@ -618,6 +618,7 @@ class ContractReviewService:
             (
                 AIProviderInvalidResponseError,
                 ContractReviewToolRejectedError,
+                ContractReviewAgentInvalidOutputError,
                 ValidationError,
             ),
         ):

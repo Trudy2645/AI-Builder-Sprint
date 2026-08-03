@@ -242,8 +242,7 @@ LLM이 숫자를 직접 계산한 값을 source of truth로 사용하지 않는�
 협상 결과는 기존 내용을 update하지 않고 새 version으로 만든다. `contracts.current_version_id`만 최신 버전을 가리킨다. 서명 요청은 특정 version에 고정된다.
 
 `contract_versions.structured_data.contract_terms`에는 version 생성 당시의 가격과 통화,
-서비스 시작일·종료일과 계산 근거를 snapshot한다. 버전 비교는 이 저장값만 사용하며 기존
-version에 snapshot이 없으면 가격·기간 변화를 알 수 없는 값으로 처리한다.
+서비스 시작일·종료일과 계산 근거를 snapshot한다.
 
 작성자 역할은 `created_by`가 계약 buyer인지 seller organization member인지 조회해 계산한다.
 최초 version의 생성 사유는 `contract_created`, `created_from_revision_request_id`가 있는

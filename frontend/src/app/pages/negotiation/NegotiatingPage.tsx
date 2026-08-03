@@ -1,44 +1,151 @@
-import { useEffect, useState } from "react";
-import { ArrowRight, Clock3, GitCompareArrows, MessageSquareReply } from "lucide-react";
-import { useNavigate } from "react-router";
+import { useMemo } from "react";
+import { ArrowRight, CheckCircle2, Clock3, GitBranch, MessagesSquare, XCircle } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
-import { ContractStepper } from "../../components/contract/ContractStepper";
-import { useRequests } from "../../store/RequestsContext";
-import {
-  getContractVersions,
-  getRevisionRequest,
-  type ContractVersionListItem,
-  type RevisionRequestResponse,
-} from "../../lib/api";
+import { Card } from "../../components/ui/card";
+import { friendlyApiError, getContractDetail } from "../../lib/api";
+import { useRequests, type SentRequest } from "../../store/RequestsContext";
+
+type WorkflowStage = "seller_counter" | "seller_rejection" | "final_approval" | "buyer_cancelled";
+type Tab = "all" | WorkflowStage;
+
+const TABS: Array<{ key: Tab; label: string }> = [
+  { key: "all", label: "전체" },
+  { key: "seller_counter", label: "셀러 대안 도착" },
+  { key: "seller_rejection", label: "셀러 수정 거절" },
+  { key: "final_approval", label: "최종 승인 진행" },
+  { key: "buyer_cancelled", label: "바이어 거절로 종료" },
+];
+
+const STAGE_TONE: Record<WorkflowStage, { bg: string; color: string; icon: typeof GitBranch }> = {
+  seller_counter: { bg: "var(--info-soft)", color: "var(--ocean)", icon: GitBranch },
+  seller_rejection: { bg: "var(--warning-soft)", color: "var(--warning)", icon: XCircle },
+  final_approval: { bg: "var(--success-soft)", color: "var(--success)", icon: CheckCircle2 },
+  buyer_cancelled: { bg: "var(--muted)", color: "var(--muted-foreground)", icon: XCircle },
+};
+
+function workflowStage(request: SentRequest): WorkflowStage | null {
+  switch (request.revisionStatus) {
+    case "countered":
+    case "partially_accepted":
+      return "seller_counter";
+    case "rejected":
+      return request.revisionResponseMessage ? "buyer_cancelled" : "seller_rejection";
+    case "accepted":
+      return request.sellerApproved ? null : "final_approval";
+    case "cancelled":
+      return "buyer_cancelled";
+    default:
+      return null;
+  }
+}
+
+function badgeLabel(request: SentRequest, stage: WorkflowStage): string {
+  if (stage === "final_approval") {
+    return request.finalApprovalRequested ? "셀러 최종 승인 대기" : "바이어 최종 검토";
+  }
+  return TABS.find((tab) => tab.key === stage)?.label ?? "협상 관리";
+}
 
 export function NegotiatingPage() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const { requests, loading } = useRequests();
-  const active = requests.find((request) => request.status === "responded" || request.status === "negotiating" || request.status === "reviewing");
-  const [versions, setVersions] = useState<ContractVersionListItem[]>([]);
-  const [revision, setRevision] = useState<RevisionRequestResponse | null>(null);
-  useEffect(() => {
-    if (!active) {
-      setVersions([]);
-      setRevision(null);
+  const selected = params.get("status") as Tab | null;
+  const tab: Tab = selected && TABS.some((item) => item.key === selected) ? selected : "all";
+
+  const rows = useMemo(() => requests
+    .map((request) => ({ request, stage: workflowStage(request) }))
+    .filter((row): row is { request: SentRequest; stage: WorkflowStage } => row.stage !== null), [requests]);
+  const visibleRows = tab === "all" ? rows : rows.filter((row) => row.stage === tab);
+  const counts = useMemo(() => TABS.reduce<Record<string, number>>((result, item) => {
+    result[item.key] = item.key === "all" ? rows.length : rows.filter((row) => row.stage === item.key).length;
+    return result;
+  }, {}), [rows]);
+
+  const open = async (request: SentRequest, stage: WorkflowStage) => {
+    if ((stage === "seller_counter" || stage === "seller_rejection") && request.revisionRequestId) {
+      navigate(`/buyer/sent/revision/${request.revisionRequestId}`);
       return;
     }
 
-    void getContractVersions(active.contractId).then(setVersions).catch(() => setVersions([]));
-    if (!active.revisionRequestId) {
-      setRevision(null);
+    if (stage === "final_approval") {
+      try {
+        const detail = await getContractDetail(request.contractId);
+        navigate(`/buyer/signing?contractId=${detail.id}&versionId=${detail.current_version.id}`);
+      } catch (error) {
+        toast.error(friendlyApiError(error));
+      }
       return;
     }
 
-    void getRevisionRequest(active.revisionRequestId).then(setRevision).catch(() => setRevision(null));
-  }, [active?.contractId, active?.revisionRequestId]);
-  if (loading) return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">협상 목록을 불러오는 중입니다…</div>;
-  if (!active) return <div className="mx-auto max-w-[720px] rounded-xl border border-dashed p-10 text-center"><Clock3 className="mx-auto mb-3 size-8 text-muted-foreground" /><h1 className="text-xl font-semibold" style={{ color: "var(--navy)" }}>진행 중인 협상이 없습니다</h1><p className="mt-2 text-sm text-muted-foreground">계약 요청이 셀러에게 전달되면 이곳에서 응답을 확인할 수 있습니다.</p><Button className="mt-5" style={{ background: "var(--navy)" }} onClick={() => navigate("/buyer/explore")}>계약 탐색으로</Button></div>;
-  const currentVersion = versions.at(-1);
-  const hasSellerResponse = active.status === "responded" || ["countered", "accepted", "rejected", "partially_accepted"].includes(active.revisionStatus ?? "");
-  const counterItems = revision?.items.filter((item) => item.decision === "countered" && item.counter_text) ?? [];
-  return <div className="mx-auto max-w-[820px]"><PageHeader title="협상 진행" description="서버에 저장된 계약 요청과 버전 상태를 확인합니다." /><div className="mb-5 rounded-xl border border-border bg-card p-4"><ContractStepper current={3} /></div><div className="rounded-xl border border-border bg-card p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><Badge className="border-transparent" style={{ background: hasSellerResponse ? "var(--info-soft)" : "var(--warning-soft)", color: hasSellerResponse ? "var(--ocean)" : "var(--warning)" }}>{hasSellerResponse ? "응답 도착" : active.status === "reviewing" ? "셀러 검토 중" : "협상 중"}</Badge><h2 className="mt-3 text-xl font-semibold" style={{ color: "var(--navy)" }}>{active.title}</h2><p className="mt-1 text-sm text-muted-foreground">{active.seller} · {active.createdAt}</p></div><div className="text-right text-sm text-muted-foreground">현재 버전<br /><span className="font-semibold text-foreground">{currentVersion ? `v${currentVersion.version_no}` : "확인 중"}</span></div></div>{active.message && <div className="mt-5 flex items-start gap-2 rounded-lg border border-[var(--ocean)] bg-[var(--info-soft)] p-3 text-sm"><MessageSquareReply className="mt-0.5 size-4 shrink-0" />{active.message}</div>}{hasSellerResponse && <div className="mt-5 rounded-lg border border-[var(--ocean)] bg-[var(--info-soft)] p-4"><div className="flex items-start gap-2"><MessageSquareReply className="mt-0.5 size-4 shrink-0" style={{ color: "var(--ocean)" }} /><div className="min-w-0"><div className="font-semibold" style={{ color: "var(--navy)" }}>셀러 응답 도착</div><p className="mt-1 text-sm leading-6">{revision?.seller_message ?? "셀러가 수정 요청에 응답했습니다."}</p>{counterItems.length > 0 && <div className="mt-3 space-y-2">{counterItems.map((item) => <div key={item.id} className="rounded-md border border-border bg-card p-3 text-sm"><div className="text-xs font-semibold text-muted-foreground">셀러 대안 문구</div><p className="mt-1 leading-6">{item.counter_text}</p></div>)}</div>}</div></div></div>}<div className="mt-5 flex flex-wrap justify-end gap-2"><Button variant="outline" disabled={!currentVersion} onClick={() => navigate(`/buyer/signing/compare?contractId=${active.contractId}`)}><GitCompareArrows className="mr-1 size-4" />버전 비교</Button><Button disabled={!currentVersion} style={{ background: "var(--navy)" }} onClick={() => { toast.info("셀러 응답과 계약 버전을 확인해 주세요."); navigate(`/buyer/signing?contractId=${active.contractId}&versionId=${currentVersion?.id ?? ""}`); }}>최종 검토<ArrowRight className="ml-1 size-4" /></Button></div></div></div>;
+    navigate(`/buyer/sent/contract/${request.contractId}`);
+  };
+
+  return (
+    <div className="mx-auto max-w-[1000px]">
+      <PageHeader title="협상 관리" description="셀러가 보낸 대안·거절 응답과 최종 승인 상태를 확인합니다." />
+
+      <div className="mb-5 flex flex-wrap gap-2">
+        {TABS.map((item) => {
+          const active = tab === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => (item.key === "all" ? setParams({}) : setParams({ status: item.key }))}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 transition-colors"
+              style={{ borderColor: active ? "var(--navy)" : "var(--border)", background: active ? "var(--navy)" : "var(--card)", color: active ? "#fff" : "var(--foreground)", fontSize: "13px" }}
+            >
+              {item.label}
+              <span className="rounded-full px-1.5" style={{ fontSize: "11px", background: active ? "rgba(255,255,255,0.25)" : "var(--muted)", color: active ? "#fff" : "var(--muted-foreground)" }}>
+                {counts[item.key] ?? 0}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {loading ? (
+        <Card className="border-dashed p-16 text-center text-muted-foreground">계약 요청을 불러오는 중입니다…</Card>
+      ) : visibleRows.length === 0 ? (
+        <Card className="flex flex-col items-center justify-center gap-3 border-dashed p-10 text-center sm:p-16">
+          <MessagesSquare className="size-7" style={{ color: "var(--ocean)" }} />
+          <p className="text-muted-foreground">해당 상태의 계약이 없습니다.</p>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {visibleRows.map(({ request, stage }) => {
+            const tone = STAGE_TONE[stage];
+            const Icon = tone.icon;
+            return (
+              <Card key={request.id} className="p-5">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <Badge className="gap-1 border-transparent" style={{ background: tone.bg, color: tone.color }}>
+                      <Icon className="size-3.5" />
+                      {badgeLabel(request, stage)}
+                    </Badge>
+                    <h2 className="mt-3 truncate text-lg font-semibold" style={{ color: "var(--navy)" }}>{request.title}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">{request.seller} · {request.createdAt}</p>
+                  </div>
+                  <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => void open(request, stage)}>
+                    계약 진행상황 보기
+                    <ArrowRight className="size-4" />
+                  </Button>
+                </div>
+                {stage === "seller_counter" && <p className="mt-4 flex items-center gap-1.5 text-sm text-muted-foreground"><Clock3 className="size-4" />셀러가 보낸 대안에 대해 수락·거절·추가 수정을 선택할 수 있습니다.</p>}
+                {stage === "seller_rejection" && <p className="mt-4 flex items-center gap-1.5 text-sm text-muted-foreground"><Clock3 className="size-4" />셀러가 수정 요청을 거절했습니다. 수락하거나 계약을 종료할 수 있습니다.</p>}
+                {stage === "final_approval" && <p className="mt-4 flex items-center gap-1.5 text-sm text-muted-foreground"><CheckCircle2 className="size-4" />최종 계약 내용을 확인하고 바이어 최종 승인을 진행합니다.</p>}
+                {stage === "buyer_cancelled" && <p className="mt-4 flex items-center gap-1.5 text-sm text-muted-foreground"><XCircle className="size-4" />바이어가 협상을 거절하여 계약이 종료되었습니다.</p>}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }

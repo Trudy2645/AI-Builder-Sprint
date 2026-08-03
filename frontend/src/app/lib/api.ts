@@ -110,7 +110,7 @@ export function friendlyApiError(error: unknown): string {
       UNSUPPORTED_DISPLAY_CURRENCY: "현재는 상품 기준 통화로만 예상 금액을 계산할 수 있습니다.",
       DATABASE_UNAVAILABLE: "서비스 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
       INVALID_STATE_TRANSITION: "이미 처리되었거나 현재 상태에서는 변경할 수 없는 요청입니다.",
-      SELLER_APPROVAL_REQUIRED: "셀러의 최종 승인이 완료된 뒤 바이어가 승인할 수 있습니다.",
+      BUYER_APPROVAL_REQUIRED: "바이어의 최종 승인이 완료된 뒤 셀러가 승인할 수 있습니다.",
     };
     return messages[error.code] ?? error.message;
   }
@@ -150,6 +150,93 @@ export async function apiFetch<Data>(path: string, init: RequestInit = {}): Prom
  * and returns only the structured candidate intended for seller confirmation.
  */
 export type ContractProcessingStage = "uploading" | "ocr" | "extracting" | "matching" | "finalizing";
+
+export type AIJobView = {
+  id: string;
+  task_type: string;
+  status: "queued" | "processing" | "succeeded" | "failed";
+  progress: number;
+  result_resource_type: string | null;
+  result_resource_id: string | null;
+  failure_code: string | null;
+};
+
+export type ContractReviewFinding = {
+  id: string;
+  viewer_role: "buyer" | "seller";
+  clause_id: string | null;
+  category: string;
+  severity: "high" | "medium" | "low" | "none";
+  importance: "high" | "medium" | "low";
+  title: string;
+  explanation: string;
+  suggested_text: string | null;
+  suggested_text_hash: string | null;
+  grounding_status: "grounded" | "insufficient_evidence" | "not_required";
+  confidence: number | null;
+  source_location: Record<string, unknown>;
+  evidence: Array<Record<string, unknown>>;
+  disclaimer: string;
+  is_public: boolean;
+  model_name: string;
+  prompt_version: string;
+};
+
+export type ContractReviewRun = {
+  id: string;
+  job_id: string | null;
+  target_type: "listing_version" | "contract_version";
+  target_id: string;
+  viewer_role: "buyer" | "seller";
+  status: "queued" | "processing" | "succeeded" | "failed";
+  execution_mode: "single_agent";
+  agent_name: "contract_review";
+  max_iterations: number;
+  iterations_used: number;
+  stop_reason: "completed" | "max_iterations" | "insufficient_evidence" | "provider_error" | null;
+  model_name: string;
+  prompt_version: string;
+  findings: ContractReviewFinding[];
+};
+
+export type ContractReviewAccepted = {
+  job_id: string;
+  job_type: "risk_analysis";
+  execution_mode: "single_agent";
+  agent_name: "contract_review";
+  max_iterations: number;
+  status: "queued" | "processing" | "succeeded" | "failed";
+};
+
+export function startSellerListingReview(listingId: string, versionId: string): Promise<ContractReviewAccepted> {
+  const session = getApiSession();
+  return apiFetch<ContractReviewAccepted>(`/seller/listings/${listingId}/analyses`, {
+    method: "POST",
+    headers: new Headers([
+      ...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(),
+      ["Idempotency-Key", requestIdempotencyKey("listing-risk-review")],
+    ]),
+    body: JSON.stringify({
+      version_id: versionId,
+      viewer_role: "seller",
+      analysis_types: ["risk", "missing_terms"],
+    }),
+  });
+}
+
+export function getAIJob(jobId: string): Promise<AIJobView> {
+  const session = getApiSession();
+  return apiFetch<AIJobView>(`/ai-jobs/${jobId}`, {
+    headers: authenticatedHeaders(session),
+  });
+}
+
+export function getContractReviewRun(runId: string): Promise<ContractReviewRun> {
+  const session = getApiSession();
+  return apiFetch<ContractReviewRun>(`/ai-analysis-runs/${runId}`, {
+    headers: authenticatedHeaders(session),
+  });
+}
 
 export async function uploadAndProcessSourceContract(
   file: File,
@@ -279,7 +366,7 @@ function positiveInteger(value: string): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function sellerListingTerms(draft: SellerListingDraftInput): Record<string, unknown> {
+export function sellerListingTerms(draft: SellerListingDraftInput): Record<string, unknown> {
   const priceUnit = PRICE_UNIT_MAP[draft.priceUnit] ?? PRICE_UNIT_MAP["1인당"];
   return {
     service_start_date: draft.availabilityStart || null,
@@ -324,7 +411,7 @@ export async function updateSellerListingTerms(
   listingId: string,
   terms: Record<string, unknown> = {},
   baseVersionNo = 1,
-): Promise<void> {
+): Promise<SellerListingDetail> {
   const session = getApiSession();
   const body = {
     ...terms,
@@ -344,7 +431,7 @@ export async function updateSellerListingTerms(
     liability_policy: terms.liability_policy == null ? null : String(terms.liability_policy),
     termination_policy: terms.termination_policy == null ? null : String(terms.termination_policy),
   };
-  await apiFetch(`/seller/listings/${listingId}/terms`, {
+  return apiFetch<SellerListingDetail>(`/seller/listings/${listingId}/terms`, {
     method: "PATCH",
     headers: authenticatedHeaders(session, { "Content-Type": "application/json" }),
     body: JSON.stringify({ base_version_no: baseVersionNo, terms: body }),
@@ -471,7 +558,9 @@ export type ContractListItem = {
   seller_name: string;
   initial_request_kind: "as_is" | "revision";
   status: "draft" | "seller_review" | "revision_requested" | "signing" | "signed" | "cancelled";
+  buyer_approved?: boolean;
   seller_approved?: boolean;
+  final_approval_requested?: boolean;
   service_start_date: string;
   service_end_date: string;
   requested_people: number;
@@ -528,6 +617,9 @@ export type SellerContractListItem = {
   request_kind_label: string;
   status: string;
   status_label: string;
+  buyer_approved?: boolean;
+  seller_approved?: boolean;
+  final_approval_requested?: boolean;
   requested_at: string;
 };
 
@@ -575,6 +667,7 @@ export type ContractDetail = {
   status_label: string;
   has_unread_response: boolean;
   initial_request_kind: "as_is" | "revision";
+  final_approval_requested: boolean;
   request_message: string | null;
   requested_people: number;
   buyer_group_name: string | null;
@@ -605,62 +698,6 @@ export type ContractDetail = {
     clauses: Array<{ id: string; clause_order: number; clause_key: string | null; title: string; body: string }>;
   };
 };
-
-export type ContractVersionListItem = {
-  id: string;
-  version_no: number;
-  version_label: string;
-  title: string;
-  created_by_role: "buyer" | "seller" | "system";
-  creation_reason: "contract_created" | "revision_agreement" | "manual_version";
-  created_from_revision_request_id: string | null;
-  created_at: string;
-  clause_count: number;
-  risk: { score: number | null; finding_count: number };
-};
-
-export type ContractVersionCompare = {
-  contract_id: string;
-  from_version: ContractVersionListItem;
-  to_version: ContractVersionListItem;
-  clause_summary: { added: number; deleted: number; modified: number };
-  clause_changes: Array<{
-    change_type: "added" | "deleted" | "modified";
-    before: { id: string; clause_order: number; clause_key: string | null; title: string; body: string } | null;
-    after: { id: string; clause_order: number; clause_key: string | null; title: string; body: string } | null;
-  }>;
-  price_change: {
-    direction: "increased" | "decreased" | "unchanged" | "unknown";
-    before: { amount_minor: number | null; currency: string | null };
-    after: { amount_minor: number | null; currency: string | null };
-    delta_amount_minor: number | null;
-  };
-  period_change: {
-    changed: boolean | null;
-    before: { start_date: string | null; end_date: string | null };
-    after: { start_date: string | null; end_date: string | null };
-  };
-  risk_change: {
-    direction: "increased" | "decreased" | "unchanged" | "unknown";
-    before_score: number | null;
-    after_score: number | null;
-    before_finding_count: number;
-    after_finding_count: number;
-  };
-};
-
-export function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
-  return apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
-}
-
-export function compareContractVersions(
-  contractId: string,
-  fromVersion: number,
-  toVersion: number,
-): Promise<ContractVersionCompare> {
-  const query = new URLSearchParams({ from: String(fromVersion), to: String(toVersion) });
-  return apiFetch<ContractVersionCompare>(`/contracts/${contractId}/versions/compare?${query}`);
-}
 
 export type ContractRequestPayload = {
   people: number;
@@ -808,6 +845,7 @@ export type SellerRevisionRequestListItem = {
   buyer_name: string;
   status: "draft" | "sent" | "accepted" | "rejected" | "partially_accepted" | "countered" | "cancelled";
   message: string | null;
+  response_message: string | null;
   item_count: number;
   item_summary: string[];
   has_unread: boolean;
@@ -816,12 +854,12 @@ export type SellerRevisionRequestListItem = {
 };
 
 export function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
-  return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
+  return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered&status=partially_accepted&status=accepted&status=rejected&status=cancelled");
 }
 
 export function getBuyerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
   return apiFetch<SellerRevisionRequestListItem[]>(
-    "/me/revision-requests?status=sent&status=countered&status=accepted&status=rejected&status=partially_accepted",
+    "/me/revision-requests?status=sent&status=countered&status=accepted&status=rejected&status=partially_accepted&status=cancelled",
   );
 }
 
@@ -952,6 +990,7 @@ export type ApprovalStatus = {
   buyer: { approved: boolean };
   seller: { approved: boolean };
   all_approved: boolean;
+  final_approval_requested: boolean;
   contract_status?: string;
 };
 

@@ -337,7 +337,7 @@ export function RevisionReviewPage() {
             onClick={() => navigate("/seller/negotiating")}
           >
             <ArrowLeft className="size-4" />
-            협상 중인 계약
+            협상 관리
           </Button>
           <PageHeader
             title="셀러 대안 전송 완료"
@@ -371,7 +371,7 @@ export function RevisionReviewPage() {
           </div>
           <div className="mt-6 flex justify-end rounded-xl border border-border bg-card p-4">
             <Button variant="outline" onClick={() => navigate("/seller/negotiating")}>
-              협상 중인 계약으로 돌아가기
+              협상 관리로 돌아가기
             </Button>
           </div>
         </div>
@@ -388,9 +388,9 @@ export function RevisionReviewPage() {
         </p>
         <Button
           className="mt-6"
-          onClick={() => navigate("/seller/received")}
+          onClick={() => navigate("/seller/negotiating")}
         >
-          받은 요청으로 돌아가기
+          협상 관리로 돌아가기
         </Button>
       </div>
     );
@@ -545,10 +545,10 @@ export function RevisionReviewPage() {
         variant="ghost"
         size="sm"
         className="mb-4 gap-1.5 whitespace-nowrap"
-        onClick={() => navigate("/seller/received")}
+        onClick={() => navigate("/seller/negotiating")}
       >
         <ArrowLeft className="size-4" />
-        {t("recv.title")}
+        협상 관리
       </Button>
 
       <PageHeader

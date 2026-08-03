@@ -56,12 +56,13 @@ export function BuyerRevisionRequestPage() {
   if (error || !contract || !revision) return <PageHeader title="수정 요청을 불러올 수 없습니다" description={error ?? "잠시 후 다시 시도해 주세요."} />;
 
   const responseArrived = revision.status === "countered" || revision.status === "partially_accepted" || revision.status === "accepted" || revision.status === "rejected";
-  const buyerCanRespond = revision.status === "countered" || revision.status === "partially_accepted";
+  const sellerRejectionWaiting = revision.status === "rejected" && !revision.response_message;
+  const buyerCanRespond = revision.status === "countered" || revision.status === "partially_accepted" || sellerRejectionWaiting;
 
   const respond = async (decision: "accepted" | "rejected") => {
     setSubmitting(true);
     try {
-      await respondRevisionRequest(revision.id, {
+      const mutation = await respondRevisionRequest(revision.id, {
         decision,
         message: decision === "accepted" ? "셀러 응답을 수락합니다." : "셀러 응답을 수락하지 않고 추가 검토를 요청합니다.",
       });
@@ -72,7 +73,8 @@ export function BuyerRevisionRequestPage() {
         toast.success("셀러 응답을 수락했습니다. 최종안을 확인해 주세요.");
         navigate(`/buyer/signing?contractId=${contract.id}&versionId=${nextContract.current_version.id}`);
       } else {
-        toast.success("셀러 응답을 종료했습니다. 추가 수정 요청을 보낼 수 있습니다.");
+        toast.success(sellerRejectionWaiting ? "셀러의 수정 거절을 거부하고 계약을 종료했습니다." : "셀러 응답을 거절하고 계약을 종료했습니다.");
+        if (mutation.status === "cancelled") navigate("/buyer/sent", { replace: true });
       }
     } catch (reason) {
       toast.error(friendlyApiError(reason));
@@ -99,7 +101,7 @@ export function BuyerRevisionRequestPage() {
           <h2 className="mt-3 text-xl font-semibold" style={{ color: "var(--navy)" }}>{contract.current_version.title}</h2>
           <p className="mt-1 text-sm text-muted-foreground">기준 버전 v{revision.base_version_no} · 요청 조항 {revision.items.length}개</p>
         </div>
-        {revision.status === "accepted" && (contract.status === "seller_review" || contract.status === "signing") && <Button style={{ background: "var(--navy)" }} onClick={() => navigate(`/buyer/signing?contractId=${contract.id}&versionId=${contract.current_version.id}`)}>{contract.status === "signing" ? "서명 대기" : "최종안 검토"}</Button>}
+        {revision.status === "accepted" && (contract.status === "seller_review" || contract.status === "signing") && <Button style={{ background: "var(--navy)" }} onClick={() => navigate(`/buyer/signing?contractId=${contract.id}&versionId=${contract.current_version.id}`)}>{contract.status === "signing" ? "최종 승인" : "최종 검토"}</Button>}
       </div>
 
       {revision.message && <div className="mb-4 rounded-xl border border-border bg-card p-4"><div className="text-sm font-semibold" style={{ color: "var(--navy)" }}>요청 메시지</div><p className="mt-2 text-sm leading-6">{revision.message}</p></div>}
@@ -125,8 +127,8 @@ export function BuyerRevisionRequestPage() {
             <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--ocean)" }}><CheckCircle2 className="size-4" />셀러 응답을 확인하고 선택하세요.</div>
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" disabled={submitting} onClick={() => navigate(`/buyer/sent/contract/${contract.id}/revise`)}>추가 수정 제안</Button>
-              <Button variant="outline" disabled={submitting} onClick={() => void respond("rejected")}>응답 거절</Button>
-              <Button disabled={submitting} style={{ background: "var(--navy)" }} onClick={() => void respond("accepted")}>응답 수락</Button>
+              <Button variant="outline" disabled={submitting} onClick={() => void respond("rejected")}>{sellerRejectionWaiting ? "거절하고 종료" : "응답 거절"}</Button>
+              <Button disabled={submitting} style={{ background: "var(--navy)" }} onClick={() => void respond("accepted")}>{sellerRejectionWaiting ? "수정 거절 수락" : "응답 수락"}</Button>
             </div>
           </div>
         ) : revision.status === "rejected" ? (
@@ -134,7 +136,7 @@ export function BuyerRevisionRequestPage() {
             <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--warning)" }}><CheckCircle2 className="size-4" />수정 요청이 종료되었습니다. 원래 조건으로 진행하거나 다시 제안할 수 있습니다.</div>
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => navigate(`/buyer/sent/contract/${contract.id}/revise`)}>추가 수정 요청</Button>
-              <Button onClick={() => navigate(`/buyer/sent/contract/${contract.id}`)}>원래 조건으로 진행</Button>
+              <Button onClick={() => navigate(`/buyer/signing?contractId=${contract.id}&versionId=${contract.current_version.id}`)}>원래 조건으로 최종 검토</Button>
             </div>
           </div>
         ) : responseArrived ? (

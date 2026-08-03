@@ -10,7 +10,19 @@ import { RiskReviewStep } from "../../components/listings/RiskReviewStep";
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
 import { createEmptyDraft, type ListingDraft, useListings } from "../../store/ListingsContext";
-import { friendlyApiError, registerPublishedSellerListing, uploadAndProcessSourceContract, type ContractProcessingStage } from "../../lib/api";
+import {
+  ApiError,
+  friendlyApiError,
+  getAIJob,
+  getContractReviewRun,
+  registerPublishedSellerListing,
+  sellerListingTerms,
+  startSellerListingReview,
+  updateSellerListingTerms,
+  uploadAndProcessSourceContract,
+  type ContractProcessingStage,
+  type ContractReviewFinding,
+} from "../../lib/api";
 
 const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
 
@@ -61,7 +73,11 @@ export function UploadOcrPage() {
   const [analysisNotes, setAnalysisNotes] = useState<string[]>([]);
   const [extractedValues, setExtractedValues] = useState<Record<string, unknown> | null>(null);
   const [analysisStage, setAnalysisStage] = useState<ContractProcessingStage>("uploading");
-  const [processedListing, setProcessedListing] = useState<{ id: string; versionNo: number; documentId: string } | null>(null);
+  const [processedListing, setProcessedListing] = useState<{ id: string; versionNo: number; documentId: string; versionId?: string } | null>(null);
+  const [riskFindings, setRiskFindings] = useState<ContractReviewFinding[] | null>(null);
+  const [riskClauses, setRiskClauses] = useState<Array<{ id: string; clause_order: number; title: string; body: string }>>([]);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [riskError, setRiskError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof ListingDraft, string>>>({});
 
@@ -81,6 +97,9 @@ export function UploadOcrPage() {
     try {
       const result = await uploadAndProcessSourceContract(file, setAnalysisStage);
       setProcessedListing({ id: result.listingId, versionNo: result.listingVersionNo, documentId: result.sourceDocumentId });
+      setRiskFindings(null);
+      setRiskClauses([]);
+      setRiskError(null);
       setDraft((d) => ({ ...d, ...candidateToDraft(result.listingCandidate) }));
       setAnalysisNotes([...result.confirmationRequired, ...result.validationWarnings]);
       setExtractedValues(result.extraction);
@@ -108,6 +127,48 @@ export function UploadOcrPage() {
   const applyRisk = (field: keyof ListingDraft, value: string, id: string) => {
     patch({ [field]: value } as Partial<ListingDraft>);
     setApplied((a) => ({ ...a, [id]: true }));
+  };
+
+  const runRiskReview = async (reviewDraft: ListingDraft, listing: { id: string; versionNo: number }) => {
+    setRiskLoading(true);
+    setRiskError(null);
+    setRiskFindings(null);
+    try {
+      const saved = await updateSellerListingTerms(
+        listing.id,
+        sellerListingTerms(reviewDraft as Required<ListingDraft>),
+        listing.versionNo,
+      );
+      const versionId = saved.current_version.id;
+      setProcessedListing((current) => current && current.id === listing.id
+        ? { ...current, versionNo: saved.current_version.version_no, versionId }
+        : current);
+      setRiskClauses(saved.current_version.clauses);
+
+      const accepted = await startSellerListingReview(listing.id, versionId);
+      let job = await getAIJob(accepted.job_id);
+      for (let attempt = 0; attempt < 45; attempt += 1) {
+        if (job.status === "failed") {
+          throw new Error(job.failure_code ? `AI 분석에 실패했습니다 (${job.failure_code}).` : "AI 분석에 실패했습니다.");
+        }
+        if (job.status === "succeeded" && job.result_resource_id) {
+          const run = await getContractReviewRun(job.result_resource_id);
+          if (run.status === "succeeded") {
+            setRiskFindings(run.findings);
+            return;
+          }
+          if (run.status === "failed") throw new Error("AI 계약 검토가 실패했습니다.");
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        job = await getAIJob(accepted.job_id);
+      }
+      throw new Error("AI 위험 검토 시간이 초과되었습니다. 다시 시도해 주세요.");
+    } catch (error) {
+      setRiskFindings(null);
+      setRiskError(error instanceof ApiError ? friendlyApiError(error) : error instanceof Error ? error.message : friendlyApiError(error));
+    } finally {
+      setRiskLoading(false);
+    }
   };
 
   const goNext = () => {
@@ -139,6 +200,13 @@ export function UploadOcrPage() {
         toast.error("공개에 필요한 필수 항목을 확인해 주세요.");
         return;
       }
+      if (!processedListing) {
+        toast.error("OCR 결과가 없습니다. 먼저 계약서를 분석해 주세요.");
+        return;
+      }
+      setStep(3);
+      void runRiskReview(draft, processedListing);
+      return;
     }
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
@@ -198,6 +266,11 @@ export function UploadOcrPage() {
                     return;
                   }
                   setFile(selected);
+                  setAnalyzed(false);
+                  setProcessedListing(null);
+                  setRiskFindings(null);
+                  setRiskClauses([]);
+                  setRiskError(null);
                 }}
               />
               <span className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-4 py-2 text-white" style={{ background: "var(--navy)", fontSize: "14px" }}>
@@ -297,7 +370,18 @@ export function UploadOcrPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("risk.title")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("risk.desc")}</p>
-            <RiskReviewStep draft={draft} applied={applied} onApply={applyRisk} />
+            <RiskReviewStep
+              draft={draft}
+              applied={applied}
+              onApply={applyRisk}
+              findings={riskFindings}
+              clauses={riskClauses}
+              loading={riskLoading}
+              error={riskError}
+              onRetry={() => {
+                if (processedListing) void runRiskReview(draft, processedListing);
+              }}
+            />
           </div>
         )}
 

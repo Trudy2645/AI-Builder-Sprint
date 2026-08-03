@@ -56,6 +56,7 @@ class FakeContractApprovalRepository:
         self.approvals: dict[tuple[UUID, str], ContractVersionApprovalRecord] = {}
         self.audit_events: list[tuple[str, str]] = []
         self.notifications: list[tuple[str, UUID]] = []
+        self.final_approval_requests: set[UUID] = set()
         self.unavailable = False
 
     async def get_contract_version_approval_context(
@@ -85,6 +86,11 @@ class FakeContractApprovalRepository:
             if version_id == contract_version_id
         ]
 
+    async def has_final_approval_request(self, contract_version_id: UUID) -> bool:
+        if self.unavailable:
+            raise ContractRepositoryUnavailableError
+        return contract_version_id in self.final_approval_requests
+
     async def approve_contract_version(
         self,
         *,
@@ -107,8 +113,8 @@ class FakeContractApprovalRepository:
         ):
             raise ContractVersionApprovalAccessError
         existing_approvals = await self.list_contract_version_approvals(contract_version_id)
-        if party_role == "buyer" and not any(
-            approval.party_role == "seller" for approval in existing_approvals
+        if party_role == "seller" and not any(
+            approval.party_role == "buyer" for approval in existing_approvals
         ):
             raise ContractApprovalOrderError
         key = (contract_version_id, party_role)
@@ -139,6 +145,21 @@ class FakeContractApprovalRepository:
             already_approved=already_approved,
             contract_status=contract_status,
         )
+
+    async def request_final_approval(
+        self,
+        *,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor_user_id: UUID,
+    ) -> bool:
+        assert contract_id == CONTRACT_ID
+        assert actor_user_id == BUYER_ID
+        if contract_version_id in self.final_approval_requests:
+            return False
+        self.final_approval_requests.add(contract_version_id)
+        self.notifications.append(("seller", contract_version_id))
+        return True
 
 
 @pytest.fixture
@@ -186,33 +207,61 @@ def test_approval_status_starts_empty(approval_client: TestClient) -> None:
     assert data["buyer"]["approved"] is False
     assert data["seller"]["approved"] is False
     assert data["all_approved"] is False
+    assert data["final_approval_requested"] is False
 
 
-def test_buyer_approval_requires_seller_first_and_is_idempotent(
+def test_buyer_can_request_seller_final_approval(
+    app: FastAPI,
+    approval_client: TestClient,
+    approval_repository: FakeContractApprovalRepository,
+) -> None:
+    url = (
+        f"/api/v1/contracts/{CONTRACT_ID}/versions/{CURRENT_VERSION_ID}"
+        "/final-approval-requests"
+    )
+
+    first = approval_client.post(url, headers=buyer_headers(app))
+    second = approval_client.post(url, headers=buyer_headers(app))
+
+    assert first.status_code == 200
+    assert first.json()["data"] == {
+        "contract_id": str(CONTRACT_ID),
+        "contract_version_id": str(CURRENT_VERSION_ID),
+        "requested": True,
+        "already_requested": False,
+    }
+    assert second.status_code == 200
+    assert second.json()["data"]["already_requested"] is True
+    assert approval_repository.notifications == [("seller", CURRENT_VERSION_ID)]
+
+    approvals = approval_client.get(
+        f"/api/v1/contracts/{CONTRACT_ID}/versions/{CURRENT_VERSION_ID}/approvals",
+        headers=buyer_headers(app),
+    )
+    assert approvals.json()["data"]["final_approval_requested"] is True
+
+
+def test_buyer_approval_is_first_and_idempotent(
     app: FastAPI,
     approval_client: TestClient,
     approval_repository: FakeContractApprovalRepository,
 ) -> None:
     url = f"/api/v1/contracts/{CONTRACT_ID}/versions/{CURRENT_VERSION_ID}/approve"
 
-    blocked = approval_client.post(url, headers=buyer_headers(app))
-    seller = approval_client.post(url, headers=seller_headers(app))
     first = approval_client.post(url, headers=buyer_headers(app))
     second = approval_client.post(url, headers=buyer_headers(app))
+    seller = approval_client.post(url, headers=seller_headers(app))
 
-    assert blocked.status_code == 409
-    assert blocked.json()["error"]["code"] == "SELLER_APPROVAL_REQUIRED"
-    assert seller.status_code == 200
     assert first.status_code == 200
-    assert first.json()["data"]["approved_role"] == "buyer"
     assert first.json()["data"]["already_approved"] is False
     assert second.json()["data"]["already_approved"] is True
+    assert seller.status_code == 200
     assert len(approval_repository.approvals) == 2
     assert approval_repository.audit_events == [
-        ("contract_version_approved", "seller"),
         ("contract_version_approved", "buyer"),
+        ("contract_version_approved", "seller"),
     ]
-    assert approval_repository.notifications == [("buyer", CURRENT_VERSION_ID)]
+    assert approval_repository.notifications == [("seller", CURRENT_VERSION_ID)]
 
 
 def test_buyer_and_seller_must_approve_same_version(
@@ -221,19 +270,19 @@ def test_buyer_and_seller_must_approve_same_version(
     approval_repository: FakeContractApprovalRepository,
 ) -> None:
     url = f"/api/v1/contracts/{CONTRACT_ID}/versions/{CURRENT_VERSION_ID}/approve"
-    seller = approval_client.post(url, headers=seller_headers(app))
     buyer = approval_client.post(url, headers=buyer_headers(app))
+    seller = approval_client.post(url, headers=seller_headers(app))
 
-    assert buyer.json()["data"]["all_approved"] is True
+    assert buyer.json()["data"]["all_approved"] is False
     assert seller.status_code == 200
     assert buyer.status_code == 200
-    data = buyer.json()["data"]
+    data = seller.json()["data"]
     assert data["buyer"]["approved"] is True
     assert data["seller"]["approved"] is True
     assert data["all_approved"] is True
     assert data["contract_status"] == "signing"
     assert approval_repository.current_context.contract_status == "signing"
-    assert approval_repository.notifications == [("buyer", CURRENT_VERSION_ID)]
+    assert approval_repository.notifications == [("seller", CURRENT_VERSION_ID)]
 
 
 def test_seller_requires_matching_organization_membership(
