@@ -110,7 +110,9 @@ class AIGuidanceService:
         self, payload: RevisionSuggestionRequest
     ) -> RevisionSuggestionOutput:
         try:
-            return await generate_revision_suggestion(self._provider, payload, self._prompt_version)
+            return await generate_revision_suggestion(
+                self._provider, payload, self._prompt_version
+            )
         except Exception as exc:
             self._raise_provider_error(exc)
 

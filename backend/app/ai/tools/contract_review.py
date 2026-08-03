@@ -47,6 +47,11 @@ class ContractReviewTools:
     ) -> None:
         self._clauses = clauses
         self._clause_map = {str(clause.id): clause for clause in clauses}
+        self._clause_key_map = {
+            clause.clause_key: clause
+            for clause in clauses
+            if clause.clause_key
+        }
         self._category = category
         self._provider = provider
         self._official_store = official_vector_store_id
@@ -83,14 +88,19 @@ class ContractReviewTools:
         self.tool_sequence.append("submit_review")
 
     def _get_clause_context(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        clause_id = str(arguments.get("clause_id", ""))
+        # Models naturally select a clause by its stable semantic key (for
+        # example ``cancellation_policy``), while the persisted finding schema
+        # uses the clause UUID. Accept both representations at the tool
+        # boundary and always return the canonical UUID in the context payload.
+        clause_id = str(arguments.get("clause_id", "")).strip()
+        clause_key = str(arguments.get("clause_key", "")).strip()
         try:
             adjacent_count = int(arguments.get("adjacent_count", 1))
         except (TypeError, ValueError) as exc:
             raise ContractReviewToolRejectedError("invalid adjacent_count") from exc
         if adjacent_count < 0 or adjacent_count > 2:
             raise ContractReviewToolRejectedError("adjacent_count must be between 0 and 2")
-        clause = self._clause_map.get(clause_id)
+        clause = self._resolve_clause(clause_id=clause_id, clause_key=clause_key)
         if clause is None:
             raise ContractReviewToolRejectedError("clause is outside the selected version")
         index = self._clauses.index(clause)
@@ -106,7 +116,14 @@ class ContractReviewTools:
         if self.searches_used >= self._max_searches:
             raise ContractReviewSearchLimitError
         self.searches_used += 1
-        query = str(arguments.get("query", "")).strip()
+        query = str(arguments.get("query") or arguments.get("search_query") or "").strip()
+        if not query:
+            clause = self._resolve_clause(
+                clause_id=str(arguments.get("clause_id", "")).strip(),
+                clause_key=str(arguments.get("clause_key", "")).strip(),
+            )
+            if clause is not None:
+                query = f"{self._category} {clause.title}".strip()
         if not query:
             raise ContractReviewToolRejectedError("search query is required")
         stores = (
@@ -120,7 +137,13 @@ class ContractReviewTools:
         stores = [(store, corpus, source) for store, corpus, source in stores if store]
         if not stores:
             return {"hits": [], "unavailable": True}
-        requested_top_k = min(5, int(arguments.get("top_k", 5)))
+        try:
+            requested_top_k = min(
+                5,
+                max(1, int(arguments.get("top_k", arguments.get("max_num_results", 5)))),
+            )
+        except (TypeError, ValueError):
+            requested_top_k = 5
         candidates: list[dict[str, Any]] = []
         request_ids: list[str] = []
         for store_id, corpus, source_type in stores:
@@ -187,6 +210,14 @@ class ContractReviewTools:
             if len(hits) == requested_top_k:
                 break
         return {"hits": hits, "provider_request_ids": request_ids}
+
+    def _resolve_clause(
+        self, *, clause_id: str = "", clause_key: str = ""
+    ) -> ReviewClauseInput | None:
+        clause = self._clause_map.get(clause_id)
+        if clause is None and clause_key:
+            clause = self._clause_key_map.get(clause_key)
+        return clause
 
     @staticmethod
     def _serialize_clause(clause: ReviewClauseInput) -> dict[str, Any]:

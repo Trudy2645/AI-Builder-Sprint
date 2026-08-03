@@ -1,8 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApp } from "../context/AppContext";
-import { getMyContracts, getReceivedContracts, type ContractListItem, type SellerContractListItem } from "../lib/api";
+import {
+  getBuyerRevisionRequests,
+  getMyContracts,
+  getReceivedContracts,
+  getSellerRevisionRequests,
+  type ContractListItem,
+  type SellerContractListItem,
+  type SellerRevisionRequestListItem,
+} from "../lib/api";
 
-export type RequestStatus = "draft" | "reviewing" | "responded" | "negotiating" | "signing" | "completed" | "closed";
+export type RequestStatus = "draft" | "reviewing" | "final_review" | "responded" | "negotiating" | "signing" | "completed" | "closed";
 export type RequestType = "asis" | "revision";
 
 export interface RevisionItem {
@@ -37,11 +45,37 @@ export interface SentRequest {
   latestResponse?: string;
   serviceStartDate?: string;
   serviceEndDate?: string;
+  revisionRequestId?: string;
+  revisionStatus?: SellerRevisionRequestListItem["status"];
+  revisionResponseMessage?: string | null;
+  revisionItemCount?: number;
+  buyerApproved?: boolean;
+  sellerApproved?: boolean;
+  finalApprovalRequested?: boolean;
 }
 
-function requestStatus(status: string): RequestStatus {
+function requestStatus(
+  status: string,
+  revisionStatus?: SellerRevisionRequestListItem["status"],
+  sellerApproved = false,
+  initialRequestKind?: RequestType,
+  finalApprovalRequested = false,
+): RequestStatus {
+  if (revisionStatus && ["countered", "partially_accepted"].includes(revisionStatus)) {
+    return "responded";
+  }
+  if (revisionStatus === "rejected") {
+    return "responded";
+  }
+  if (revisionStatus === "cancelled") {
+    return "closed";
+  }
+  if (revisionStatus === "accepted") {
+    return status === "signing" ? "signing" : "final_review";
+  }
   switch (status) {
-    case "seller_review": return "reviewing";
+    case "seller_review":
+      return sellerApproved || initialRequestKind === "asis" || finalApprovalRequested ? "final_review" : "reviewing";
     case "revision_requested": return "negotiating";
     case "signing": return "signing";
     case "signed": return "completed";
@@ -50,24 +84,38 @@ function requestStatus(status: string): RequestStatus {
   }
 }
 
-function fromBuyerContract(item: ContractListItem): SentRequest {
+function fromBuyerContract(
+  item: ContractListItem,
+  revision?: SellerRevisionRequestListItem,
+): SentRequest {
   return {
     id: item.id,
     contractId: item.id,
     seller: item.seller_name,
     title: item.listing_title,
     type: item.initial_request_kind === "revision" ? "revision" : "asis",
-    status: requestStatus(item.status),
+    status: requestStatus(item.status, revision?.status, item.seller_approved, item.initial_request_kind === "as_is" ? "asis" : "revision", item.final_approval_requested),
     createdAt: item.created_at.slice(0, 10).replace(/-/g, "."),
     guests: item.requested_people,
     total: item.amount_minor ?? undefined,
     currency: item.currency ?? undefined,
     serviceStartDate: item.service_start_date,
     serviceEndDate: item.service_end_date,
+    revisionRequestId: revision?.id,
+    revisionStatus: revision?.status,
+    revisionResponseMessage: revision?.response_message,
+    revisionItemCount: revision?.item_count,
+    buyerApproved: item.buyer_approved,
+    sellerApproved: item.seller_approved,
+    finalApprovalRequested: item.final_approval_requested,
   };
 }
 
-function fromSellerContract(item: SellerContractListItem): SentRequest {
+function fromSellerContract(
+  item: SellerContractListItem,
+  revision?: SellerRevisionRequestListItem,
+): SentRequest {
+  const sellerSigningReady = item.seller_approved && ["seller_review", "signing"].includes(item.status);
   return {
     id: item.contract_id,
     contractId: item.contract_id,
@@ -75,13 +123,20 @@ function fromSellerContract(item: SellerContractListItem): SentRequest {
     buyer: item.buyer_name,
     title: item.listing_title,
     type: item.initial_request_kind === "revision" ? "revision" : "asis",
-    status: requestStatus(item.status),
+    status: sellerSigningReady ? "signing" : item.status === "revision_requested" ? "negotiating" : requestStatus(item.status, revision?.status, item.seller_approved, item.initial_request_kind === "as_is" ? "asis" : "revision", item.final_approval_requested),
     createdAt: item.requested_at.slice(0, 10).replace(/-/g, "."),
     guests: item.requested_people,
     total: item.amount_minor ?? undefined,
     currency: item.currency ?? undefined,
     serviceStartDate: item.service_start_date,
     serviceEndDate: item.service_end_date,
+    revisionRequestId: revision?.id,
+    revisionStatus: revision?.status,
+    revisionResponseMessage: revision?.response_message,
+    revisionItemCount: revision?.item_count,
+    buyerApproved: item.buyer_approved,
+    sellerApproved: item.seller_approved,
+    finalApprovalRequested: item.final_approval_requested,
   };
 }
 
@@ -107,8 +162,33 @@ export function RequestsProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true);
     try {
-      const items = currentRole === "buyer" ? await getMyContracts() : await getReceivedContracts();
-      setRequests(currentRole === "buyer" ? items.map(fromBuyerContract) : items.map(fromSellerContract));
+      if (currentRole === "buyer") {
+        const [items, revisions] = await Promise.all([
+          getMyContracts(),
+          getBuyerRevisionRequests().catch(() => []),
+        ]);
+        const revisionByContract = new Map<string, SellerRevisionRequestListItem>();
+        for (const revision of revisions) {
+          const previous = revisionByContract.get(revision.contract_id);
+          if (!previous || revision.updated_at > previous.updated_at) {
+            revisionByContract.set(revision.contract_id, revision);
+          }
+        }
+        setRequests(items.map((item) => fromBuyerContract(item, revisionByContract.get(item.id))));
+      } else {
+        const [items, revisions] = await Promise.all([
+          getReceivedContracts(),
+          getSellerRevisionRequests().catch(() => []),
+        ]);
+        const revisionByContract = new Map<string, SellerRevisionRequestListItem>();
+        for (const revision of revisions) {
+          const previous = revisionByContract.get(revision.contract_id);
+          if (!previous || revision.updated_at > previous.updated_at) {
+            revisionByContract.set(revision.contract_id, revision);
+          }
+        }
+        setRequests(items.map((item) => fromSellerContract(item, revisionByContract.get(item.contract_id))));
+      }
     } finally {
       setLoading(false);
     }

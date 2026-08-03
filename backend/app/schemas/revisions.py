@@ -150,6 +150,7 @@ class SellerRevisionRequestListItem(BaseModel):
     buyer_name: str
     status: RevisionStatus
     message: str | None
+    response_message: str | None
     item_count: int = Field(ge=0)
     item_summary: list[str]
     has_unread: bool

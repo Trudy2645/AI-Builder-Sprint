@@ -537,7 +537,9 @@ class SqlAlchemyRevisionRepository:
                     raise RevisionReferenceError
                 if row["status"] != "draft":
                     raise RevisionStateConflictError
-                normalized_clause_id = await self._resolve_clause_id(revision_id, item["clause_id"])
+                normalized_clause_id = await self._resolve_clause_id(
+                    revision_id, item["clause_id"]
+                )
                 await self._validate_item_references(
                     revision_id,
                     row["contract_id"],
@@ -782,7 +784,9 @@ class SqlAlchemyRevisionRepository:
                 contract_status = "revision_requested"
                 version_no = None
                 if revision_status == "accepted":
-                    version_no = await self._create_version(row, actor_user_id, version_clauses)
+                    version_no = await self._create_version(
+                        row, actor_user_id, version_clauses, seller_approved=True
+                    )
                     contract_status = "signing"
                 elif revision_status == "rejected":
                     contract_status = "seller_review"
@@ -939,16 +943,30 @@ class SqlAlchemyRevisionRepository:
                     raise RevisionNotFoundError
                 if row["buyer_user_id"] != actor_user_id:
                     raise RevisionReferenceError
-                if row["status"] not in {"partially_accepted", "countered"}:
+                if row["status"] not in {"partially_accepted", "countered", "rejected"}:
                     raise RevisionStateConflictError
                 if row["current_version_id"] != row["contract_version_id"]:
                     raise RevisionVersionConflictError
                 revision_status = "accepted" if accepted else "rejected"
-                contract_status = "revision_requested"
+                contract_status = "seller_review"
                 version_no = None
-                if accepted:
-                    version_no = await self._create_version(row, actor_user_id, version_clauses)
-                    contract_status = "signing"
+                if not accepted:
+                    revision_status = "cancelled"
+                    contract_status = "cancelled"
+                    await self._session.execute(
+                        text(
+                            """
+                            update public.contracts
+                            set status = 'cancelled', cancelled_at = now()
+                            where id = :contract_id
+                            """
+                        ),
+                        {"contract_id": row["contract_id"]},
+                    )
+                elif row["status"] != "rejected":
+                    version_no = await self._create_version(
+                        row, actor_user_id, version_clauses, seller_approved=False
+                    )
                 await self._session.execute(
                     text(
                         """
@@ -961,7 +979,9 @@ class SqlAlchemyRevisionRepository:
                     {"status": revision_status, "message": message, "revision_id": revision_id},
                 )
                 await self._notify_seller(
-                    row["seller_organization_id"], row["contract_id"], "seller_response"
+                    row["seller_organization_id"],
+                    row["contract_id"],
+                    "contract_cancelled" if revision_status == "cancelled" else "seller_response",
                 )
                 await self._audit(
                     row["contract_id"], actor_user_id, "buyer", "revision_responded", revision_id
@@ -1070,7 +1090,9 @@ class SqlAlchemyRevisionRepository:
     async def _insert_item(
         self, revision_id: UUID, contract_id: UUID, item_order: int, item: dict[str, Any]
     ) -> UUID:
-        normalized_clause_id = await self._resolve_clause_id(revision_id, item["clause_id"])
+        normalized_clause_id = await self._resolve_clause_id(
+            revision_id, item["clause_id"]
+        )
         await self._validate_item_references(
             revision_id, contract_id, normalized_clause_id, item["document_ids"]
         )
@@ -1101,7 +1123,9 @@ class SqlAlchemyRevisionRepository:
         await self._replace_documents(item_id, contract_id, item["document_ids"])
         return item_id
 
-    async def _resolve_clause_id(self, revision_id: UUID, clause_id: UUID | None) -> UUID | None:
+    async def _resolve_clause_id(
+        self, revision_id: UUID, clause_id: UUID | None
+    ) -> UUID | None:
         if clause_id is None:
             return None
         result = await self._session.execute(
@@ -1211,7 +1235,12 @@ class SqlAlchemyRevisionRepository:
         return set(result.scalars().all())
 
     async def _create_version(
-        self, row, actor_user_id: UUID, clauses: list[RevisionClauseRecord]
+        self,
+        row,
+        actor_user_id: UUID,
+        clauses: list[RevisionClauseRecord],
+        *,
+        seller_approved: bool,
     ) -> int:
         version_id = uuid4()
         version_no = row["version_no"] + 1
@@ -1273,7 +1302,7 @@ class SqlAlchemyRevisionRepository:
             text(
                 """
                 update public.contracts
-                set current_version_id = :version_id, status = 'signing'
+                set current_version_id = :version_id, status = 'seller_review'
                 where id = :contract_id and current_version_id = :base_version_id
                 returning id
                 """
@@ -1286,6 +1315,33 @@ class SqlAlchemyRevisionRepository:
         )
         if updated.scalar_one_or_none() is None:
             raise RevisionVersionConflictError
+        if seller_approved:
+            seller_approver = await self._session.execute(
+                text(
+                    """
+                    select user_id
+                    from public.organization_members
+                    where organization_id = :organization_id
+                    order by user_id
+                    limit 1
+                    """
+                ),
+                {"organization_id": row["seller_organization_id"]},
+            )
+            seller_user_id = seller_approver.scalar_one_or_none()
+            if seller_user_id is None:
+                raise RevisionReferenceError
+            await self._session.execute(
+                text(
+                    """
+                    insert into public.contract_version_approvals (
+                        contract_version_id, party_role, approved_by_user_id
+                    ) values (:version_id, 'seller', :seller_user_id)
+                    on conflict (contract_version_id, party_role) do nothing
+                    """
+                ),
+                {"version_id": version_id, "seller_user_id": seller_user_id},
+            )
         return version_no
 
     async def _claim_idempotency(

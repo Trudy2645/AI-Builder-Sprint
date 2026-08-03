@@ -122,8 +122,8 @@ class ContractReviewAgent:
                             "submit_review may be called only once"
                         )
                     try:
-                        submitted = ContractReviewSubmission.model_validate(call.arguments)
-                    except ValidationError as exc:
+                        submitted = self._normalize_submission(call.arguments, clauses)
+                    except (TypeError, ValueError, ValidationError) as exc:
                         raise ContractReviewAgentInvalidOutputError from exc
                     continue
                 try:
@@ -149,6 +149,132 @@ class ContractReviewAgent:
                     evidence=dict(self._tools.evidence),
                 )
         return self._fallback_result(rule_findings, "max_iterations")
+
+    @staticmethod
+    def _normalize_submission(
+        arguments: dict[str, Any], clauses: list[ReviewClauseInput]
+    ) -> ContractReviewSubmission:
+        """Adapt common provider field names to the persisted review schema.
+
+        The provider is asked for a tool envelope, but some compatible models
+        still return a semantically equivalent review with fields such as
+        ``finding``, ``notes``, ``risk_rating`` or ``search_query``. Normalize
+        those aliases at this boundary so the domain layer remains strict.
+        """
+        raw_findings = arguments.get("findings")
+        if not isinstance(raw_findings, list):
+            raw_findings = next(
+                (
+                    arguments.get(key)
+                    for key in ("results", "reviews", "risk_findings", "items")
+                    if isinstance(arguments.get(key), list)
+                ),
+                [],
+            )
+        if not raw_findings and any(
+            key in arguments for key in ("clause_id", "clause_key", "finding", "notes")
+        ):
+            raw_findings = [arguments]
+        clause_by_id = {str(clause.id): clause for clause in clauses}
+        clause_by_key = {
+            clause.clause_key: clause
+            for clause in clauses
+            if clause.clause_key
+        }
+        findings: list[ContractReviewFindingCandidate] = []
+        for raw in raw_findings:
+            if not isinstance(raw, dict):
+                continue
+            item = dict(raw)
+            raw_clause_id = str(item.get("clause_id", "")).strip()
+            clause_key = str(item.get("clause_key", "")).strip()
+            clause = clause_by_id.get(raw_clause_id)
+            if clause is None and clause_key:
+                clause = clause_by_key.get(clause_key)
+            if clause is None and raw_clause_id in clause_by_key:
+                clause = clause_by_key[raw_clause_id]
+
+            severity = ContractReviewAgent._severity(item)
+            grounding = ContractReviewAgent._grounding(item)
+            evidence_ids = item.get("evidence_ids")
+            if not isinstance(evidence_ids, list):
+                evidence_ids = []
+            evidence_ids = [str(value) for value in evidence_ids if str(value).strip()]
+            if grounding == "grounded" and not evidence_ids:
+                grounding = "insufficient_evidence"
+            if grounding != "grounded":
+                evidence_ids = []
+
+            suggested_text = item.get("suggested_text") or item.get("suggestion")
+            if suggested_text is not None and not isinstance(suggested_text, str):
+                suggested_text = str(suggested_text)
+            try:
+                findings.append(
+                    ContractReviewFindingCandidate.model_validate(
+                        {
+                            "clause_id": clause.id if clause else None,
+                            "category": str(
+                                item.get("category")
+                                or clause_key
+                                or (clause.clause_key if clause else "contract_review")
+                            ),
+                            "severity": severity,
+                            "importance": str(
+                                item.get("importance") or _importance_for(severity)
+                            ),
+                            "title": str(
+                                item.get("title") or (clause.title if clause else "계약 조항 검토")
+                            ),
+                            "explanation": str(
+                                item.get("explanation")
+                                or item.get("notes")
+                                or item.get("finding")
+                                or item.get("body_excerpt")
+                                or "계약 조항의 적용 범위와 조건을 확인할 필요가 있습니다."
+                            ),
+                            "suggested_text": suggested_text,
+                            "grounding_status": grounding,
+                            "confidence": item.get("confidence", 0.5),
+                            "source_location": (
+                                item.get("source_location")
+                                if isinstance(item.get("source_location"), dict)
+                                else {}
+                            ),
+                            "evidence_ids": evidence_ids,
+                            "disclaimer": str(item.get("disclaimer") or _DISCLAIMER),
+                            "is_public": bool(item.get("is_public", False)),
+                        }
+                    )
+                )
+            except (TypeError, ValueError, ValidationError):
+                continue
+        return ContractReviewSubmission(findings=findings)
+
+    @staticmethod
+    def _severity(item: dict[str, Any]) -> str:
+        value = item.get("severity") or item.get("risk_level")
+        if isinstance(value, str) and value in {"high", "medium", "low", "none"}:
+            return value
+        try:
+            rating = int(item.get("risk_rating"))
+        except (TypeError, ValueError):
+            return "medium"
+        if rating >= 4:
+            return "high"
+        if rating >= 2:
+            return "medium"
+        if rating == 1:
+            return "low"
+        return "none"
+
+    @staticmethod
+    def _grounding(item: dict[str, Any]) -> str:
+        value = item.get("grounding_status")
+        if value == "grounded" and item.get("evidence_ids"):
+            return "grounded"
+        if value == "not_required":
+            return "not_required"
+        return "insufficient_evidence"
 
     def _validate_and_merge(
         self,
@@ -242,3 +368,7 @@ class ContractReviewAgent:
             "evidence_query": item.evidence_query,
             "source_location": item.source_location,
         }
+
+
+def _importance_for(severity: str) -> str:
+    return "high" if severity == "high" else "medium"

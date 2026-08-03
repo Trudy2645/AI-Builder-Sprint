@@ -236,11 +236,11 @@ class FakeRevisionRepository:
         if "countered" in decisions:
             revision_status, contract_status, version_no = "countered", "revision_requested", None
         elif decisions == {"accepted"}:
-            revision_status, contract_status, version_no = "accepted", "signing", 2
+            revision_status, contract_status, version_no = "accepted", "seller_review", 2
             self.version_snapshots.append(version_clauses)
             self.context = replace(
                 self.context,
-                contract_status="signing",
+                contract_status="seller_review",
                 current_version_id=uuid4(),
                 version_no=2,
             )
@@ -292,6 +292,7 @@ class FakeRevisionRepository:
             decision_message=seller_message,
             decided_at=NOW,
         )
+        self.context = replace(self.context, contract_status="seller_review")
         self.notifications.append(("revision_decided", BUYER_ID))
         return self._mutation("rejected", "seller_review")
 
@@ -307,9 +308,14 @@ class FakeRevisionRepository:
     ) -> RevisionMutationRecord:
         record = self.revisions[revision_id]
         revision_status = "accepted" if accepted else "rejected"
-        contract_status = "signing" if accepted else "revision_requested"
-        version_no = 2 if accepted else None
-        if accepted:
+        contract_status = "seller_review"
+        version_no = None
+        if not accepted:
+            revision_status = "cancelled"
+            contract_status = "cancelled"
+            self.context = replace(self.context, contract_status="cancelled")
+        elif record.status != "rejected":
+            version_no = 2
             self.version_snapshots.append(version_clauses)
         self.revisions[revision_id] = replace(
             record,
@@ -624,7 +630,7 @@ def test_all_accepted_creates_immutable_new_version_and_notifies_buyer(
     )
     assert finalized.status_code == 200
     assert finalized.json()["data"] | {"replayed": False} == finalized.json()["data"]
-    assert finalized.json()["data"]["contract_status"] == "signing"
+    assert finalized.json()["data"]["contract_status"] == "seller_review"
     assert finalized.json()["data"]["version_no"] == 2
     assert revision_repository.clauses[0].body == "취소할 수 없습니다."
     assert revision_repository.version_snapshots[0][0].body.startswith("이용 7일")
@@ -675,7 +681,7 @@ def test_counter_preview_requires_buyer_response_and_acceptance_creates_version(
         json={"decision": "accepted", "message": "대안에 동의합니다."},
     )
     assert response.status_code == 200
-    assert response.json()["data"]["contract_status"] == "signing"
+    assert response.json()["data"]["contract_status"] == "seller_review"
     assert revision_repository.version_snapshots[0][0].body.startswith("이용 14일")
 
 
@@ -700,3 +706,77 @@ def test_reject_all_rejects_items_without_creating_version(
     assert response.json()["data"]["contract_status"] == "seller_review"
     assert revision_repository.revisions[REVISION_ID].items[0].decision == "rejected"
     assert not revision_repository.version_snapshots
+
+
+def test_buyer_accepts_seller_rejection_and_returns_to_final_approval(
+    app: FastAPI,
+    revision_client: TestClient,
+    revision_repository: FakeRevisionRepository,
+) -> None:
+    create_draft(revision_client)
+    revision_client.post(
+        f"/api/v1/revision-requests/{REVISION_ID}/send",
+        headers={"Idempotency-Key": "send-rejected-accept"},
+    )
+    revision_client.post(
+        f"/api/v1/revision-requests/{REVISION_ID}/reject-all",
+        headers={**as_seller(app), "Idempotency-Key": "reject-all-accept"},
+        json={"seller_message": "기존 조건을 유지합니다."},
+    )
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=BUYER_ID, email="buyer@example.test"
+    )
+
+    response = revision_client.post(
+        f"/api/v1/revision-requests/{REVISION_ID}/respond",
+        headers={"Idempotency-Key": "respond-rejected-accept"},
+        json={"decision": "accepted", "message": "기존 조건으로 진행합니다."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "accepted"
+    assert response.json()["data"]["contract_status"] == "seller_review"
+    assert revision_repository.context.contract_status == "seller_review"
+    assert not revision_repository.version_snapshots
+
+
+def test_buyer_rejects_seller_response_and_closes_contract(
+    app: FastAPI,
+    revision_client: TestClient,
+    revision_repository: FakeRevisionRepository,
+) -> None:
+    create_draft(revision_client)
+    revision_client.post(
+        f"/api/v1/revision-requests/{REVISION_ID}/send",
+        headers={"Idempotency-Key": "send-rejected-close"},
+    )
+    item_id = revision_repository.revisions[REVISION_ID].items[0].id
+    seller_headers = as_seller(app)
+    revision_client.patch(
+        f"/api/v1/revision-requests/{REVISION_ID}/items/{item_id}",
+        headers=seller_headers,
+        json={
+            "decision": "countered",
+            "seller_reason": "대안을 제시합니다.",
+            "counter_text": "새로운 대안 조건",
+        },
+    )
+    revision_client.post(
+        f"/api/v1/revision-requests/{REVISION_ID}/decide",
+        headers={**seller_headers, "Idempotency-Key": "decide-close"},
+        json={"seller_message": "대안을 확인해주세요."},
+    )
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=BUYER_ID, email="buyer@example.test"
+    )
+
+    response = revision_client.post(
+        f"/api/v1/revision-requests/{REVISION_ID}/respond",
+        headers={"Idempotency-Key": "respond-close"},
+        json={"decision": "rejected", "message": "계약을 진행하지 않겠습니다."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "cancelled"
+    assert response.json()["data"]["contract_status"] == "cancelled"
+    assert revision_repository.context.contract_status == "cancelled"
