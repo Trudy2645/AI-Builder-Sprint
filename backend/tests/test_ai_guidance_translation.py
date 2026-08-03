@@ -64,9 +64,7 @@ def test_rejects_translation_that_changes_clause_references(app: FastAPI) -> Non
         {
             "locale": "ja-JP",
             "title": "釜山宿泊契約",
-            "clauses": [
-                {"id": "changed-id", "title": "取消条件", "body": "本文"}
-            ],
+            "clauses": [{"id": "changed-id", "title": "取消条件", "body": "本文"}],
         },
     )
     service = AIGuidanceService(provider, prompt_version="busan-link-v1")
@@ -83,9 +81,7 @@ def test_rejects_translation_that_changes_clause_references(app: FastAPI) -> Non
             json={
                 "target_locale": "ja-JP",
                 "title": "부산 숙박 계약",
-                "clauses": [
-                    {"id": "clause-1", "title": "취소 조건", "body": "본문"}
-                ],
+                "clauses": [{"id": "clause-1", "title": "취소 조건", "body": "본문"}],
             },
         )
 
@@ -121,9 +117,7 @@ def test_reviews_public_contract_for_buyer(app: FastAPI) -> None:
             headers={"Idempotency-Key": "review-contract"},
             json={
                 "title": "부산 숙박 계약",
-                "clauses": [
-                    {"id": "clause-1", "title": "취소 조건", "body": "환불 불가"}
-                ],
+                "clauses": [{"id": "clause-1", "title": "취소 조건", "body": "환불 불가"}],
             },
         )
 

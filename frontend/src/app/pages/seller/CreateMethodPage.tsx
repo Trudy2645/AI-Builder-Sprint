@@ -26,7 +26,7 @@ export function CreateMethodPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[860px]">
+    <div>
       <Button variant="ghost" size="sm" className="mb-4 gap-1.5 whitespace-nowrap" onClick={() => navigate("/seller/listings")}>
         <ArrowLeft className="size-4" />
         {t("listings.title")}

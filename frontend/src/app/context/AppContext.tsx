@@ -1,7 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { translate, type Lang } from "../i18n/translations";
-import { setAccessToken } from "../lib/api";
-import { getAccessToken } from "../lib/api";
+import { clearApiSession, getAccessToken, setAccessToken } from "../lib/api";
 
 export type Role = "buyer" | "seller";
 
@@ -59,8 +58,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    setAccessToken(null);
-    window.localStorage.removeItem("busanlink.organization_id");
+    clearApiSession();
     window.localStorage.removeItem(sessionKey);
     setCurrentRole(null);
     setCompanyName("");

@@ -75,7 +75,7 @@ export function SellerMyPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[920px]">
+    <div>
       <PageHeader title="셀러 마이페이지" description="사업자 정보와 계약 공고·협상·체결 현황을 확인하고 수정하세요." />
 
       {/* Header card */}

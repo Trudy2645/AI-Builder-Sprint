@@ -377,7 +377,6 @@ export function RevisionReviewPage() {
         </div>
       );
     }
-
     return (
       <div className="mx-auto max-w-[720px] rounded-xl border border-border bg-card p-10 text-center">
         <h1 className="text-xl font-semibold">
