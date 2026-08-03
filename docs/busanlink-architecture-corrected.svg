@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#111315"/>
+      <stop offset="1" stop-color="#090a0b"/>
+    </linearGradient>
+    <linearGradient id="blueBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#30404f"/>
+      <stop offset="1" stop-color="#222d38"/>
+    </linearGradient>
+    <linearGradient id="orangeBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#443326"/>
+      <stop offset="1" stop-color="#33281f"/>
+    </linearGradient>
+    <linearGradient id="greenBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#283d31"/>
+      <stop offset="1" stop-color="#203127"/>
+    </linearGradient>
+    <linearGradient id="darkBox" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242526"/>
+      <stop offset="1" stop-color="#1b1c1d"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7db9ff"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#e59a58"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#76d694"/>
+    </marker>
+    <marker id="arrowGray" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#92979b"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans KR", "Apple SD Gothic Neo", Arial, sans-serif; }
+      .section { fill:#85898d; font-size:16px; font-weight:600; letter-spacing:2.2px; }
+      .title { fill:#f2f3f3; font-size:22px; font-weight:650; }
+      .body { fill:#a8adb0; font-size:14px; }
+      .label { fill:#aeb3b5; font-size:13px; font-weight:500; }
+      .userText { fill:#e6e8e8; font-size:20px; font-weight:650; }
+      .userBody { fill:#a8adb0; font-size:14px; }
+      .boxBlue { fill:url(#blueBox); stroke:#72b5ff; stroke-width:2.2; }
+      .boxOrange { fill:url(#orangeBox); stroke:#e49351; stroke-width:2.2; }
+      .boxGreen { fill:url(#greenBox); stroke:#6ad58d; stroke-width:2.2; }
+      .boxDark { fill:url(#darkBox); stroke:#343637; stroke-width:1.4; }
+      .iconBlue { stroke:#7db9ff; fill:none; stroke-width:2.3; stroke-linecap:round; stroke-linejoin:round; }
+      .iconOrange { stroke:#e59a58; fill:none; stroke-width:2.3; stroke-linecap:round; stroke-linejoin:round; }
+      .iconGreen { stroke:#76d694; fill:none; stroke-width:2.3; stroke-linecap:round; stroke-linejoin:round; }
+      .arrowBlue { stroke:#7db9ff; fill:none; stroke-width:2; marker-end:url(#arrowBlue); }
+      .arrowBlueBoth { stroke:#7db9ff; fill:none; stroke-width:2; marker-start:url(#arrowBlue); marker-end:url(#arrowBlue); }
+      .arrowOrange { stroke:#e59a58; fill:none; stroke-width:2; marker-end:url(#arrowOrange); }
+      .arrowOrangeBoth { stroke:#e59a58; fill:none; stroke-width:2; marker-start:url(#arrowOrange); marker-end:url(#arrowOrange); }
+      .arrowGreen { stroke:#76d694; fill:none; stroke-width:2; marker-end:url(#arrowGreen); }
+      .arrowGreenBoth { stroke:#76d694; fill:none; stroke-width:2; marker-start:url(#arrowGreen); marker-end:url(#arrowGreen); }
+      .arrowGray { stroke:#92979b; fill:none; stroke-width:1.7; marker-end:url(#arrowGray); }
+      .arrowGrayDashed { stroke:#92979b; fill:none; stroke-width:1.7; stroke-dasharray:8 7; marker-end:url(#arrowGray); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+
+  <text class="section" x="55" y="56">USERS</text>
+  <text class="section" x="300" y="56">EXPERIENCE</text>
+  <text class="section" x="625" y="56">BUSANLINK CORE</text>
+  <text class="section" x="1015" y="56">DATA PLATFORM</text>
+  <text class="section" x="1370" y="56">AI &amp; SIGNING</text>
+
+  <!-- Users -->
+  <rect x="45" y="95" width="210" height="310" rx="24" fill="url(#darkBox)" stroke="#343637" stroke-width="1.5"/>
+  <g stroke="#7db9ff" fill="none" stroke-width="2.2" stroke-linecap="round">
+    <circle cx="150" cy="145" r="13"/><path d="M128 183c3-17 13-27 22-27s19 10 22 27"/>
+    <circle cx="150" cy="286" r="13"/><path d="M128 324c3-17 13-27 22-27s19 10 22 27"/>
+  </g>
+  <text class="userText" x="150" y="215" text-anchor="middle">셀러</text>
+  <text class="userBody" x="150" y="244" text-anchor="middle">공고 · 계약서 · 서명 요청</text>
+  <text class="userText" x="150" y="356" text-anchor="middle">바이어</text>
+  <text class="userBody" x="150" y="385" text-anchor="middle">탐색 · 검토 · 수정 · 서명</text>
+
+  <!-- Experience -->
+  <rect class="boxOrange" x="305" y="155" width="255" height="185" rx="25"/>
+  <g class="iconOrange"><rect x="395" y="190" width="42" height="62" rx="6"/><path d="M405 208h23M405 222h23M405 236h23"/></g>
+  <text class="title" x="432" y="286" text-anchor="middle">React + Vite</text>
+  <text class="body" x="432" y="315" text-anchor="middle">역할별 화면 · 다국어 UI</text>
+
+  <!-- Core -->
+  <rect class="boxBlue" x="625" y="115" width="300" height="250" rx="26"/>
+  <g class="iconBlue"><path d="M715 152h54M715 152l16-13M715 152l16 13M769 152l-16-13M769 152l-16 13"/><rect x="730" y="177" width="45" height="35" rx="5"/></g>
+  <text class="title" x="775" y="257" text-anchor="middle">FastAPI Core</text>
+  <text class="body" x="775" y="286" text-anchor="middle">API · 인증 · 권한 · 상태 전이</text>
+  <text class="body" x="775" y="315" text-anchor="middle">Idempotency · 오류 처리</text>
+
+  <rect class="boxBlue" x="625" y="445" width="300" height="150" rx="25"/>
+  <g class="iconBlue"><path d="M715 485h50M715 485l16-13M715 485l16 13M765 485l-16-13M765 485l-16 13"/><circle cx="740" cy="485" r="8"/></g>
+  <text class="title" x="775" y="540" text-anchor="middle">Domain Services</text>
+  <text class="body" x="775" y="568" text-anchor="middle">공고 · 계약 · 가격 · 문서 · AI · 알림</text>
+
+  <rect class="boxDark" x="625" y="690" width="300" height="145" rx="25"/>
+  <g stroke="#f0f1f1" fill="none" stroke-width="2.1"><ellipse cx="775" cy="735" rx="32" ry="10"/><path d="M743 735v35c0 6 14 10 32 10s32-4 32-10v-35"/><path d="M743 752c0 6 14 10 32 10s32-4 32-10"/></g>
+  <text class="title" x="775" y="800" text-anchor="middle">Repository Layer</text>
+  <text class="body" x="775" y="825" text-anchor="middle">Async DB · Snapshot 보존</text>
+
+  <!-- Data platform -->
+  <rect class="boxOrange" x="1020" y="130" width="280" height="225" rx="25"/>
+  <g class="iconOrange"><circle cx="1105" cy="176" r="15"/><path d="M1105 176v-9M1105 176l8 6"/></g>
+  <text class="title" x="1160" y="218" text-anchor="middle">Supabase</text>
+  <text class="body" x="1160" y="247" text-anchor="middle">Auth · PostgreSQL · Storage</text>
+  <text class="body" x="1160" y="276" text-anchor="middle">계약 · 버전 · 감사 기록 · 파일</text>
+
+  <!-- AI and RAG -->
+  <rect class="boxGreen" x="1370" y="115" width="230" height="200" rx="25"/>
+  <g class="iconGreen"><path d="M1408 184c15-50 29-38 39 2 11 43 25 26 36 0"/><circle cx="1484" cy="153" r="5"/></g>
+  <text class="title" x="1485" y="212" text-anchor="middle">Upstage AI</text>
+  <text class="body" x="1485" y="242" text-anchor="middle" textLength="195" lengthAdjust="spacingAndGlyphs">Document Parse · Information Extract</text>
+  <text class="body" x="1485" y="271" text-anchor="middle">Solar Pro 3</text>
+
+  <rect class="boxGreen" x="1370" y="365" width="230" height="200" rx="25"/>
+  <g class="iconGreen"><circle cx="1430" cy="425" r="18"/><path d="M1443 438l16 16M1422 425h16M1430 417v16"/></g>
+  <text class="title" x="1485" y="463" text-anchor="middle">RAG Runtime</text>
+  <text class="body" x="1485" y="493" text-anchor="middle">Upstage Files · Vector Store</text>
+  <text class="body" x="1485" y="522" text-anchor="middle">File Search · 근거 검색</text>
+
+  <!-- Signing -->
+  <rect class="boxOrange" x="1370" y="690" width="230" height="165" rx="25"/>
+  <g class="iconOrange"><rect x="1418" y="735" width="38" height="55" rx="3"/><path d="M1427 766l8 8 16-19"/></g>
+  <text class="title" x="1515" y="772" text-anchor="middle">Modusign</text>
+  <text class="body" x="1515" y="801" text-anchor="middle">전자서명 · Webhook</text>
+  <text class="body" x="1515" y="829" text-anchor="middle">완료 PDF · Audit Trail</text>
+
+  <!-- Local source -->
+  <rect class="boxDark" x="45" y="690" width="210" height="145" rx="25"/>
+  <g stroke="#f0f1f1" fill="none" stroke-width="2.2"><rect x="107" y="735" width="52" height="34" rx="3"/><path d="M107 738l26 20 26-20"/></g>
+  <text class="title" x="150" y="800" text-anchor="middle">Local Files</text>
+  <text class="body" x="150" y="826" text-anchor="middle">공식 자료 · 승인 템플릿</text>
+
+  <!-- User/API arrows -->
+  <path class="arrowBlue" d="M255 245H305"/>
+  <text class="label" x="280" y="232" text-anchor="middle">사용</text>
+  <path class="arrowBlue" d="M560 245H625"/>
+  <text class="label" x="592" y="232" text-anchor="middle">API 요청</text>
+
+  <!-- Core arrows -->
+  <path class="arrowBlueBoth" d="M925 180H1020"/>
+  <text class="label" x="975" y="165" text-anchor="middle">인증 · DB 요청/응답</text>
+  <path class="arrowBlue" d="M775 365V445"/>
+  <text class="label" x="805" y="410">업무 규칙</text>
+  <path class="arrowBlue" d="M775 595V690"/>
+  <text class="label" x="805" y="650">조회 · 저장 · Snapshot</text>
+
+  <!-- Repository -> PostgreSQL -->
+  <path class="arrowGray" d="M925 735H970V320H1020"/>
+  <text class="label" x="972" y="705" text-anchor="middle">Async DB</text>
+
+  <!-- Local files -> Supabase -->
+  <path class="arrowBlue" d="M255 735H390V625H970V335H1160"/>
+  <text class="label" x="500" y="610" text-anchor="middle">지식 파일 업로드</text>
+
+  <!-- Supabase -> RAG -->
+  <path class="arrowGreen" d="M1300 290H1340V465H1370"/>
+  <text class="label" x="1335" y="395" text-anchor="middle">적재 · 색인화</text>
+
+  <!-- FastAPI <-> Upstage AI -->
+  <path class="arrowGreenBoth" d="M925 135H1060V80H1335V175H1370"/>
+  <text class="label" x="1135" y="72" text-anchor="middle">분석 요청 · 구조화 결과</text>
+
+  <!-- Upstage AI <-> RAG -->
+  <path class="arrowGreenBoth" d="M1485 315V365"/>
+  <text class="label" x="1390" y="344">근거 검색 요청 · 검색 결과</text>
+
+  <!-- Signing path -->
+  <path class="arrowOrange" d="M925 520H1230V735H1370"/>
+  <text class="label" x="1120" y="615" text-anchor="middle">서명 요청 · 상태 조회</text>
+  <path class="arrowGrayDashed" d="M1370 810H1260V625H950V570H925"/>
+  <text class="label" x="1120" y="846" text-anchor="middle">Webhook · 완료 PDF · Audit Trail</text>
+</svg>
