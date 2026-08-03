@@ -14,22 +14,18 @@ import {
 } from "../../components/ui/table";
 import { useApp } from "../../context/AppContext";
 import { receivedRequests, type ReceivedRequest } from "../../data/receivedRequests";
-import { friendlyApiError, getContractDetail, getSellerReceivedContracts, getSellerRevisionRequests } from "../../lib/api";
+import { friendlyApiError, getSellerReceivedContracts, getSellerRevisionRequests } from "../../lib/api";
 
 type RequestTab = "all" | ReceivedRequest["status"];
-const TABS: RequestTab[] = ["all", "new", "negotiating", "signing", "signed"];
+const TABS: RequestTab[] = ["all", "revision", "final_approval"];
 const statusLabel: Record<RequestTab, string> = {
   all: "전체",
-  new: "새 요청",
-  negotiating: "협상 중",
-  signing: "서명 대기",
-  signed: "체결 완료",
+  revision: "수정 요청",
+  final_approval: "최종 승인 요청",
 };
 const statusTone: Record<ReceivedRequest["status"], { bg: string; color: string; label: string }> = {
-  new: { bg: "var(--info-soft)", color: "var(--ocean)", label: "새 요청" },
-  negotiating: { bg: "var(--warning-soft)", color: "var(--warning)", label: "협상 중" },
-  signing: { bg: "var(--success-soft)", color: "var(--teal)", label: "서명 대기" },
-  signed: { bg: "var(--success-soft)", color: "var(--success)", label: "체결 완료" },
+  revision: { bg: "var(--warning-soft)", color: "var(--warning)", label: "수정 요청" },
+  final_approval: { bg: "var(--info-soft)", color: "var(--ocean)", label: "최종 승인 요청" },
 };
 
 export function ReceivedRequestsPage() {
@@ -40,25 +36,31 @@ export function ReceivedRequestsPage() {
   const tab: RequestTab = selected && TABS.includes(selected) ? selected : "all";
   const [serverRows, setServerRows] = useState<ReceivedRequest[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const contractId = params.get("contractId");
   useEffect(() => {
     void Promise.all([getSellerReceivedContracts(), getSellerRevisionRequests()]).then(([items, revisions]) => {
       const revisionContractIds = new Set(revisions.map((item) => item.contract_id));
       setServerRows([
-      ...items.filter((item) => !revisionContractIds.has(item.contract_id)).map((item) => ({
+      ...items.filter((item) => item.initial_request_kind === "as_is" && !revisionContractIds.has(item.contract_id) && item.status === "seller_review").map((item) => ({
       id: item.contract_id, buyer: item.buyer_name, contractId: item.contract_id, contractTitle: item.listing_title,
-      status: item.status === "signed" ? "signed" : item.status === "signing" ? "signing" : item.status === "revision_requested" ? "negotiating" : "new",
+      status: "final_approval" as const,
       createdAt: item.requested_at.slice(0, 10).replaceAll("-", "."), period: `${item.service_start_date} ~ ${item.service_end_date}`,
       estimatedAmount: item.amount_minor == null ? "계산 중" : `${item.amount_minor.toLocaleString("ko-KR")} ${item.currency ?? "KRW"}`,
-      currentVersion: "v1", revisions: [],
+      currentVersion: "v1", revisions: [], revisionCount: 0,
       })),
-      ...revisions.map((item) => ({
+      ...revisions.filter((item) => item.status === "sent").map((item) => ({
         id: item.id, buyer: item.buyer_name, contractId: item.contract_id, contractTitle: item.listing_title,
-        status: "negotiating" as const, createdAt: (item.sent_at ?? item.updated_at).slice(0, 10).replaceAll("-", "."),
+        status: "revision" as const, createdAt: (item.sent_at ?? item.updated_at).slice(0, 10).replaceAll("-", "."),
         period: "계약 조건에서 확인", estimatedAmount: "계약 조건에서 확인", currentVersion: "v1", revisions: [],
+        revisionRequestId: item.id, revisionCount: item.item_count,
       })),
       ]);
     }).catch((error: unknown) => setLoadError(friendlyApiError(error)));
   }, []);
+  useEffect(() => {
+    if (!contractId || serverRows.length === 0) return;
+    navigate(`/seller/received/contract/${contractId}`, { replace: true });
+  }, [contractId, navigate, serverRows.length]);
   const sourceRows = serverRows.length ? serverRows : receivedRequests;
   const rows = tab === "all" ? sourceRows : sourceRows.filter((r) => r.status === tab);
   const counts = TABS.reduce<Record<string, number>>((acc, current) => {
@@ -67,15 +69,11 @@ export function ReceivedRequestsPage() {
   }, {});
 
   const openRequest = async (request: ReceivedRequest) => {
-    if (request.revisions.length > 0) {
-      navigate(`/seller/received/${request.id}`);
+    if (request.revisionRequestId) {
+      navigate(`/seller/received/${request.revisionRequestId}`);
       return;
     }
-    if (request.status === "signed") { navigate("/seller/contracts"); return; }
-    try {
-      const detail = await getContractDetail(request.contractId);
-      navigate(`/seller/signing?contractId=${detail.id}&versionId=${detail.current_version.id}`);
-    } catch (error) { setLoadError(friendlyApiError(error)); }
+    navigate(`/seller/received/contract/${request.contractId}`);
   };
 
   return (
@@ -133,7 +131,7 @@ export function ReceivedRequestsPage() {
                 </Badge>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 border-y border-border py-3 text-sm">
-                <div><div className="text-xs text-muted-foreground">{t("recv.col.count")}</div><div className="mt-1">{r.revisions.length > 0 ? `${r.revisions.length}${t("recv.countUnit")}` : "조건 그대로"}</div></div>
+                <div><div className="text-xs text-muted-foreground">{t("recv.col.count")}</div><div className="mt-1">{(r.revisionCount ?? r.revisions.length) > 0 ? `${r.revisionCount ?? r.revisions.length}${t("recv.countUnit")}` : "조건 그대로"}</div></div>
                 <div className="text-right"><div className="text-xs text-muted-foreground">{t("recv.col.date")}</div><div className="mt-1 whitespace-nowrap">{r.createdAt}</div></div>
               </div>
               <Button className="mt-3 w-full gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => openRequest(r)}>
@@ -181,7 +179,7 @@ export function ReceivedRequestsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="whitespace-nowrap px-3 py-3 text-center">
-                    {r.revisions.length > 0 ? `${r.revisions.length}${t("recv.countUnit")}` : "조건 그대로"}
+                    {(r.revisionCount ?? r.revisions.length) > 0 ? `${r.revisionCount ?? r.revisions.length}${t("recv.countUnit")}` : "조건 그대로"}
                   </TableCell>
                   <TableCell className="whitespace-nowrap px-3 py-3 text-center text-muted-foreground">{r.createdAt}</TableCell>
                   <TableCell className="px-3 py-3 text-center">

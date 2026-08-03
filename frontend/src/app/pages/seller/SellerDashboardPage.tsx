@@ -47,22 +47,22 @@ export function SellerDashboardPage() {
   const { listings, publicCount } = useListings();
   const company = companyName || "계정 정보 없음";
   const { requests: sellerRequests } = useRequests();
-  const newRequestCount = sellerRequests.filter((request) => request.status === "reviewing").length;
+  const newRequestCount = sellerRequests.filter((request) => request.status === "reviewing" && request.type === "asis").length;
   const negotiatingCount = sellerRequests.filter((request) => request.status === "negotiating").length;
   const signingCount = sellerRequests.filter((request) => request.status === "signing").length;
   const signedThisMonthCount = sellerRequests.filter((request) => request.status === "completed" && request.createdAt.slice(0, 7) === new Date().toISOString().slice(0, 7).replace("-", ".")).length;
 
   const stats: Stat[] = [
     { key: "public", labelKey: "sdash.stat.public", value: publicCount, icon: Globe, color: "var(--success)", bg: "var(--success-soft)", path: "/seller/listings?status=public" },
-    { key: "newReq", labelKey: "sdash.stat.newReq", value: newRequestCount, icon: Inbox, color: "var(--ocean)", bg: "var(--info-soft)", path: "/seller/received?status=new" },
-    { key: "negotiating", labelKey: "sdash.stat.negotiating", value: negotiatingCount, icon: MessagesSquare, color: "var(--warning)", bg: "var(--warning-soft)", path: "/seller/received?status=negotiating" },
-    { key: "signing", labelKey: "sdash.stat.signing", value: signingCount, icon: PenLine, color: "var(--teal)", bg: "var(--success-soft)", path: "/seller/received?status=signing" },
-    { key: "monthlyClosed", labelKey: "sdash.stat.monthlyClosed", value: signedThisMonthCount, icon: FileCheck2, color: "var(--navy)", bg: "var(--info-soft)", path: "/seller/received?status=signed" },
+    { key: "newReq", labelKey: "sdash.stat.newReq", value: newRequestCount, icon: Inbox, color: "var(--ocean)", bg: "var(--info-soft)", path: "/seller/received?status=final_approval" },
+    { key: "negotiating", labelKey: "sdash.stat.negotiating", value: negotiatingCount, icon: MessagesSquare, color: "var(--warning)", bg: "var(--warning-soft)", path: "/seller/negotiating" },
+    { key: "signing", labelKey: "sdash.stat.signing", value: signingCount, icon: PenLine, color: "var(--teal)", bg: "var(--success-soft)", path: "/seller/contracts" },
+    { key: "monthlyClosed", labelKey: "sdash.stat.monthlyClosed", value: signedThisMonthCount, icon: FileCheck2, color: "var(--navy)", bg: "var(--info-soft)", path: "/seller/contracts" },
   ];
 
   const recent = listings.slice(0, 5);
   const recentRequests = sellerRequests.slice(0, 4).flatMap((request) => {
-    const displayStatus: DashboardRequestStatus | null = request.status === "reviewing"
+    const displayStatus: DashboardRequestStatus | null = request.status === "reviewing" && request.type === "asis"
       ? "new"
       : request.status === "negotiating"
         ? "negotiating"
@@ -111,7 +111,7 @@ export function SellerDashboardPage() {
         <div className="flex flex-col items-start justify-between gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:px-6">
           <div className="min-w-0">
             <h3 className="flex items-start gap-2 break-words" style={{ color: "var(--navy)" }}><BellRing className="mt-1 size-4 shrink-0" style={{ color: "var(--ocean)" }} />받은 계약 요청</h3>
-            <p className="mt-1 text-xs text-muted-foreground">바이어의 수정 요청과 조건 그대로 체결된 계약 알림을 확인하세요.</p>
+            <p className="mt-1 text-xs text-muted-foreground">바이어의 수정 요청과 최종 승인 요청을 확인하세요.</p>
           </div>
           <Button variant="ghost" size="sm" className="gap-1 whitespace-nowrap" onClick={() => navigate("/seller/received")}>전체 보기<ArrowRight className="size-4" /></Button>
         </div>
@@ -126,7 +126,7 @@ export function SellerDashboardPage() {
               <div className="truncate text-sm">{row.title}</div>
               <div className="text-sm text-muted-foreground">{row.period}</div>
               <div><Badge className="whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge></div>
-              <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
+              <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(`/seller/received/contract/${row.contractId}`)}>상세 보기</Button>
             </div>
           ))}
         </div>
@@ -141,7 +141,7 @@ export function SellerDashboardPage() {
                 </div>
                 <Badge className="shrink-0 whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge>
               </div>
-              <Button size="sm" variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
+              <Button size="sm" variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => navigate(`/seller/received/contract/${row.contractId}`)}>상세 보기</Button>
             </div>
           ))}
         </div>
