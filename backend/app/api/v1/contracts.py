@@ -124,7 +124,9 @@ async def request_contract_final_approval(
     service: Annotated[ContractService, Depends(get_contract_service)],
     organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
 ) -> SuccessEnvelope[ContractFinalApprovalRequestResponse]:
-    result = await service.request_final_approval(contract_id, version_id, actor, organization_id)
+    result = await service.request_final_approval(
+        contract_id, version_id, actor, organization_id
+    )
     return typed_envelope(request, result)
 
 

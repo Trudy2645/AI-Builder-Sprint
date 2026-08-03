@@ -176,7 +176,11 @@ class ContractReviewAgent:
         ):
             raw_findings = [arguments]
         clause_by_id = {str(clause.id): clause for clause in clauses}
-        clause_by_key = {clause.clause_key: clause for clause in clauses if clause.clause_key}
+        clause_by_key = {
+            clause.clause_key: clause
+            for clause in clauses
+            if clause.clause_key
+        }
         findings: list[ContractReviewFindingCandidate] = []
         for raw in raw_findings:
             if not isinstance(raw, dict):
@@ -215,7 +219,9 @@ class ContractReviewAgent:
                                 or (clause.clause_key if clause else "contract_review")
                             ),
                             "severity": severity,
-                            "importance": str(item.get("importance") or _importance_for(severity)),
+                            "importance": str(
+                                item.get("importance") or _importance_for(severity)
+                            ),
                             "title": str(
                                 item.get("title") or (clause.title if clause else "계약 조항 검토")
                             ),

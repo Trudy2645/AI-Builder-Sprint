@@ -461,13 +461,15 @@ class UpstageAIProvider:
             raise AIProviderInvalidResponseError from exc
 
     async def search_files(self, request: FileSearchRequest) -> FileSearchResult:
+        body = {
+            "query": request.query,
+            "max_num_results": request.top_k,
+        }
+        if request.filters:
+            body["filters"] = request.filters
         response = await self._post(
             f"{self._agent_base_url}/vector_stores/{request.vector_store_id}/search",
-            json_body={
-                "query": request.query,
-                "filters": request.filters,
-                "max_num_results": request.top_k,
-            },
+            json_body=body,
         )
         payload = self._json(response)
         raw_hits = payload.get("data", payload.get("results", []))
