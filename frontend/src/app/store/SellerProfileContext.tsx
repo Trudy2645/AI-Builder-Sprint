@@ -56,7 +56,7 @@ export function SellerProfileProvider({ children }: { children: ReactNode }) {
   const { currentRole } = useApp();
   const [profile, setProfile] = useState<SellerProfile>(EMPTY_PROFILE);
   const [loading, setLoading] = useState(false);
-  const organizationId = typeof window === "undefined" ? null : window.localStorage.getItem("busanlink.organization_id");
+  const organizationId = typeof window === "undefined" ? null : window.sessionStorage.getItem("busanlink.organization_id");
 
   const refresh = useCallback(async () => {
     if (currentRole !== "seller" || !organizationId) {

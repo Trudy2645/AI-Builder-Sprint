@@ -121,6 +121,7 @@ class ModusignService:
                     position=field.position,
                     size=field.size,
                     required=field.required,
+                    signature_types=["SIGN"] if field.field_type == "SIGNATURE" else None,
                 )
                 for field in payload.fields
             ],

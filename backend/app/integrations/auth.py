@@ -280,6 +280,7 @@ class SupabaseAuthProvider:
         audience: str = "authenticated",
         jwks_url: str | None = None,
         jwks_cache_seconds: int = 600,
+        jwt_leeway_seconds: int = 5,
         timeout_seconds: float = 5.0,
     ) -> None:
         base_url = supabase_url.rstrip("/")
@@ -289,6 +290,7 @@ class SupabaseAuthProvider:
         self._publishable_key = publishable_key
         self._audience = audience
         self._cache_duration = timedelta(seconds=jwks_cache_seconds)
+        self._jwt_leeway_seconds = jwt_leeway_seconds
         self._timeout_seconds = timeout_seconds
         self._jwks: dict[str, Any] | None = None
         self._jwks_fetched_at: datetime | None = None
@@ -328,6 +330,7 @@ class SupabaseAuthProvider:
                 algorithms=[header["alg"]],
                 audience=self._audience,
                 issuer=self._issuer,
+                leeway=self._jwt_leeway_seconds,
                 options={"require": ["exp", "iat", "sub", "iss", "aud"]},
             )
         except (PyJWTError, ValueError, TypeError) as exc:

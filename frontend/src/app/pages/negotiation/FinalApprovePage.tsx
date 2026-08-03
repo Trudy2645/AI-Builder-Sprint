@@ -8,7 +8,6 @@ import { ContractStepper } from "../../components/contract/ContractStepper";
 import { useRoleBase } from "../../hooks/useRoleBase";
 import {
   approveContractVersion,
-  dispatchSignatureRequest,
   friendlyApiError,
   getContractApprovals,
   getContractDetail,
@@ -43,8 +42,6 @@ export function FinalApprovePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [revisionAccepted, setRevisionAccepted] = useState(false);
-  const [sendingSignatureRequest, setSendingSignatureRequest] = useState(false);
-  const [signatureRequestSent, setSignatureRequestSent] = useState(false);
   const [pendingContracts, setPendingContracts] = useState<Array<{ id: string; title: string; status: string }>>([]);
 
   const loadApiState = useCallback(async (showLoading: boolean) => {
@@ -111,19 +108,9 @@ export function FinalApprovePage() {
     }
   };
 
-  const sendSignatureRequest = async () => {
+  const openSignatureFieldPlacement = () => {
     if (!contractId || !versionId || !approval?.all_approved) return;
-    setSendingSignatureRequest(true);
-    try {
-      const request = await dispatchSignatureRequest(contractId, versionId);
-      setSignatureRequestSent(true);
-      toast.success("모두싸인 서명 요청을 발송했습니다.");
-      navigate(`${base}/signing/sign?contractId=${contractId}&versionId=${versionId}&signatureRequestId=${request.id}`, { replace: true });
-    } catch (error) {
-      toast.error(friendlyApiError(error));
-    } finally {
-      setSendingSignatureRequest(false);
-    }
+    navigate(`/seller/signing/place-fields?contractId=${contractId}&versionId=${versionId}`);
   };
 
 
@@ -208,7 +195,7 @@ export function FinalApprovePage() {
               {!approval[role].approved && <ArrowRight className="ml-1 size-4" />}
             </Button>
           )}
-          {approval.all_approved && !signatureRequestSent && <Button disabled={sendingSignatureRequest} style={{ background: "var(--teal)" }} onClick={() => void sendSignatureRequest()}>
+          {role === "seller" && approval.all_approved && <Button style={{ background: "var(--teal)" }} onClick={openSignatureFieldPlacement}>
             <PenLine className="mr-1 size-4" />모두싸인 요청<ArrowRight className="ml-1 size-4" />
           </Button>}
           {detail.status === "seller_review" && waitingForCounterpartyApproval && !approval.all_approved && (

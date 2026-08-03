@@ -26,6 +26,7 @@ def _build_auth_provider(
     audience: str,
     jwks_url: str | None,
     jwks_cache_seconds: int,
+    jwt_leeway_seconds: int,
     timeout_seconds: float,
 ) -> SupabaseAuthProvider:
     return SupabaseAuthProvider(
@@ -34,6 +35,7 @@ def _build_auth_provider(
         audience=audience,
         jwks_url=jwks_url,
         jwks_cache_seconds=jwks_cache_seconds,
+        jwt_leeway_seconds=jwt_leeway_seconds,
         timeout_seconds=timeout_seconds,
     )
 
@@ -53,6 +55,7 @@ def get_auth_provider(
         settings.supabase_jwt_audience,
         settings.supabase_jwks_url,
         settings.supabase_jwks_cache_seconds,
+        settings.supabase_jwt_leeway_seconds,
         settings.supabase_auth_timeout_seconds,
     )
 

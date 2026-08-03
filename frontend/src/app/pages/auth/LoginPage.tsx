@@ -11,7 +11,7 @@ import { friendlyApiError, loginWithDemoRole, loginWithPassword } from "../../li
 import { toast } from "sonner";
 
 export function LoginPage() {
-  const { t, login, loginWithSession } = useApp();
+  const { t, loginWithSession } = useApp();
   const navigate = useNavigate();
   const [email, setEmail] = useState("buyer@globaltrip.jp");
   const [password, setPassword] = useState("demo-password");
@@ -27,15 +27,6 @@ export function LoginPage() {
       : "buyer";
   };
 
-  const demoCompany = (role: Role) => role === "seller" ? "해운대 오션스테이" : "GlobalTrip Japan";
-  const isDemoEmail = (value: string) => {
-    const normalized = value.toLocaleLowerCase();
-    return normalized.includes("buyer@globaltrip") ||
-      normalized.includes("seller") ||
-      normalized.includes("ocean") ||
-      normalized.includes("haeundae");
-  };
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -43,16 +34,10 @@ export function LoginPage() {
     try {
       const result = await loginWithPassword(email, password);
       if (!result.session) throw new Error("Login session was not returned.");
-      const role = inferDemoRole(email);
+      const role = result.role ?? inferDemoRole(email);
       loginWithSession(role, email, result.session.access_token, result.organization_id);
       navigate(`/${role}`);
     } catch (error) {
-      if (error instanceof TypeError && isDemoEmail(email)) {
-        const role = inferDemoRole(email);
-        login(role, demoCompany(role), true);
-        navigate(`/${role}`);
-        return;
-      }
       setErrorMessage(friendlyApiError(error));
     } finally {
       setSubmitting(false);
@@ -63,8 +48,8 @@ export function LoginPage() {
     setErrorMessage(null);
     try {
       const session = await loginWithDemoRole(r);
-      loginWithSession(r, company, session.accessToken, session.organizationId);
-      navigate(`/${r}`);
+      loginWithSession(session.role, company, session.accessToken, session.organizationId);
+      navigate(`/${session.role}`);
     } catch (error) {
       const message = `데모 로그인에 실패했습니다: ${friendlyApiError(error)}`;
       setErrorMessage(message);
