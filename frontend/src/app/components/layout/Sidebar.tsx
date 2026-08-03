@@ -59,7 +59,7 @@ export function Sidebar({ role, open, onNavigate }: { role: Role; open: boolean;
         </nav>
 
         <div className="border-t border-border px-5 py-4 text-muted-foreground" style={{ fontSize: "12px" }}>
-          © 2026 Busan Link
+          © 2026 찍어보소
         </div>
       </div>
     </aside>

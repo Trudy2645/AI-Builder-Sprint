@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "busanlink-backend"
 version = "0.1.0"
-description = "BusanLink FastAPI backend"
+description = "찍어보소 FastAPI backend"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "asyncpg>=0.30.0,<1.0.0",

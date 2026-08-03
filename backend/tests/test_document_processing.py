@@ -47,7 +47,7 @@ ORGANIZATION_ID = UUID("b2000000-0000-0000-0000-000000000001")
 LISTING_ID = UUID("b3000000-0000-0000-0000-000000000001")
 DOCUMENT_ID = UUID("b4000000-0000-0000-0000-000000000001")
 NOW = datetime(2026, 8, 1, 12, tzinfo=UTC)
-PDF = b"%PDF-1.7\nBusanLink source contract\n%%EOF"
+PDF = b"%PDF-1.7\n" + "찍어보소 source contract\n".encode() + b"%%EOF"
 
 
 class FakeDocumentProcessingRepository:

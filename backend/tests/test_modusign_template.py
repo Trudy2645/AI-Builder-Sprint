@@ -14,7 +14,7 @@ from app.integrations.modusign import (
 
 def test_accommodation_template_payload_has_one_buyer_signature() -> None:
     payload = build_accommodation_template_payload(
-        title="BusanLink 숙박 계약서 v1", pdf_bytes=b"%PDF-1.7\nexample"
+        title="찍어보소 숙박 계약서 v1", pdf_bytes=b"%PDF-1.7\nexample"
     )
 
     assert payload["file"]["extension"] == "pdf"

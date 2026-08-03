@@ -1,4 +1,4 @@
-# BusanLink RAG ingestion
+# 찍어보소 RAG ingestion
 
 이 디렉터리는 공식 근거, 승인 템플릿, 승인 판례의 재현 가능한 manifest만 보관한다.
 PDF 원본과 API key, Vector Store ID는 Git에 포함하지 않는다.

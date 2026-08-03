@@ -136,7 +136,7 @@ export function CompletionPage() {
 
   const downloadContract = () => {
     const content = [
-      "BUSAN LINK 최종 전자계약서",
+      "찍어보소 최종 전자계약서",
       "",
       `계약명: ${contractTitle}`,
       `계약번호: ${contractNo}`,
@@ -159,7 +159,7 @@ export function CompletionPage() {
     const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${contractNo || "Busan-Link"}-최종계약서.txt`;
+    anchor.download = `${contractNo || "찍어보소"}-최종계약서.txt`;
     anchor.click();
     URL.revokeObjectURL(url);
     toast.success(t("cc.pdfToast"));
