@@ -3,12 +3,14 @@ import { ArrowLeft, CalendarDays, CheckSquare, LoaderCircle, MousePointer2, PenL
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import PdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?worker";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { dispatchSignatureRequest, getSignatureSourcePdf } from "../../lib/api";
 
-GlobalWorkerOptions.workerSrc = workerUrl;
+// Let Vite bundle and instantiate the PDF.js worker directly. Using a URL here
+// can make the dev server fall back to a module worker URL that fails to load.
+GlobalWorkerOptions.workerPort = new PdfWorker();
 
 type FieldType = "SIGNATURE" | "TEXT" | "SIGNING_DATE" | "DATE" | "CHECKBOX";
 type Field = { id: string; type: FieldType; page: number; x: number; y: number; width: number; height: number; fontSize: number; required: boolean; textAlign: "LEFT" | "CENTER" | "RIGHT"; dataLabel: string };
@@ -26,7 +28,11 @@ function PdfPage({ pdf, page, fields, onDrop, onMove, onStart, selectedId }: { p
       try {
         // PDF.js applies each page's CropBox and /Rotate. The overlay is a percentage
         // of this rendered surface, so CSS scaling cannot change the saved coordinate.
-        const document = await getDocument({ data: new Uint8Array(pdf.slice(0)) }).promise;
+        const document = await getDocument({
+          data: new Uint8Array(pdf.slice(0)),
+          // Avoid a Vite dev-server dependency on PDF.js v5's wasm assets.
+          useWasm: false,
+        }).promise;
         const pdfPage = await document.getPage(page); // PDF.js page API is 1-based.
         const viewport = pdfPage.getViewport({ scale: 2 });
         const target = canvas.current;
@@ -50,7 +56,7 @@ function PdfPage({ pdf, page, fields, onDrop, onMove, onStart, selectedId }: { p
 export function SignatureFieldPlacementPage() {
   const navigate = useNavigate(); const [params] = useSearchParams(); const contractId = params.get("contractId"); const versionId = params.get("versionId");
   const [fields, setFields] = useState<Field[]>([]); const [selectedId, setSelectedId] = useState<string | null>(null); const [dragging, setDragging] = useState<{ id: string; pointerId: number } | null>(null); const [sending, setSending] = useState(false); const [pdf, setPdf] = useState<ArrayBuffer | null>(null); const [pageCount, setPageCount] = useState(0); const [pdfHash, setPdfHash] = useState(""); const [previewError, setPreviewError] = useState<string | null>(null);
-  useEffect(() => { if (!contractId || !versionId) { setPreviewError("계약 ID와 버전 ID가 필요합니다."); return; } setPreviewError(null); void getSignatureSourcePdf(contractId, versionId).then(async ({ bytes, pageCount: headerPageCount, sha256 }) => { const document = await getDocument({ data: new Uint8Array(bytes.slice(0)) }).promise; const count = headerPageCount || document.numPages; document.destroy(); if (count < 1) throw new Error("계약서에 페이지가 없습니다."); setPdf(bytes); setPageCount(count); setPdfHash(sha256); }).catch((error) => { const message = error instanceof Error ? error.message : "계약서 PDF를 불러오지 못했습니다."; setPreviewError(message); toast.error(message); }); }, [contractId, versionId]);
+  useEffect(() => { if (!contractId || !versionId) { setPreviewError("계약 ID와 버전 ID가 필요합니다."); return; } setPreviewError(null); void getSignatureSourcePdf(contractId, versionId).then(async ({ bytes, pageCount: headerPageCount, sha256 }) => { const document = await getDocument({ data: new Uint8Array(bytes.slice(0)), useWasm: false }).promise; const count = headerPageCount || document.numPages; document.destroy(); if (count < 1) throw new Error("계약서에 페이지가 없습니다."); setPdf(bytes); setPageCount(count); setPdfHash(sha256); }).catch((error) => { const message = error instanceof Error ? error.message : "계약서 PDF를 불러오지 못했습니다."; setPreviewError(message); toast.error(message); }); }, [contractId, versionId]);
   const addAt = (event: DragEvent<HTMLDivElement>, page: number) => { const type = event.dataTransfer.getData("application/x-busanlink-field") as FieldType; if (!palette.some((item) => item.type === type)) return; const rect = event.currentTarget.getBoundingClientRect(); const size = sizeFor(type); const x = clamp(((event.clientX - rect.left) / rect.width) * 100, size.width); const y = clamp(((event.clientY - rect.top) / rect.height) * 100, size.height); const id = crypto.randomUUID(); setFields((all) => [...all, { id, type, page, x, y, fontSize: 12, required: true, textAlign: "LEFT", dataLabel: id.slice(0, 8), ...size }]); setSelectedId(id); };
   const moveAt = (event: PointerEvent<HTMLDivElement>, page: number) => { if (!dragging || dragging.pointerId !== event.pointerId) return; const rect = event.currentTarget.getBoundingClientRect(); const field = fields.find((item) => item.id === dragging.id); if (!field) return; const x = clamp(((event.clientX - rect.left) / rect.width) * 100 - field.width / 2, field.width); const y = clamp(((event.clientY - rect.top) / rect.height) * 100 - field.height / 2, field.height); setFields((all) => all.map((item) => item.id === field.id ? { ...item, page, x, y } : item)); };
   const selected = fields.find((field) => field.id === selectedId); const update = (patch: Partial<Field>) => setFields((all) => all.map((field) => { if (field.id !== selectedId) return field; const next = { ...field, ...patch }; return { ...next, x: clamp(next.x, next.width), y: clamp(next.y, next.height) }; }));
