@@ -68,19 +68,24 @@ function requestIdempotencyKey(prefix: string): string {
 }
 
 function getApiSession(): ApiSession {
-  if (activeSession) return activeSession;
+  if (activeSession) return validateApiSession(activeSession);
   const accessToken = window.localStorage.getItem("busanlink.access_token")
     ?? import.meta.env.VITE_API_ACCESS_TOKEN;
   const organizationId = window.localStorage.getItem("busanlink.organization_id")
     ?? import.meta.env.VITE_SELLER_ORGANIZATION_ID;
+  return validateApiSession({ accessToken: accessToken ?? "", organizationId: organizationId ?? "" });
+}
+
+function validateApiSession(session: ApiSession): ApiSession {
+  const { accessToken, organizationId } = session;
   if (!accessToken || !organizationId) {
     throw new Error("API 로그인 정보가 없습니다. 로그인 후 다시 시도해 주세요.");
   }
   if (!uuidPattern.test(organizationId)) {
     clearApiSession();
-    throw new Error("셀러 조직 정보가 만료되었습니다. 셀러 데모 계정으로 다시 로그인해 주세요.");
+    throw new Error("셀러 조직 정보가 UUID 형식이 아닙니다. 셀러 계정으로 다시 로그인해 주세요.");
   }
-  return { accessToken, organizationId };
+  return session;
 }
 
 function authenticatedHeaders(session: ApiSession, headers: HeadersInit = {}): Headers {
@@ -102,6 +107,9 @@ export function friendlyApiError(error: unknown): string {
       UNSUPPORTED_DISPLAY_CURRENCY: "현재는 상품 기준 통화로만 예상 금액을 계산할 수 있습니다.",
       DATABASE_UNAVAILABLE: "서비스 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     };
+    if (error.message.includes("X-Organization-Id")) {
+      return "셀러 조직 정보가 올바르지 않습니다. 셀러 계정으로 다시 로그인한 뒤 시도해 주세요.";
+    }
     return messages[error.code] ?? error.message;
   }
   if (error instanceof TypeError) {
@@ -261,20 +269,41 @@ export type Role = "buyer" | "seller";
 type AuthSession = { access_token: string; refresh_token: string; token_type: string; expires_in: number };
 export type AuthResponse = { user_id: string; email: string; role?: Role; organization_id?: string | null; session: AuthSession | null };
 
-export function loginWithPassword(email: string, password: string): Promise<AuthResponse> {
-  return apiFetch<AuthResponse>("/auth/login", {
+function persistAuthResponse(result: AuthResponse): void {
+  const accessToken = result.session?.access_token;
+  const refreshToken = result.session?.refresh_token;
+  const organizationId = result.organization_id;
+  if (!accessToken) return;
+  window.localStorage.setItem("busanlink.access_token", accessToken);
+  if (refreshToken) window.localStorage.setItem("busanlink.refresh_token", refreshToken);
+  setAccessToken(accessToken);
+  if (organizationId && uuidPattern.test(organizationId)) {
+    window.localStorage.setItem("busanlink.organization_id", organizationId);
+    activeSession = { accessToken, organizationId };
+  } else {
+    window.localStorage.removeItem("busanlink.organization_id");
+    activeSession = null;
+  }
+}
+
+export async function loginWithPassword(email: string, password: string): Promise<AuthResponse> {
+  const result = await apiFetch<AuthResponse>("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
+  persistAuthResponse(result);
+  return result;
 }
 
-export function signup(payload: Record<string, unknown>): Promise<AuthResponse> {
-  return apiFetch<AuthResponse>("/auth/signup", {
+export async function signup(payload: Record<string, unknown>): Promise<AuthResponse> {
+  const result = await apiFetch<AuthResponse>("/auth/signup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  persistAuthResponse(result);
+  return result;
 }
 
 export type ContractListItem = {
@@ -411,8 +440,13 @@ export async function loginWithDemoRole(role: "buyer" | "seller"): Promise<Authe
   const organizationId = me.organizations[0]?.id;
   window.localStorage.setItem("busanlink.access_token", result.session.access_token);
   window.localStorage.setItem("busanlink.refresh_token", result.session.refresh_token);
-  if (organizationId) window.localStorage.setItem("busanlink.organization_id", organizationId);
-  activeSession = { accessToken: result.session.access_token, organizationId: organizationId ?? "" };
+  if (organizationId && uuidPattern.test(organizationId)) {
+    window.localStorage.setItem("busanlink.organization_id", organizationId);
+    activeSession = { accessToken: result.session.access_token, organizationId };
+  } else {
+    window.localStorage.removeItem("busanlink.organization_id");
+    activeSession = null;
+  }
   return { accessToken: result.session.access_token, refreshToken: result.session.refresh_token, email: result.email, organizationId };
 }
 

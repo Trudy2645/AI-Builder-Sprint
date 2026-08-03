@@ -40,6 +40,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "closed", label: "종료" },
 ];
 const CONTRACT_STATUSES: RequestStatus[] = ["signing", "completed", "closed"];
+const DEMO_REQUEST_IDS = new Set(["req-summer-main", "req-hotel-main"]);
 
 function hashId(id: string): string {
   let h = 0;
@@ -75,21 +76,14 @@ function StatusPill({ status }: { status: RequestStatus }) {
 
 export function SellerContractsPage() {
   const { requests } = useRequests();
-  const { bothSigned, contractNo, signedAt } = useNegotiation();
+  const { contractNo, signedAt } = useNegotiation();
   const [tab, setTab] = useState<Tab>("all");
   const [docTarget, setDocTarget] = useState<SentRequest | null>(null);
   const [auditTarget, setAuditTarget] = useState<SentRequest | null>(null);
 
-  // 최종 전자서명이 완료되면 CompletionPage에서 상태를 "completed"로 갱신하지만,
-  // 화면 전환 타이밍 안전망으로 여기서도 한 번 더 반영한다.
   const contracts = useMemo(() => {
-    let list = requests.filter((r) => CONTRACT_STATUSES.includes(r.status));
-    const main = requests.find((r) => r.id === "req-summer-main");
-    if (bothSigned && main && main.status !== "completed" && !list.some((r) => r.id === "req-summer-main")) {
-      list = [{ ...main, status: "completed" as const }, ...list];
-    }
-    return list;
-  }, [requests, bothSigned]);
+    return requests.filter((r) => CONTRACT_STATUSES.includes(r.status) && !DEMO_REQUEST_IDS.has(r.id));
+  }, [requests]);
 
   const counts = useMemo(() => {
     const c: Record<Tab, number> = { all: contracts.length, signing: 0, completed: 0, closed: 0 };

@@ -77,7 +77,6 @@ export function FinalApprovePage() {
   useEffect(() => {
     if (contractId || versionId) return;
     if (role === "buyer" && !sellerApproved) approveDemo("seller");
-    if (role === "seller" && !buyerApproved) approveDemo("buyer");
   }, [role, buyerApproved, sellerApproved, approveDemo, contractId, versionId]);
 
   useEffect(() => {
@@ -140,6 +139,19 @@ export function FinalApprovePage() {
           <Button disabled={!approval.all_approved} style={{ background: approval.all_approved ? "var(--teal)" : "var(--muted)" }} onClick={() => navigate(`${base}/signing/sign${query}`)}>
             <PenLine className="mr-1 size-4" />전자서명 <ArrowRight className="ml-1 size-4" />
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (role === "seller") {
+    return (
+      <div>
+        <PageHeader title={t("fa.title")} description="전자서명이 필요한 계약을 확인하세요." />
+        <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card p-10 text-center sm:p-16">
+          <PenLine className="size-7" style={{ color: "var(--ocean)" }} />
+          <p className="font-semibold" style={{ color: "var(--navy)" }}>서명 대기 중인 계약이 없습니다.</p>
+          <p className="text-sm text-muted-foreground">바이어와 최종안 승인이 완료된 계약이 생기면 이곳에서 전자서명을 진행할 수 있습니다.</p>
         </div>
       </div>
     );
