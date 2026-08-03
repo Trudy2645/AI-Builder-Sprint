@@ -52,6 +52,13 @@ const strings: Record<string, Dict> = {
   "header.calendarMonth": { ko: "2026.07", en: "2026.07", ja: "2026.07", zh: "2026.07" },
   "header.switchRole": { ko: "역할 전환", en: "Switch role", ja: "役割切替", zh: "切换角色" },
   "header.logout": { ko: "로그아웃", en: "Log out", ja: "ログアウト", zh: "退出登录" },
+  "weekday.sun": { ko: "일", en: "Sun", ja: "日", zh: "日" },
+  "weekday.mon": { ko: "월", en: "Mon", ja: "月", zh: "一" },
+  "weekday.tue": { ko: "화", en: "Tue", ja: "火", zh: "二" },
+  "weekday.wed": { ko: "수", en: "Wed", ja: "水", zh: "三" },
+  "weekday.thu": { ko: "목", en: "Thu", ja: "木", zh: "四" },
+  "weekday.fri": { ko: "금", en: "Fri", ja: "金", zh: "五" },
+  "weekday.sat": { ko: "토", en: "Sat", ja: "土", zh: "六" },
 
   // Buyer nav
   "nav.buyer.explore": { ko: "계약 탐색", en: "Explore Contracts", ja: "契約を探す", zh: "浏览合约" },
@@ -113,6 +120,7 @@ const strings: Record<string, Dict> = {
   "common.next": { ko: "다음", en: "Next", ja: "次へ", zh: "下一步" },
   "common.back": { ko: "이전", en: "Back", ja: "戻る", zh: "上一步" },
   "common.optional": { ko: "선택", en: "Optional", ja: "任意", zh: "选填" },
+  "common.retry": { ko: "다시 시도", en: "Try again", ja: "再試行", zh: "重试" },
 
   // Role selection
   "auth.chooseRole": { ko: "역할을 선택하세요", en: "Choose your role", ja: "役割を選択してください", zh: "请选择您的角色" },
@@ -239,20 +247,56 @@ const strings: Record<string, Dict> = {
   },
   "explore.resultCount": { ko: "건의 계약", en: "contracts", ja: "件の契約", zh: "个合约" },
   "explore.empty": { ko: "조건에 맞는 계약이 없습니다.", en: "No contracts match your filters.", ja: "条件に合う契約がありません。", zh: "没有符合条件的合约。" },
+  "explore.searchPlaceholder": {
+    ko: "업체명, 상품명 또는 계약명을 검색하세요",
+    en: "Search by company, product, or contract name",
+    ja: "企業名、商品名、契約名で検索",
+    zh: "搜索企业、商品或合约名称",
+  },
+  "explore.searchButton": { ko: "계약 검색", en: "Search", ja: "契約検索", zh: "搜索合约" },
+  "explore.availableTitle": { ko: "계약 가능한 상품", en: "Available listings", ja: "契約可能な商品", zh: "可签约商品" },
+  "explore.availableSubtitle": {
+    ko: "조건을 비교하고 AI가 요약한 핵심 계약 내용을 확인하세요.",
+    en: "Compare terms and review the key contract summary.",
+    ja: "条件を比較し、AIが要約した主要契約内容を確認できます。",
+    zh: "比较条件并查看 AI 摘要的核心合约内容。",
+  },
+  "explore.countUnit": { ko: "건", en: "", ja: "件", zh: "个" },
+  "explore.loadErrorTitle": { ko: "공고를 불러오지 못했습니다", en: "Could not load listings", ja: "公告を読み込めませんでした", zh: "无法加载公告" },
+  "explore.loading": { ko: "공고를 불러오는 중입니다…", en: "Loading listings...", ja: "公告を読み込んでいます…", zh: "正在加载公告…" },
 
   // Filters
   "filter.title": { ko: "필터", en: "Filters", ja: "フィルター", zh: "筛选" },
   "filter.reset": { ko: "초기화", en: "Reset", ja: "リセット", zh: "重置" },
   "filter.category": { ko: "카테고리", en: "Category", ja: "カテゴリ", zh: "类别" },
+  "filter.categoryGroup": { ko: "분야", en: "Category", ja: "分野", zh: "领域" },
   "filter.district": { ko: "지역 (구)", en: "District", ja: "地域 (区)", zh: "地区" },
   "filter.districtAll": { ko: "전체 지역", en: "All districts", ja: "全地域", zh: "全部地区" },
   "filter.guests": { ko: "이용 인원", en: "Guests", ja: "利用人数", zh: "使用人数" },
   "filter.guestsPlaceholder": { ko: "인원 직접 입력", en: "Enter number", ja: "人数を入力", zh: "输入人数" },
   "filter.period": { ko: "이용 기간", en: "Usage period", ja: "利用期間", zh: "使用期间" },
+  "filter.periodDesc": {
+    ko: "계약 상품을 이용할 시작일과 종료일을 선택하세요.",
+    en: "Select the start and end dates for using the contract listing.",
+    ja: "契約商品を利用する開始日と終了日を選択してください。",
+    zh: "请选择使用该合约商品的开始日和结束日。",
+  },
   "filter.priceRange": { ko: "예상 금액 범위", en: "Estimated price", ja: "予想金額", zh: "预估金额" },
+  "filter.priceShort": { ko: "금액대", en: "Price", ja: "金額帯", zh: "价格区间" },
+  "filter.priceTitle": { ko: "기준 단가 범위", en: "Unit price range", ja: "基準単価の範囲", zh: "基准单价范围" },
+  "filter.priceDesc": {
+    ko: "상품별 객실 또는 1인 기준 단가입니다.",
+    en: "Based on each listing's room or per-person unit price.",
+    ja: "商品ごとの客室または1人あたりの単価です。",
+    zh: "基于各商品的客房或人均单价。",
+  },
   "filter.availableOnly": { ko: "계약 가능한 계약만 보기", en: "Available only", ja: "契約可能のみ", zh: "仅显示可签约" },
+  "filter.availableShort": { ko: "계약 가능만", en: "Available only", ja: "契約可能のみ", zh: "仅可签约" },
   "filter.from": { ko: "시작일", en: "From", ja: "開始日", zh: "开始" },
   "filter.to": { ko: "종료일", en: "To", ja: "終了日", zh: "结束" },
+  "filter.resetAll": { ko: "전체 초기화", en: "Reset all", ja: "すべてリセット", zh: "全部重置" },
+  "filter.active": { ko: "적용된 필터", en: "Active filters", ja: "適用中のフィルター", zh: "已应用筛选" },
+  "filter.peopleUnit": { ko: "명", en: " guests", ja: "名", zh: "人" },
 
   // Categories
   "cat.all": { ko: "전체", en: "All", ja: "すべて", zh: "全部" },

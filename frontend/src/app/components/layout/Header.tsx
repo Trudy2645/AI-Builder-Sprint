@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Bell, CalendarDays, HelpCircle, Globe, ChevronDown, LogOut, ArrowLeftRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useNavigate } from "react-router";
 import { Logo } from "../brand/Logo";
@@ -37,6 +38,25 @@ type CalendarItem = {
   tone: string;
 };
 
+type DateParts = { year: number; month: number; day: number };
+
+function extractDateParts(text: string): DateParts[] {
+  const matches = text.matchAll(/(\d{4})[.-](\d{1,2})[.-](\d{1,2})/g);
+  return Array.from(matches, (match) => ({
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+  }));
+}
+
+function toDate(parts: DateParts): Date {
+  return new Date(parts.year, parts.month - 1, parts.day);
+}
+
+function formatMonth(year: number, month: number): string {
+  return `${year}.${String(month).padStart(2, "0")}`;
+}
+
 export function Header({
   role,
   sidebarOpen,
@@ -46,13 +66,16 @@ export function Header({
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
 }) {
-  const { lang, setLang, t, companyName, login, logout, isDemoSession } = useApp();
+  const { lang, setLang, t, companyName, login, logout } = useApp();
   const navigate = useNavigate();
   const otherRole: Role = role === "buyer" ? "seller" : "buyer";
   const roleLabel = t(role === "buyer" ? "role.buyer" : "role.seller");
   const homePath = role === "buyer" ? "/buyer/explore" : "/seller/dashboard";
   const { requests } = useRequests();
   const { listings } = useListings();
+  const [calendarYear, setCalendarYear] = useState(2026);
+  const [calendarMonth, setCalendarMonth] = useState(7);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   const directCompletion = requests.find((request) => request.type === "asis" && request.status === "completed");
   const contractItems: CalendarItem[] = role === "buyer"
     ? requests
@@ -102,28 +125,36 @@ export function Header({
     : [];
   const calendarItems: CalendarItem[] = [...contractItems, ...supplyItems];
   const calendarPath = role === "buyer" ? "/buyer/contracts" : "/seller/contracts";
-  const calendarDays = Array.from({ length: 35 }, (_, index) => {
-    const day = index - 2;
-    if (day < 1 || day > 31) return null;
+  const firstWeekday = new Date(calendarYear, calendarMonth - 1, 1).getDay();
+  const daysInMonth = new Date(calendarYear, calendarMonth, 0).getDate();
+  const cellCount = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+  const calendarDays = Array.from({ length: cellCount }, (_, index) => {
+    const day = index - firstWeekday + 1;
+    if (day < 1 || day > daysInMonth) return null;
     return day;
   });
-  const itemDay = (date: string) => {
-    const match = date.match(/2026[.-]0?7[.-](\d{1,2})/);
-    return match ? Number(match[1]) : undefined;
-  };
   const itemDays = (item: CalendarItem) => {
-    const start = itemDay(item.date);
-    const end = item.endDate ? itemDay(item.endDate) : start;
-    if (start === undefined) return [];
-    return Array.from({ length: Math.max((end ?? start) - start + 1, 1) }, (_, index) => start + index);
+    const dates = extractDateParts(item.date);
+    const startParts = dates[0];
+    const endParts = item.endDate ? extractDateParts(item.endDate)[0] : dates[1] ?? startParts;
+    if (!startParts) return [];
+    const start = toDate(startParts);
+    const end = toDate(endParts ?? startParts);
+    const visibleStart = new Date(calendarYear, calendarMonth - 1, 1);
+    const visibleEnd = new Date(calendarYear, calendarMonth - 1, daysInMonth);
+    const rangeStart = start > visibleStart ? start : visibleStart;
+    const rangeEnd = end < visibleEnd ? end : visibleEnd;
+    if (rangeEnd < rangeStart) return [];
+    const length = Math.floor((rangeEnd.getTime() - rangeStart.getTime()) / 86400000) + 1;
+    return Array.from({ length }, (_, index) => rangeStart.getDate() + index);
   };
   const itemsByDay = calendarItems.reduce<Record<number, CalendarItem[]>>((acc, item) => {
     for (const day of itemDays(item)) acc[day] = [...(acc[day] ?? []), item];
     return acc;
   }, {});
   const calendarRoleLabel = t(role === "buyer" ? "header.calendarBuyer" : "header.calendarSeller");
-  // 셀러는 수정 요청과 조건 그대로 체결 완료 알림을 확인한다.
-  const sellerNotif = role === "seller" && isDemoSession;
+  // 알림 UI는 유지하되, 실제 알림 API가 연결되기 전까지 목업 알림은 노출하지 않는다.
+  const sellerNotif = false;
   const displayName = companyName || "계정 정보 없음";
 
   return (
@@ -208,13 +239,43 @@ export function Header({
                     <div className="text-muted-foreground" style={{ fontSize: "12px", fontWeight: 500 }}>{calendarRoleLabel}</div>
                   </div>
                 </div>
-                <span className="rounded-full bg-background px-2.5 py-1 text-muted-foreground shadow-sm" style={{ fontSize: "12px", fontWeight: 700 }}>
-                  {t("header.calendarMonth")}
-                </span>
+                <button
+                  type="button"
+                  className="rounded-full bg-background px-2.5 py-1 text-muted-foreground shadow-sm transition-colors hover:bg-background/80"
+                  style={{ fontSize: "12px", fontWeight: 700 }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setShowMonthPicker((value) => !value);
+                  }}
+                >
+                  {formatMonth(calendarYear, calendarMonth)}
+                </button>
               </div>
             </DropdownMenuLabel>
             <>
                 <div className="px-4 pb-3 pt-3">
+                  {showMonthPicker && (
+                    <div className="mb-3 grid grid-cols-[1fr_1fr] gap-2">
+                      <select
+                        className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
+                        value={calendarYear}
+                        onClick={(event) => event.preventDefault()}
+                        onChange={(event) => setCalendarYear(Number(event.target.value))}
+                      >
+                        {[2025, 2026, 2027, 2028].map((year) => <option key={year} value={year}>{year}</option>)}
+                      </select>
+                      <select
+                        className="h-9 rounded-lg border border-border bg-background px-2 text-sm"
+                        value={calendarMonth}
+                        onClick={(event) => event.preventDefault()}
+                        onChange={(event) => setCalendarMonth(Number(event.target.value))}
+                      >
+                        {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                          <option key={month} value={month}>{String(month).padStart(2, "0")}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-muted-foreground" style={{ fontSize: "12px", fontWeight: 700 }}>{t("header.calendarEvents")}</span>
                     <span className="rounded-full px-2 py-0.5" style={{ background: "var(--success-soft)", color: "var(--success)", fontSize: "11px", fontWeight: 800 }}>
@@ -229,7 +290,7 @@ export function Header({
                     </div>
                   )}
                   <div className="grid grid-cols-7 rounded-lg bg-muted/50 px-1 py-1 text-center text-muted-foreground" style={{ fontSize: "10px", fontWeight: 800 }}>
-                    {["일", "월", "화", "수", "목", "금", "토"].map((day) => <div key={day} className="py-1">{day}</div>)}
+                    {["sun", "mon", "tue", "wed", "thu", "fri", "sat"].map((day) => <div key={day} className="py-1">{t(`weekday.${day}`)}</div>)}
                   </div>
                   <div className="mt-2 grid grid-cols-7 gap-1.5">
                     {calendarDays.map((day, index) => {
@@ -280,8 +341,8 @@ export function Header({
                           onClick={() => navigate(calendarPath)}
                         >
                           <div className="flex size-11 shrink-0 flex-col items-center justify-center rounded-lg" style={{ background: "var(--info-soft)", color: "var(--ocean)" }}>
-                            <span style={{ fontSize: "10px", fontWeight: 700 }}>07</span>
-                            <span style={{ fontSize: "15px", fontWeight: 900 }}>{itemDay(item.date) ?? "-"}</span>
+                            <span style={{ fontSize: "10px", fontWeight: 700 }}>{String(calendarMonth).padStart(2, "0")}</span>
+                            <span style={{ fontSize: "15px", fontWeight: 900 }}>{itemDays(item)[0] ?? "-"}</span>
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
