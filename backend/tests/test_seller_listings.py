@@ -306,8 +306,6 @@ class FakeSellerListingRepository:
         }
         if record.status not in allowed[target_status]:
             raise SellerListingStateConflictError
-        if target_status == "published" and record.verification_status != "verified":
-            raise SellerListingStateConflictError("seller_not_verified")
         if record.status == target_status:
             return record
         updated = replace(
@@ -476,7 +474,7 @@ def test_complete_publish_pause_resume_and_archive_flow(
     assert archived.json()["data"]["status"] == "archived"
 
 
-def test_unverified_seller_cannot_publish(
+def test_pending_seller_can_publish(
     listing_client: TestClient, listing_repository: FakeSellerListingRepository
 ) -> None:
     listing_id = create_listing(listing_client)
@@ -494,8 +492,8 @@ def test_unverified_seller_cannot_publish(
         f"/api/v1/seller/listings/{listing_id}/publish", headers=headers()
     )
 
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "SELLER_NOT_VERIFIED"
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "published"
 
 
 def test_other_organization_cannot_read_listing(app: FastAPI, listing_client: TestClient) -> None:

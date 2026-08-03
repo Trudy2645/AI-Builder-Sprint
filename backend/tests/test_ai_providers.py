@@ -305,6 +305,10 @@ async def test_upstage_maps_universal_extraction_values_and_provenance() -> None
             "price_amount_minor"
             in request_json["response_format"]["json_schema"]["schema"]["properties"]
         )
+        assert (
+            "Do not translate"
+            in request_json["response_format"]["json_schema"]["schema"]["description"]
+        )
         assert request_json["location"] is True
         assert request_json["confidence"] is True
         return httpx.Response(

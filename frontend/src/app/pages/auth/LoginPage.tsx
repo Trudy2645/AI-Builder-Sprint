@@ -36,7 +36,8 @@ export function LoginPage() {
       if (!result.session) throw new Error("Login session was not returned.");
       const role = result.role ?? inferDemoRole(email);
       loginWithSession(role, email, result.session.access_token, result.organization_id);
-      navigate(`/${role}`);
+      // Let AppContext publish the authenticated role before RequireRole runs.
+      window.setTimeout(() => navigate(`/${role}`), 0);
     } catch (error) {
       setErrorMessage(friendlyApiError(error));
     } finally {
@@ -49,7 +50,9 @@ export function LoginPage() {
     try {
       const session = await loginWithDemoRole(r);
       loginWithSession(session.role, company, session.accessToken, session.organizationId);
-      navigate(`/${session.role}`);
+      // The protected route reads AppContext. Navigating in the same update
+      // cycle can make it read the previous anonymous state and redirect back.
+      window.setTimeout(() => navigate(`/${session.role}`), 0);
     } catch (error) {
       const message = `데모 로그인에 실패했습니다: ${friendlyApiError(error)}`;
       setErrorMessage(message);

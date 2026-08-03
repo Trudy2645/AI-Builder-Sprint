@@ -119,7 +119,9 @@ export function ListingsProvider({ children }: { children: ReactNode }) {
 
   const refreshListings = async () => {
     const items = await getSellerListings();
-    setListings(items.map(fromServer));
+    // 삭제는 계약 이력 보존을 위해 서버에서 archived 상태로 처리한다.
+    // 보관된 공고를 임시저장으로 다시 보여 주지 않도록 관리 목록에서는 제외한다.
+    setListings(items.filter((item) => item.status !== "archived").map(fromServer));
     setLoadError(null);
   };
 

@@ -289,15 +289,7 @@ class SellerListingService:
         actor: AuthenticatedUser,
         header_organization_id: str | None,
     ) -> SellerListingMutationResponse:
-        organization_id, membership = await self._authorize_organization(
-            actor, header_organization_id
-        )
-        if membership.verification_status != "verified":
-            raise AppError(
-                status_code=status.HTTP_403_FORBIDDEN,
-                code="SELLER_NOT_VERIFIED",
-                message="Only a verified seller organization can publish listings.",
-            )
+        organization_id, _ = await self._authorize_organization(actor, header_organization_id)
         record = await self._get_owned_listing(listing_id, organization_id)
         self._validate_term_units(self._term_values(record))
         clauses = await self._clauses(record.current_version_id)
@@ -341,12 +333,6 @@ class SellerListingService:
                 target_status=target_status,
             )
         except SellerListingStateConflictError as exc:
-            if str(exc) == "seller_not_verified":
-                raise AppError(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    code="SELLER_NOT_VERIFIED",
-                    message="Only a verified seller organization can publish listings.",
-                ) from exc
             self._invalid_transition(exc)
         except SellerListingNotFoundError as exc:
             self._not_found(exc)

@@ -107,7 +107,8 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
 }
 
 export function ExploreView({ base }: { base: string }) {
-  const { t } = useApp();
+  const { lang, t } = useApp();
+  const locale = lang === "ko" ? "ko-KR" : lang === "en" ? "en-US" : lang === "ja" ? "ja-JP" : "zh-CN";
 
   const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState("");
@@ -124,7 +125,7 @@ export function ExploreView({ base }: { base: string }) {
 
   useEffect(() => {
     let active = true;
-    const refresh = () => getPublicListings()
+    const refresh = () => getPublicListings(locale)
       .then((listings) => {
         if (active) {
           setServerContracts(
@@ -141,7 +142,7 @@ export function ExploreView({ base }: { base: string }) {
     refresh();
     window.addEventListener("focus", refresh);
     return () => { active = false; window.removeEventListener("focus", refresh); };
-  }, []);
+  }, [locale]);
 
   const reset = () => {
     setSelectedCategories([]);

@@ -25,46 +25,50 @@ export class ApiError extends Error {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const accessTokenKey = "busan-link-access-token";
+const organizationIdKey = "busanlink.organization_id";
+const refreshTokenKey = "busanlink.refresh_token";
+
+function authStorage(): Storage {
+  // Authentication must be per tab: a buyer and seller can work side by side
+  // without one tab replacing the other's credentials.
+  return window.sessionStorage;
+}
 
 export function setAccessToken(token: string | null): void {
   if (token) {
-    window.localStorage.setItem(accessTokenKey, token);
-    // Keep the legacy key in sync while existing sessions migrate.
-    window.localStorage.setItem("busanlink.access_token", token);
+    authStorage().setItem(accessTokenKey, token);
+    // Remove the old shared-tab credentials rather than falling back to them.
+    window.localStorage.removeItem(accessTokenKey);
+    window.localStorage.removeItem("busanlink.access_token");
     activeSession = null;
   }
   else {
+    authStorage().removeItem(accessTokenKey);
+    authStorage().removeItem(refreshTokenKey);
+    authStorage().removeItem(organizationIdKey);
     window.localStorage.removeItem(accessTokenKey);
     window.localStorage.removeItem("busanlink.access_token");
+    window.localStorage.removeItem(refreshTokenKey);
+    window.localStorage.removeItem(organizationIdKey);
     activeSession = null;
   }
 }
 
 export function getAccessToken(): string | null {
-  return window.localStorage.getItem(accessTokenKey)
-    ?? window.localStorage.getItem("busanlink.access_token");
+  return authStorage().getItem(accessTokenKey);
 }
 
 type ApiSession = {
   accessToken: string;
-  organizationId: string;
+  organizationId?: string;
 };
 
 let activeSession: ApiSession | null = null;
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export function clearApiSession(): void {
-  activeSession = null;
-  window.localStorage.removeItem("busanlink.access_token");
-  window.localStorage.removeItem("busanlink.refresh_token");
-  window.localStorage.removeItem("busanlink.organization_id");
-  setAccessToken(null);
-}
-
 type UploadedDocumentProcessingResult = {
   listingId: string;
   listingVersionNo: number;
+  sourceDocumentId: string;
   listingCandidate: {
     title?: string;
     category?: "vehicle_rental" | "activity" | "tour" | "accommodation";
@@ -80,39 +84,29 @@ function requestIdempotencyKey(prefix: string): string {
 }
 
 function getApiSession(): ApiSession {
-  if (activeSession) return validateApiSession(activeSession);
+  if (activeSession) return activeSession;
   const accessToken = getAccessToken()
     ?? import.meta.env.VITE_API_ACCESS_TOKEN;
-  const organizationId = window.localStorage.getItem("busanlink.organization_id")
+  const organizationId = authStorage().getItem(organizationIdKey)
     ?? import.meta.env.VITE_SELLER_ORGANIZATION_ID;
-  return validateApiSession({ accessToken: accessToken ?? "", organizationId: organizationId ?? "" });
-}
-
-function validateApiSession(session: ApiSession): ApiSession {
-  const { accessToken, organizationId } = session;
-  if (!accessToken || !organizationId) {
+  if (!accessToken) {
     throw new Error("API 로그인 정보가 없습니다. 로그인 후 다시 시도해 주세요.");
   }
-  if (!uuidPattern.test(organizationId)) {
-    clearApiSession();
-    throw new Error("셀러 조직 정보가 UUID 형식이 아닙니다. 셀러 계정으로 다시 로그인해 주세요.");
-  }
-  return session;
+  return { accessToken, organizationId: organizationId ?? undefined };
 }
 
 export function hasApiSession(): boolean {
   const accessToken = getAccessToken()
-    ?? window.localStorage.getItem("busanlink.access_token")
     ?? import.meta.env.VITE_API_ACCESS_TOKEN;
-  const organizationId = window.localStorage.getItem("busanlink.organization_id")
+  const organizationId = authStorage().getItem(organizationIdKey)
     ?? import.meta.env.VITE_SELLER_ORGANIZATION_ID;
-  return Boolean(accessToken && organizationId);
+  return Boolean(accessToken);
 }
 
 function authenticatedHeaders(session: ApiSession, headers: HeadersInit = {}): Headers {
   const result = new Headers(headers);
   result.set("Authorization", `Bearer ${session.accessToken}`);
-  result.set("X-Organization-Id", session.organizationId);
+  if (session.organizationId) result.set("X-Organization-Id", session.organizationId);
   return result;
 }
 
@@ -128,11 +122,7 @@ export function friendlyApiError(error: unknown): string {
       UNSUPPORTED_DISPLAY_CURRENCY: "현재는 상품 기준 통화로만 예상 금액을 계산할 수 있습니다.",
       DATABASE_UNAVAILABLE: "서비스 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
       INVALID_STATE_TRANSITION: "이미 처리되었거나 현재 상태에서는 변경할 수 없는 요청입니다.",
-      BUYER_APPROVAL_REQUIRED: "바이어의 최종 승인이 완료된 뒤 셀러가 승인할 수 있습니다.",
     };
-    if (error.message.includes("X-Organization-Id")) {
-      return "셀러 조직 정보가 올바르지 않습니다. 셀러 계정으로 다시 로그인한 뒤 시도해 주세요.";
-    }
     return messages[error.code] ?? error.message;
   }
   if (error instanceof TypeError) {
@@ -148,7 +138,7 @@ export async function apiFetch<Data>(path: string, init: RequestInit = {}): Prom
   if (accessToken && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
-  const organizationId = window.localStorage.getItem("busanlink.organization_id");
+  const organizationId = authStorage().getItem(organizationIdKey);
   if (organizationId && !headers.has("X-Organization-Id")) {
     headers.set("X-Organization-Id", organizationId);
   }
@@ -171,93 +161,6 @@ export async function apiFetch<Data>(path: string, init: RequestInit = {}): Prom
  * and returns only the structured candidate intended for seller confirmation.
  */
 export type ContractProcessingStage = "uploading" | "ocr" | "extracting" | "matching" | "finalizing";
-
-export type AIJobView = {
-  id: string;
-  task_type: string;
-  status: "queued" | "processing" | "succeeded" | "failed";
-  progress: number;
-  result_resource_type: string | null;
-  result_resource_id: string | null;
-  failure_code: string | null;
-};
-
-export type ContractReviewFinding = {
-  id: string;
-  viewer_role: "buyer" | "seller";
-  clause_id: string | null;
-  category: string;
-  severity: "high" | "medium" | "low" | "none";
-  importance: "high" | "medium" | "low";
-  title: string;
-  explanation: string;
-  suggested_text: string | null;
-  suggested_text_hash: string | null;
-  grounding_status: "grounded" | "insufficient_evidence" | "not_required";
-  confidence: number | null;
-  source_location: Record<string, unknown>;
-  evidence: Array<Record<string, unknown>>;
-  disclaimer: string;
-  is_public: boolean;
-  model_name: string;
-  prompt_version: string;
-};
-
-export type ContractReviewRun = {
-  id: string;
-  job_id: string | null;
-  target_type: "listing_version" | "contract_version";
-  target_id: string;
-  viewer_role: "buyer" | "seller";
-  status: "queued" | "processing" | "succeeded" | "failed";
-  execution_mode: "single_agent";
-  agent_name: "contract_review";
-  max_iterations: number;
-  iterations_used: number;
-  stop_reason: "completed" | "max_iterations" | "insufficient_evidence" | "provider_error" | null;
-  model_name: string;
-  prompt_version: string;
-  findings: ContractReviewFinding[];
-};
-
-export type ContractReviewAccepted = {
-  job_id: string;
-  job_type: "risk_analysis";
-  execution_mode: "single_agent";
-  agent_name: "contract_review";
-  max_iterations: number;
-  status: "queued" | "processing" | "succeeded" | "failed";
-};
-
-export function startSellerListingReview(listingId: string, versionId: string): Promise<ContractReviewAccepted> {
-  const session = getApiSession();
-  return apiFetch<ContractReviewAccepted>(`/seller/listings/${listingId}/analyses`, {
-    method: "POST",
-    headers: new Headers([
-      ...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(),
-      ["Idempotency-Key", requestIdempotencyKey("listing-risk-review")],
-    ]),
-    body: JSON.stringify({
-      version_id: versionId,
-      viewer_role: "seller",
-      analysis_types: ["risk", "missing_terms"],
-    }),
-  });
-}
-
-export function getAIJob(jobId: string): Promise<AIJobView> {
-  const session = getApiSession();
-  return apiFetch<AIJobView>(`/ai-jobs/${jobId}`, {
-    headers: authenticatedHeaders(session),
-  });
-}
-
-export function getContractReviewRun(runId: string): Promise<ContractReviewRun> {
-  const session = getApiSession();
-  return apiFetch<ContractReviewRun>(`/ai-analysis-runs/${runId}`, {
-    headers: authenticatedHeaders(session),
-  });
-}
 
 export async function uploadAndProcessSourceContract(
   file: File,
@@ -338,6 +241,7 @@ export async function uploadAndProcessSourceContract(
       return {
         listingId: listing.listing_id,
         listingVersionNo: listing.version_no,
+        sourceDocumentId: upload.document.id,
         listingCandidate: result.listing_candidate,
         confirmationRequired: result.confirmation_required,
         validationWarnings: result.validation_warnings,
@@ -432,7 +336,7 @@ export async function updateSellerListingTerms(
   listingId: string,
   terms: Record<string, unknown> = {},
   baseVersionNo = 1,
-): Promise<SellerListingDetail> {
+): Promise<void> {
   const session = getApiSession();
   const body = {
     ...terms,
@@ -452,10 +356,68 @@ export async function updateSellerListingTerms(
     liability_policy: terms.liability_policy == null ? null : String(terms.liability_policy),
     termination_policy: terms.termination_policy == null ? null : String(terms.termination_policy),
   };
-  return apiFetch<SellerListingDetail>(`/seller/listings/${listingId}/terms`, {
+  await apiFetch(`/seller/listings/${listingId}/terms`, {
     method: "PATCH",
     headers: authenticatedHeaders(session, { "Content-Type": "application/json" }),
     body: JSON.stringify({ base_version_no: baseVersionNo, terms: body }),
+  });
+}
+
+export type AIJob = {
+  id: string;
+  status: "queued" | "processing" | "succeeded" | "failed";
+  result_resource_id: string | null;
+  failure_code: string | null;
+};
+
+export type ContractReviewFinding = {
+  id: string;
+  viewer_role: "buyer" | "seller";
+  clause_id: string | null;
+  category: string;
+  severity: "high" | "medium" | "low" | "none";
+  importance: "high" | "medium" | "low";
+  title: string;
+  explanation: string;
+  suggested_text: string | null;
+  suggested_text_hash: string | null;
+  grounding_status: "grounded" | "insufficient_evidence" | "not_required";
+  confidence: number | null;
+  source_location: Record<string, unknown>;
+  evidence: Array<Record<string, unknown>>;
+  disclaimer: string;
+  is_public: boolean;
+  model_name: string;
+  prompt_version: string;
+};
+
+export type ContractReviewRun = {
+  id: string;
+  job_id: string | null;
+  status: "queued" | "processing" | "succeeded" | "failed";
+  findings: ContractReviewFinding[];
+};
+
+export function getAIJob(jobId: string): Promise<AIJob> {
+  return apiFetch<AIJob>(`/ai-jobs/${jobId}`);
+}
+
+export function getContractReviewRun(runId: string): Promise<ContractReviewRun> {
+  return apiFetch<ContractReviewRun>(`/ai-analysis-runs/${runId}`);
+}
+
+export function startSellerListingReview(
+  listingId: string,
+  versionId: string,
+): Promise<{ job_id: string }> {
+  const session = getApiSession();
+  return apiFetch<{ job_id: string }>(`/seller/listings/${listingId}/analyses`, {
+    method: "POST",
+    headers: new Headers([
+      ...authenticatedHeaders(session, { "Content-Type": "application/json" }).entries(),
+      ["Idempotency-Key", requestIdempotencyKey("listing-review")],
+    ]),
+    body: JSON.stringify({ version_id: versionId, viewer_role: "seller", analysis_types: ["risk", "missing_terms"] }),
   });
 }
 
@@ -556,41 +518,20 @@ export type Role = "buyer" | "seller";
 type AuthSession = { access_token: string; refresh_token: string; token_type: string; expires_in: number };
 export type AuthResponse = { user_id: string; email: string; role?: Role; organization_id?: string | null; session: AuthSession | null };
 
-function persistAuthResponse(result: AuthResponse): void {
-  const accessToken = result.session?.access_token;
-  const refreshToken = result.session?.refresh_token;
-  const organizationId = result.organization_id;
-  if (!accessToken) return;
-  window.localStorage.setItem("busanlink.access_token", accessToken);
-  if (refreshToken) window.localStorage.setItem("busanlink.refresh_token", refreshToken);
-  setAccessToken(accessToken);
-  if (organizationId && uuidPattern.test(organizationId)) {
-    window.localStorage.setItem("busanlink.organization_id", organizationId);
-    activeSession = { accessToken, organizationId };
-  } else {
-    window.localStorage.removeItem("busanlink.organization_id");
-    activeSession = null;
-  }
-}
-
-export async function loginWithPassword(email: string, password: string): Promise<AuthResponse> {
-  const result = await apiFetch<AuthResponse>("/auth/login", {
+export function loginWithPassword(email: string, password: string): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  persistAuthResponse(result);
-  return result;
 }
 
-export async function signup(payload: Record<string, unknown>): Promise<AuthResponse> {
-  const result = await apiFetch<AuthResponse>("/auth/signup", {
+export function signup(payload: Record<string, unknown>): Promise<AuthResponse> {
+  return apiFetch<AuthResponse>("/auth/signup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  persistAuthResponse(result);
-  return result;
 }
 
 export type ContractListItem = {
@@ -600,9 +541,6 @@ export type ContractListItem = {
   seller_name: string;
   initial_request_kind: "as_is" | "revision";
   status: "draft" | "seller_review" | "revision_requested" | "signing" | "signed" | "cancelled";
-  buyer_approved?: boolean;
-  seller_approved?: boolean;
-  final_approval_requested?: boolean;
   service_start_date: string;
   service_end_date: string;
   requested_people: number;
@@ -613,35 +551,6 @@ export type ContractListItem = {
 
 export function getMyContracts(): Promise<ContractListItem[]> {
   return apiFetch<ContractListItem[]>("/me/contracts");
-}
-
-export type NotificationItem = {
-  id: string;
-  notification_type: string;
-  title: string;
-  body: string;
-  resource_type: string | null;
-  resource_id: string | null;
-  is_read: boolean;
-  read_at: string | null;
-  created_at: string;
-};
-
-export type NotificationListResponse = {
-  items: NotificationItem[];
-  unread_count: number;
-};
-
-export function getNotifications(limit = 20): Promise<NotificationListResponse> {
-  return apiFetch<NotificationListResponse>(`/notifications?limit=${limit}`);
-}
-
-export function markNotificationRead(notificationId: string): Promise<NotificationItem> {
-  return apiFetch<NotificationItem>(`/notifications/${notificationId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ read: true }),
-  });
 }
 
 export type SellerContractListItem = {
@@ -659,9 +568,6 @@ export type SellerContractListItem = {
   request_kind_label: string;
   status: string;
   status_label: string;
-  buyer_approved?: boolean;
-  seller_approved?: boolean;
-  final_approval_requested?: boolean;
   requested_at: string;
 };
 
@@ -709,7 +615,6 @@ export type ContractDetail = {
   status_label: string;
   has_unread_response: boolean;
   initial_request_kind: "as_is" | "revision";
-  final_approval_requested: boolean;
   request_message: string | null;
   requested_people: number;
   buyer_group_name: string | null;
@@ -740,6 +645,62 @@ export type ContractDetail = {
     clauses: Array<{ id: string; clause_order: number; clause_key: string | null; title: string; body: string }>;
   };
 };
+
+export type ContractVersionListItem = {
+  id: string;
+  version_no: number;
+  version_label: string;
+  title: string;
+  created_by_role: "buyer" | "seller" | "system";
+  creation_reason: "contract_created" | "revision_agreement" | "manual_version";
+  created_from_revision_request_id: string | null;
+  created_at: string;
+  clause_count: number;
+  risk: { score: number | null; finding_count: number };
+};
+
+export type ContractVersionCompare = {
+  contract_id: string;
+  from_version: ContractVersionListItem;
+  to_version: ContractVersionListItem;
+  clause_summary: { added: number; deleted: number; modified: number };
+  clause_changes: Array<{
+    change_type: "added" | "deleted" | "modified";
+    before: { id: string; clause_order: number; clause_key: string | null; title: string; body: string } | null;
+    after: { id: string; clause_order: number; clause_key: string | null; title: string; body: string } | null;
+  }>;
+  price_change: {
+    direction: "increased" | "decreased" | "unchanged" | "unknown";
+    before: { amount_minor: number | null; currency: string | null };
+    after: { amount_minor: number | null; currency: string | null };
+    delta_amount_minor: number | null;
+  };
+  period_change: {
+    changed: boolean | null;
+    before: { start_date: string | null; end_date: string | null };
+    after: { start_date: string | null; end_date: string | null };
+  };
+  risk_change: {
+    direction: "increased" | "decreased" | "unchanged" | "unknown";
+    before_score: number | null;
+    after_score: number | null;
+    before_finding_count: number;
+    after_finding_count: number;
+  };
+};
+
+export function getContractVersions(contractId: string): Promise<ContractVersionListItem[]> {
+  return apiFetch<ContractVersionListItem[]>(`/contracts/${contractId}/versions`);
+}
+
+export function compareContractVersions(
+  contractId: string,
+  fromVersion: number,
+  toVersion: number,
+): Promise<ContractVersionCompare> {
+  const query = new URLSearchParams({ from: String(fromVersion), to: String(toVersion) });
+  return apiFetch<ContractVersionCompare>(`/contracts/${contractId}/versions/compare?${query}`);
+}
 
 export type ContractRequestPayload = {
   people: number;
@@ -840,10 +801,6 @@ export type RevisionRequestResponse = {
     reason: string;
     requested_text?: string;
     document_ids?: string[];
-    decision: "pending" | "accepted" | "rejected" | "countered";
-    seller_reason?: string | null;
-    counter_text?: string | null;
-    decided_at?: string | null;
   }>;
   decision_preview: {
     resulting_clauses: Array<{ id: string; clause_order: number; clause_key: string | null; title: string; body: string }>;
@@ -873,6 +830,20 @@ export function getRevisionRequest(revisionRequestId: string): Promise<RevisionR
   return apiFetch<RevisionRequestResponse>(`/revision-requests/${revisionRequestId}`);
 }
 
+export function respondRevisionRequest(
+  revisionRequestId: string,
+  payload: { decision: "accepted" | "rejected"; message?: string },
+): Promise<{ revision_request_id: string; status: string; contract_id: string }> {
+  return apiFetch(`/revision-requests/${revisionRequestId}/respond`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": requestIdempotencyKey("revision-response"),
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function sendRevisionRequest(revisionRequestId: string): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
   return apiFetch(`/revision-requests/${revisionRequestId}/send`, {
     method: "POST",
@@ -887,7 +858,6 @@ export type SellerRevisionRequestListItem = {
   buyer_name: string;
   status: "draft" | "sent" | "accepted" | "rejected" | "partially_accepted" | "countered" | "cancelled";
   message: string | null;
-  response_message: string | null;
   item_count: number;
   item_summary: string[];
   has_unread: boolean;
@@ -896,13 +866,37 @@ export type SellerRevisionRequestListItem = {
 };
 
 export function getSellerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
-  return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered&status=partially_accepted&status=accepted&status=rejected&status=cancelled");
+  return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
 }
 
 export function getBuyerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
   return apiFetch<SellerRevisionRequestListItem[]>(
-    "/me/revision-requests?status=sent&status=countered&status=accepted&status=rejected&status=partially_accepted&status=cancelled",
+    "/me/revision-requests?status=sent&status=countered&status=accepted&status=rejected&status=partially_accepted",
   );
+}
+
+export type NotificationItem = {
+  id: string;
+  notification_type: string;
+  title: string;
+  body: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+};
+
+export function getNotifications(): Promise<{ items: NotificationItem[]; unread_count: number }> {
+  return apiFetch<{ items: NotificationItem[]; unread_count: number }>("/notifications");
+}
+
+export function markNotificationRead(notificationId: string): Promise<NotificationItem> {
+  return apiFetch<NotificationItem>(`/notifications/${notificationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ read: true }),
+  });
 }
 
 export function decideRevisionRequest(
@@ -912,17 +906,6 @@ export function decideRevisionRequest(
   return apiFetch(`/revision-requests/${revisionRequestId}/decide`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-decide") },
-    body: JSON.stringify(payload),
-  });
-}
-
-export function respondRevisionRequest(
-  revisionRequestId: string,
-  payload: { decision: "accepted" | "rejected"; message?: string },
-): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
-  return apiFetch(`/revision-requests/${revisionRequestId}/respond`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-respond") },
     body: JSON.stringify(payload),
   });
 }
@@ -1032,7 +1015,6 @@ export type ApprovalStatus = {
   buyer: { approved: boolean };
   seller: { approved: boolean };
   all_approved: boolean;
-  final_approval_requested: boolean;
   contract_status?: string;
 };
 
@@ -1081,11 +1063,7 @@ export function createSignatureRequest(
   });
 }
 
-export function dispatchSignatureRequest(
-  contractId: string,
-  versionId: string,
-  fields: Array<Record<string, unknown>> = [],
-): Promise<SignatureRequest> {
+export function dispatchSignatureRequest(contractId: string, versionId: string, fields: Array<Record<string, unknown>> = []): Promise<SignatureRequest> {
   return apiFetch<SignatureRequest>(`/contracts/${contractId}/versions/${versionId}/signature-requests/dispatch`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
@@ -1093,10 +1071,7 @@ export function dispatchSignatureRequest(
   });
 }
 
-export async function getSignatureSourcePdf(
-  contractId: string,
-  versionId: string,
-): Promise<{ bytes: ArrayBuffer; sha256: string; pageCount: number }> {
+export async function getSignatureSourcePdf(contractId: string, versionId: string): Promise<{ bytes: ArrayBuffer; sha256: string; pageCount: number }> {
   const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/versions/${versionId}/signature-source`, {
     headers: authenticatedHeaders(getApiSession()),
   });
@@ -1104,7 +1079,11 @@ export async function getSignatureSourcePdf(
     const payload = await response.json().catch(() => null);
     throw new ApiError(payload?.error ?? { code: "PDF_PREVIEW_FAILED", message: "계약서 PDF를 불러오지 못했습니다." });
   }
-  return { bytes: await response.arrayBuffer(), sha256: response.headers.get("X-BusanLink-Pdf-Sha256") ?? "", pageCount: Number(response.headers.get("X-BusanLink-Pdf-Pages") ?? 0) };
+  return {
+    bytes: await response.arrayBuffer(),
+    sha256: response.headers.get("X-BusanLink-Pdf-Sha256") ?? "",
+    pageCount: Number(response.headers.get("X-BusanLink-Pdf-Pages") ?? 0),
+  };
 }
 
 export async function downloadModusignFile(documentId: string, kind: "signed" | "audit-trail"): Promise<void> {
@@ -1216,8 +1195,10 @@ export function getSellerListing(listingId: string): Promise<SellerListingDetail
   });
 }
 
-export function getPublicListings(): Promise<PublicListing[]> {
-  return apiFetch<PublicListing[]>("/public/listings");
+export function getPublicListings(
+  locale: "ko-KR" | "en-US" | "ja-JP" | "zh-CN" = "ko-KR",
+): Promise<PublicListing[]> {
+  return apiFetch<PublicListing[]>(`/public/listings?locale=${encodeURIComponent(locale)}`);
 }
 
 export type PublicListingClause = {
@@ -1391,6 +1372,7 @@ export type AuthenticatedDemoSession = {
   accessToken: string;
   refreshToken: string;
   email: string;
+  role: Role;
   organizationId?: string;
 };
 
@@ -1403,20 +1385,25 @@ export async function loginWithDemoRole(role: "buyer" | "seller"): Promise<Authe
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
   });
-  const me = await apiFetch<{ organizations: Array<{ id: string }> }>("/me", {
+  const me = await apiFetch<{ role: Role; organizations: Array<{ id: string }> }>("/me", {
     headers: { Authorization: `Bearer ${result.session.access_token}` },
   });
   const organizationId = me.organizations[0]?.id;
   setAccessToken(result.session.access_token);
-  window.localStorage.setItem("busanlink.refresh_token", result.session.refresh_token);
-  if (organizationId && uuidPattern.test(organizationId)) {
-    window.localStorage.setItem("busanlink.organization_id", organizationId);
-    activeSession = { accessToken: result.session.access_token, organizationId };
-  } else {
-    window.localStorage.removeItem("busanlink.organization_id");
-    activeSession = null;
-  }
-  return { accessToken: result.session.access_token, refreshToken: result.session.refresh_token, email: result.email, organizationId };
+  authStorage().setItem(refreshTokenKey, result.session.refresh_token);
+  if (organizationId) authStorage().setItem(organizationIdKey, organizationId);
+  else authStorage().removeItem(organizationIdKey);
+  activeSession = { accessToken: result.session.access_token, organizationId };
+  // Some locally running API builds do not yet include `role` in `/me`.
+  // The selected demo account is authoritative for this flow, so keep the
+  // requested role as a fallback instead of navigating to `/undefined`.
+  return {
+    accessToken: result.session.access_token,
+    refreshToken: result.session.refresh_token,
+    email: result.email,
+    role: me.role ?? role,
+    organizationId,
+  };
 }
 
 export type BuyerSigningField = {

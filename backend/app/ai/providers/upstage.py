@@ -191,7 +191,15 @@ class UpstageAIProvider:
                     "type": "json_schema",
                     "json_schema": {
                         "name": "busan_link_contract_terms",
-                        "schema": {"type": "object", "properties": properties},
+                        "schema": {
+                            "type": "object",
+                            "description": (
+                                "Extract textual values in the document's original language. "
+                                "Do not translate, summarize, or paraphrase text. In particular, "
+                                "return Korean source text in Korean."
+                            ),
+                            "properties": properties,
+                        },
                     },
                 },
                 "mode": "enhanced",

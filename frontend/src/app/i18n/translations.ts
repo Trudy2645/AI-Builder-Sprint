@@ -7,10 +7,10 @@ export const LANGUAGES: { code: Lang; label: string }[] = [
   { code: "zh", label: "中文" },
 ];
 
-type Dict = Record<string, string>;
+export type TranslationDictionary = Record<string, string>;
 
 // Flat dictionary keyed by string id. Each entry has all 4 languages.
-const strings: Record<string, Dict> = {
+export const strings: Record<string, TranslationDictionary> = {
   "brand.tagline": {
     ko: "부산 관광 B2B 계약 플랫폼",
     en: "Busan Tourism B2B Contract Platform",
@@ -40,51 +40,26 @@ const strings: Record<string, Dict> = {
   "header.profile": { ko: "프로필", en: "Profile", ja: "プロフィール", zh: "个人资料" },
   "header.language": { ko: "언어", en: "Language", ja: "言語", zh: "语言" },
   "header.currentRole": { ko: "현재 역할", en: "Current role", ja: "現在の役割", zh: "当前角色" },
-  "header.calendar": { ko: "계약 캘린더", en: "Contract calendar", ja: "契約カレンダー", zh: "合约日历" },
-  "header.calendarBuyer": { ko: "바이어 일정", en: "Buyer schedule", ja: "バイヤー予定", zh: "买家日程" },
-  "header.calendarSeller": { ko: "셀러 일정", en: "Seller schedule", ja: "セラー予定", zh: "卖家日程" },
-  "header.calendarEvents": { ko: "체결 및 서명 일정", en: "Signing and completion", ja: "締結・署名予定", zh: "签署与完成日程" },
-  "header.calendarViewAll": { ko: "계약 목록 보기", en: "View contracts", ja: "契約一覧を見る", zh: "查看合约" },
-  "header.calendarCompleted": { ko: "체결 완료", en: "Completed", ja: "締結完了", zh: "已完成" },
-  "header.calendarSigning": { ko: "서명 대기", en: "Awaiting signature", ja: "署名待ち", zh: "待签署" },
-  "header.calendarSupply": { ko: "공고 공급 기간", en: "Listing supply period", ja: "公告の供給期間", zh: "公告供应期间" },
-  "header.calendarEmpty": { ko: "표시할 체결 계약 일정이 없습니다.", en: "No contract dates to display.", ja: "表示する契約予定はありません。", zh: "没有可显示的合约日程。" },
-  "header.calendarMonth": { ko: "2026.07", en: "2026.07", ja: "2026.07", zh: "2026.07" },
   "header.switchRole": { ko: "역할 전환", en: "Switch role", ja: "役割切替", zh: "切换角色" },
   "header.logout": { ko: "로그아웃", en: "Log out", ja: "ログアウト", zh: "退出登录" },
-  "weekday.sun": { ko: "일", en: "Sun", ja: "日", zh: "日" },
-  "weekday.mon": { ko: "월", en: "Mon", ja: "月", zh: "一" },
-  "weekday.tue": { ko: "화", en: "Tue", ja: "火", zh: "二" },
-  "weekday.wed": { ko: "수", en: "Wed", ja: "水", zh: "三" },
-  "weekday.thu": { ko: "목", en: "Thu", ja: "木", zh: "四" },
-  "weekday.fri": { ko: "금", en: "Fri", ja: "金", zh: "五" },
-  "weekday.sat": { ko: "토", en: "Sat", ja: "土", zh: "六" },
+  "header.hideSidebar": { ko: "사이드바 숨기기", en: "Hide sidebar", ja: "サイドバーを閉じる", zh: "隐藏侧边栏" },
+  "header.showSidebar": { ko: "사이드바 열기", en: "Show sidebar", ja: "サイドバーを開く", zh: "显示侧边栏" },
+  "header.goHome": { ko: "첫 페이지로 이동", en: "Go to home", ja: "ホームへ移動", zh: "前往首页" },
+  "header.calendar": { ko: "계약 일정", en: "Contract calendar", ja: "契約スケジュール", zh: "合约日程" },
 
   // Buyer nav
   "nav.buyer.explore": { ko: "계약 탐색", en: "Explore Contracts", ja: "契約を探す", zh: "浏览合约" },
-  "nav.buyer.sent": { ko: "계약 관리", en: "Contract Management", ja: "契約管理", zh: "合同管理" },
-  "nav.negotiating": { ko: "협상 관리", en: "Negotiation Management", ja: "交渉管理", zh: "协商管理" },
-  "nav.signing": { ko: "최종안 승인 및 서명 대기", en: "Final Approval & Signing", ja: "最終承認・署名待ち", zh: "最终批准与待签署" },
+  "nav.buyer.sent": { ko: "보낸 요청", en: "Sent Requests", ja: "送信した要請", zh: "已发送请求" },
+  "nav.negotiating": { ko: "협상 중", en: "Negotiating", ja: "交渉中", zh: "协商中" },
+  "nav.signing": { ko: "서명 대기", en: "Awaiting Signature", ja: "署名待ち", zh: "待签署" },
   "nav.contracts": { ko: "체결 계약", en: "Signed Contracts", ja: "締結済み契約", zh: "已签合约" },
   "nav.mypage": { ko: "마이페이지", en: "My Page", ja: "マイページ", zh: "我的页面" },
-  "contracts.title": { ko: "체결 계약", en: "Contracts", ja: "締結契約", zh: "已签合约" },
-  "contracts.subtitle": { ko: "서명 대기와 체결이 완료된 계약을 한곳에서 확인하세요.", en: "Review contracts awaiting signature and completed contracts in one place.", ja: "署名待ちと締結済みの契約をまとめて確認できます。", zh: "在此查看待签署和已完成的合约。" },
-  "contracts.completed": { ko: "체결 완료", en: "Completed", ja: "締結完了", zh: "已完成" },
-  "contracts.thisMonth": { ko: "이번 달 체결", en: "This month", ja: "今月の締結", zh: "本月完成" },
-  "contracts.signRate": { ko: "전자서명 완료율", en: "Signature completion", ja: "電子署名完了率", zh: "电子签名完成率" },
-  "contracts.partner": { ko: "상대 업체", en: "Partner", ja: "相手企業", zh: "合作方" },
-  "contracts.name": { ko: "계약명", en: "Contract", ja: "契約名", zh: "合约名称" },
-  "contracts.date": { ko: "체결일", en: "Date", ja: "締結日", zh: "签署日期" },
-  "contracts.version": { ko: "최종 버전", en: "Final version", ja: "最終バージョン", zh: "最终版本" },
-  "contracts.action": { ko: "작업", en: "Action", ja: "操作", zh: "操作" },
-  "contracts.detail": { ko: "계약 상세", en: "Contract details", ja: "契約詳細", zh: "合约详情" },
-  "contracts.waiting": { ko: "서명 대기", en: "Awaiting signature", ja: "署名待ち", zh: "待签署" },
-  "contracts.empty": { ko: "아직 표시할 계약이 없습니다.", en: "There are no contracts to display yet.", ja: "表示する契約はまだありません。", zh: "暂无可显示的合约。" },
 
   // Seller nav
   "nav.seller.dashboard": { ko: "대시보드", en: "Dashboard", ja: "ダッシュボード", zh: "仪表板" },
-  "nav.seller.listings": { ko: "등록 공고 관리", en: "Contract Listings", ja: "契約公告管理", zh: "合约公告管理" },
+  "nav.seller.listings": { ko: "계약 공고 관리", en: "Contract Listings", ja: "契約公告管理", zh: "合约公告管理" },
   "nav.seller.newListing": { ko: "새 공고 등록", en: "New Listing", ja: "新規公告登録", zh: "新建公告" },
+  "nav.seller.received": { ko: "받은 요청", en: "Received Requests", ja: "受信した要請", zh: "收到的请求" },
 
   // Contract steps
   "step.1": { ko: "조건 확인", en: "Review Terms", ja: "条件確認", zh: "确认条款" },
@@ -106,7 +81,6 @@ const strings: Record<string, Dict> = {
   "common.email": { ko: "이메일", en: "Email", ja: "メール", zh: "邮箱" },
   "common.password": { ko: "비밀번호", en: "Password", ja: "パスワード", zh: "密码" },
   "common.companyName": { ko: "회사명", en: "Company name", ja: "会社名", zh: "公司名称" },
-  "common.honorific": { ko: "님", en: "", ja: "様", zh: "" },
   "common.selectRole": { ko: "역할 선택", en: "Select role", ja: "役割を選択", zh: "选择角色" },
   "common.comingSoon": {
     ko: "이 화면은 곧 제공됩니다.",
@@ -119,7 +93,6 @@ const strings: Record<string, Dict> = {
   "common.next": { ko: "다음", en: "Next", ja: "次へ", zh: "下一步" },
   "common.back": { ko: "이전", en: "Back", ja: "戻る", zh: "上一步" },
   "common.optional": { ko: "선택", en: "Optional", ja: "任意", zh: "选填" },
-  "common.retry": { ko: "다시 시도", en: "Try again", ja: "再試行", zh: "重试" },
 
   // Role selection
   "auth.chooseRole": { ko: "역할을 선택하세요", en: "Choose your role", ja: "役割を選択してください", zh: "请选择您的角色" },
@@ -142,6 +115,19 @@ const strings: Record<string, Dict> = {
     zh: "发布公告并签订供应合约的釜山本地供应商。",
   },
   "auth.selectThisRole": { ko: "이 역할로 시작", en: "Continue with this role", ja: "この役割で開始", zh: "以此角色开始" },
+  "auth.exploreHome": { ko: "계약 탐색 첫 페이지로 이동", en: "Go to the contract explorer home", ja: "契約検索のホームへ移動", zh: "前往合约浏览首页" },
+  "auth.heroTitle": {
+    ko: "부산 관광 공급 계약을\n더 빠르고 안전하게",
+    en: "Busan tourism supply contracts,\nfaster and safer",
+    ja: "釜山観光の供給契約を\nより速く、より安全に",
+    zh: "釜山旅游供应合约\n更快、更安全",
+  },
+  "auth.heroDescription": {
+    ko: "공고 탐색, AI 위험 조항 검토, 수정 협상, 전자서명까지 한 곳에서.",
+    en: "Explore listings, review AI risk clauses, negotiate revisions, and e-sign in one place.",
+    ja: "公告検索、AIリスク条項の確認、修正交渉、電子署名までを一か所で。",
+    zh: "从浏览公告、AI 风险条款审查、修订协商到电子签名，一站完成。",
+  },
 
   // Signup step labels
   "signup.step.role": { ko: "역할 선택", en: "Role", ja: "役割選択", zh: "选择角色" },
@@ -246,56 +232,20 @@ const strings: Record<string, Dict> = {
   },
   "explore.resultCount": { ko: "건의 계약", en: "contracts", ja: "件の契約", zh: "个合约" },
   "explore.empty": { ko: "조건에 맞는 계약이 없습니다.", en: "No contracts match your filters.", ja: "条件に合う契約がありません。", zh: "没有符合条件的合约。" },
-  "explore.searchPlaceholder": {
-    ko: "업체명, 상품명 또는 계약명을 검색하세요",
-    en: "Search by company, product, or contract name",
-    ja: "企業名、商品名、契約名で検索",
-    zh: "搜索企业、商品或合约名称",
-  },
-  "explore.searchButton": { ko: "계약 검색", en: "Search", ja: "契約検索", zh: "搜索合约" },
-  "explore.availableTitle": { ko: "계약 가능한 상품", en: "Available listings", ja: "契約可能な商品", zh: "可签约商品" },
-  "explore.availableSubtitle": {
-    ko: "조건을 비교하고 AI가 요약한 핵심 계약 내용을 확인하세요.",
-    en: "Compare terms and review the key contract summary.",
-    ja: "条件を比較し、AIが要約した主要契約内容を確認できます。",
-    zh: "比较条件并查看 AI 摘要的核心合约内容。",
-  },
-  "explore.countUnit": { ko: "건", en: "", ja: "件", zh: "个" },
-  "explore.loadErrorTitle": { ko: "공고를 불러오지 못했습니다", en: "Could not load listings", ja: "公告を読み込めませんでした", zh: "无法加载公告" },
-  "explore.loading": { ko: "공고를 불러오는 중입니다…", en: "Loading listings...", ja: "公告を読み込んでいます…", zh: "正在加载公告…" },
 
   // Filters
   "filter.title": { ko: "필터", en: "Filters", ja: "フィルター", zh: "筛选" },
   "filter.reset": { ko: "초기화", en: "Reset", ja: "リセット", zh: "重置" },
   "filter.category": { ko: "카테고리", en: "Category", ja: "カテゴリ", zh: "类别" },
-  "filter.categoryGroup": { ko: "분야", en: "Category", ja: "分野", zh: "领域" },
   "filter.district": { ko: "지역 (구)", en: "District", ja: "地域 (区)", zh: "地区" },
   "filter.districtAll": { ko: "전체 지역", en: "All districts", ja: "全地域", zh: "全部地区" },
   "filter.guests": { ko: "이용 인원", en: "Guests", ja: "利用人数", zh: "使用人数" },
   "filter.guestsPlaceholder": { ko: "인원 직접 입력", en: "Enter number", ja: "人数を入力", zh: "输入人数" },
   "filter.period": { ko: "이용 기간", en: "Usage period", ja: "利用期間", zh: "使用期间" },
-  "filter.periodDesc": {
-    ko: "계약 상품을 이용할 시작일과 종료일을 선택하세요.",
-    en: "Select the start and end dates for using the contract listing.",
-    ja: "契約商品を利用する開始日と終了日を選択してください。",
-    zh: "请选择使用该合约商品的开始日和结束日。",
-  },
   "filter.priceRange": { ko: "예상 금액 범위", en: "Estimated price", ja: "予想金額", zh: "预估金额" },
-  "filter.priceShort": { ko: "금액대", en: "Price", ja: "金額帯", zh: "价格区间" },
-  "filter.priceTitle": { ko: "기준 단가 범위", en: "Unit price range", ja: "基準単価の範囲", zh: "基准单价范围" },
-  "filter.priceDesc": {
-    ko: "상품별 객실 또는 1인 기준 단가입니다.",
-    en: "Based on each listing's room or per-person unit price.",
-    ja: "商品ごとの客室または1人あたりの単価です。",
-    zh: "基于各商品的客房或人均单价。",
-  },
   "filter.availableOnly": { ko: "계약 가능한 계약만 보기", en: "Available only", ja: "契約可能のみ", zh: "仅显示可签约" },
-  "filter.availableShort": { ko: "계약 가능만", en: "Available only", ja: "契約可能のみ", zh: "仅可签约" },
   "filter.from": { ko: "시작일", en: "From", ja: "開始日", zh: "开始" },
   "filter.to": { ko: "종료일", en: "To", ja: "終了日", zh: "结束" },
-  "filter.resetAll": { ko: "전체 초기화", en: "Reset all", ja: "すべてリセット", zh: "全部重置" },
-  "filter.active": { ko: "적용된 필터", en: "Active filters", ja: "適用中のフィルター", zh: "已应用筛选" },
-  "filter.peopleUnit": { ko: "명", en: " guests", ja: "名", zh: "人" },
 
   // Categories
   "cat.all": { ko: "전체", en: "All", ja: "すべて", zh: "全部" },
@@ -323,7 +273,7 @@ const strings: Record<string, Dict> = {
 
   // Summary page
   "summary.backToList": { ko: "목록으로", en: "Back to list", ja: "一覧へ", zh: "返回列表" },
-  "summary.viewOriginal": { ko: "계약 시작하기", en: "Start contract", ja: "契約を開始する", zh: "开始合同" },
+  "summary.viewOriginal": { ko: "계약서 원문 보기", en: "View full contract", ja: "契約書原文を見る", zh: "查看合约原文" },
   "summary.aiSummary": { ko: "AI 3줄 요약", en: "AI 3-line summary", ja: "AI 3行要約", zh: "AI 三行摘要" },
   "summary.keyClauses": { ko: "주요 조항", en: "Key clauses", ja: "主要条項", zh: "主要条款" },
   "summary.period": { ko: "이용 기간", en: "Period", ja: "利用期間", zh: "使用期间" },
@@ -379,14 +329,14 @@ const strings: Record<string, Dict> = {
   "asis.message": { ko: "요청 메시지", en: "Request message", ja: "要請メッセージ", zh: "申请留言" },
   "asis.messagePlaceholder": { ko: "셀러에게 전달할 메시지를 입력하세요.", en: "Message to the seller.", ja: "セラーへのメッセージ。", zh: "给卖家的留言。" },
   "asis.confirmCheck": { ko: "계약서 원문과 조건을 모두 확인했습니다.", en: "I have reviewed the full contract and terms.", ja: "契約書原文と条件をすべて確認しました。", zh: "我已阅读全部合约与条款。" },
-  "asis.directTitle": { ko: "조건 그대로 계약 요청", en: "Request the published terms", ja: "公開条件のまま契約を要請", zh: "按公开条件发送合约请求" },
+  "asis.directTitle": { ko: "즉시 체결 가능한 공개 계약", en: "Instantly available contract", ja: "すぐに締結できる公開契約", zh: "可即时签约的公开合同" },
   "asis.directDescription": {
-    ko: "공개된 조건 그대로 계약 요청을 보냅니다. 요청이 전송되면 최종 검토 화면에서 바이어 최종 승인을 진행합니다.",
-    en: "Send a contract request with the published terms. After it is sent, review the final contract and approve it as the buyer.",
-    ja: "公開条件のまま契約を要請します。送信後、最終確認画面でバイヤーとして最終承認を行います。",
-    zh: "按公开条件发送合同请求。发送后在最终审查页面以买家身份完成最终批准。",
+    ko: "셀러가 공개한 조건을 수락합니다. 아래 이용 정보를 반영한 최종 계약서를 확인한 뒤 모두싸인 전자서명으로 이동합니다.",
+    en: "Accept the seller's published terms. Review the final contract with your usage details, then continue to Modusign.",
+    ja: "セラーの公開条件を受諾します。利用情報を反映した最終契約書を確認後、モドゥサインへ進みます。",
+    zh: "接受卖家公开条款。确认包含使用信息的最终合同后，继续前往Modusign。",
   },
-  "asis.submit": { ko: "계약 요청 보내기", en: "Send contract request", ja: "契約要請を送信", zh: "发送合同请求" },
+  "asis.submit": { ko: "최종 계약서 확인", en: "Review final contract", ja: "最終契約書を確認", zh: "确认最终合同" },
   "asis.readyToSign": {
     ko: "최종 계약 정보를 반영했습니다. 모두싸인에서 전자서명을 진행하세요.",
     en: "The contract terms are confirmed. Please proceed with e-signature.",
@@ -426,8 +376,8 @@ const strings: Record<string, Dict> = {
   "opt.ct.add": { ko: "조항 추가", en: "Add clause", ja: "条項追加", zh: "新增条款" },
 
   // Sent requests
-  "sent.title": { ko: "계약 관리", en: "Contract Management", ja: "契約管理", zh: "合同管理" },
-  "sent.subtitle": { ko: "보낸 계약과 수정 요청을 관리하세요.", en: "Manage sent contracts and revision requests.", ja: "送信した契約と修正要請を管理。", zh: "管理已发送的合同与修改请求。" },
+  "sent.title": { ko: "보낸 요청", en: "Sent Requests", ja: "送信した要請", zh: "已发送请求" },
+  "sent.subtitle": { ko: "셀러에게 보낸 계약·수정 요청을 관리하세요.", en: "Manage contract and revision requests you sent.", ja: "セラーに送信した契約・修正要請を管理。", zh: "管理您发送的合约与修改请求。" },
   "sent.type.asis": { ko: "조건 그대로", en: "As-is", ja: "この条件", zh: "原条件" },
   "sent.type.revision": { ko: "수정 요청", en: "Revision", ja: "修正要請", zh: "修改" },
   "sent.col.contract": { ko: "계약", en: "Contract", ja: "契約", zh: "合约" },
@@ -441,7 +391,6 @@ const strings: Record<string, Dict> = {
   // Statuses & tabs
   "tab.all": { ko: "전체", en: "All", ja: "すべて", zh: "全部" },
   "rstatus.reviewing": { ko: "셀러 검토 중", en: "Seller reviewing", ja: "セラー確認中", zh: "卖家审核中" },
-  "rstatus.final_review": { ko: "최종안 승인 및 서명 대기", en: "Final approval & signing", ja: "最終承認・署名待ち", zh: "最终批准与待签署" },
   "rstatus.responded": { ko: "응답 도착", en: "Response received", ja: "応答あり", zh: "已回复" },
   "rstatus.negotiating": { ko: "협상 중", en: "Negotiating", ja: "交渉中", zh: "协商中" },
   "rstatus.signing": { ko: "서명 대기", en: "Awaiting signature", ja: "署名待ち", zh: "待签署" },
@@ -476,7 +425,7 @@ const strings: Record<string, Dict> = {
     zh: "一目了然地查看公告状况与新收到的合约请求。",
   },
   "sdash.stat.public": { ko: "공개 중 공고", en: "Public listings", ja: "公開中の公告", zh: "公开中公告" },
-  "sdash.stat.newReq": { ko: "최종 승인 요청", en: "Final approval requests", ja: "最終承認要請", zh: "最终批准请求" },
+  "sdash.stat.newReq": { ko: "새 요청", en: "New requests", ja: "新規要請", zh: "新请求" },
   "sdash.stat.negotiating": { ko: "협상 중", en: "Negotiating", ja: "交渉中", zh: "协商中" },
   "sdash.stat.signing": { ko: "서명 대기", en: "Awaiting signature", ja: "署名待ち", zh: "待签署" },
   "sdash.stat.monthlyClosed": { ko: "이번 달 체결", en: "Signed this month", ja: "今月の締結", zh: "本月签署" },
@@ -486,7 +435,7 @@ const strings: Record<string, Dict> = {
   "sdash.unit": { ko: "건", en: "", ja: "件", zh: "个" },
 
   // ===== Seller: Listings management =====
-  "listings.title": { ko: "등록 공고 관리", en: "Contract Listings", ja: "契約公告管理", zh: "合约公告管理" },
+  "listings.title": { ko: "계약 공고 관리", en: "Contract Listings", ja: "契約公告管理", zh: "合约公告管理" },
   "listings.subtitle": {
     ko: "등록한 공고의 상태를 관리하고 새로운 공고를 등록하세요.",
     en: "Manage your listings and post new ones.",
@@ -661,6 +610,24 @@ const strings: Record<string, Dict> = {
   },
   "notif.viewCompleted": { ko: "체결 계약 보기", en: "View completed contract", ja: "締結契約を見る", zh: "查看已签署合约" },
 
+  // ===== Received requests list =====
+  "recv.title": { ko: "받은 요청", en: "Received Requests", ja: "受信した要請", zh: "收到的请求" },
+  "recv.subtitle": {
+    ko: "바이어가 보낸 계약·수정 요청을 검토하고 응답하세요.",
+    en: "Review and respond to contract and revision requests from buyers.",
+    ja: "バイヤーからの契約・修正要請を確認し応答します。",
+    zh: "查看并回复买家发送的合约与修改请求。",
+  },
+  "recv.col.buyer": { ko: "바이어", en: "Buyer", ja: "バイヤー", zh: "买家" },
+  "recv.col.contract": { ko: "계약", en: "Contract", ja: "契約", zh: "合约" },
+  "recv.col.type": { ko: "요청 유형", en: "Type", ja: "要請タイプ", zh: "类型" },
+  "recv.col.count": { ko: "수정 조항", en: "Clauses", ja: "修正条項", zh: "修改条款" },
+  "recv.col.date": { ko: "받은 날짜", en: "Received", ja: "受信日", zh: "接收日" },
+  "recv.type.revision": { ko: "수정 요청", en: "Revision", ja: "修正要請", zh: "修改申请" },
+  "recv.review": { ko: "검토하기", en: "Review", ja: "確認する", zh: "查看" },
+  "recv.empty": { ko: "받은 요청이 없습니다.", en: "No received requests.", ja: "受信した要請はありません。", zh: "暂无收到的请求。" },
+  "recv.countUnit": { ko: "개 조항", en: "clauses", ja: "件の条項", zh: "个条款" },
+
   // ===== Revision review detail =====
   "rvw.title": { ko: "수정 요청 검토", en: "Review Revision Request", ja: "修正要請の確認", zh: "审查修改申请" },
   "rvw.from": { ko: "요청 바이어", en: "From buyer", ja: "要請バイヤー", zh: "申请买家" },
@@ -725,6 +692,28 @@ const strings: Record<string, Dict> = {
   "chg.riskUp": { ko: "위험 증가", en: "Risk up", ja: "リスク増加", zh: "风险上升" },
   "chg.riskDown": { ko: "위험 감소", en: "Risk down", ja: "リスク減少", zh: "风险下降" },
 
+  // Version compare page
+  "vc.title": { ko: "계약서 버전 비교", en: "Version Comparison", ja: "契約書バージョン比較", zh: "合约版本对比" },
+  "vc.subtitle": {
+    ko: "협상 과정에서 변경된 조항을 버전별로 비교하세요.",
+    en: "Compare clauses changed through the negotiation, version by version.",
+    ja: "交渉で変更された条項をバージョン別に比較します。",
+    zh: "按版本对比协商过程中变更的条款。",
+  },
+  "vc.selectVersion": { ko: "비교할 버전", en: "Version to compare", ja: "比較するバージョン", zh: "对比版本" },
+  "vc.prevVersion": { ko: "이전 버전", en: "Previous version", ja: "以前のバージョン", zh: "上一版本" },
+  "vc.newVersion": { ko: "새 버전", en: "New version", ja: "新しいバージョン", zh: "新版本" },
+  "vc.aiSummary": { ko: "AI 변경 요약", en: "AI Change Summary", ja: "AI変更要約", zh: "AI变更摘要" },
+  "vc.changedClauses": { ko: "변경된 조항", en: "Changed clauses", ja: "変更された条項", zh: "变更条款" },
+  "vc.changeCount": { ko: "건 변경", en: " changes", ja: "件変更", zh: "处变更" },
+  "vc.noChange": { ko: "변경 사항이 없습니다.", en: "No changes.", ja: "変更はありません。", zh: "无变更。" },
+  "vc.clauseDeleted": { ko: "이 조항이 삭제되었습니다.", en: "This clause was deleted.", ja: "この条項は削除されました。", zh: "此条款已删除。" },
+  "vc.clauseAdded": { ko: "이 조항이 새로 추가되었습니다.", en: "This clause was newly added.", ja: "この条項が新たに追加されました。", zh: "此条款为新增。" },
+  "vc.by": { ko: "작성", en: "by", ja: "作成", zh: "编写" },
+  "vc.requestMore": { ko: "추가 수정 요청", en: "Request more changes", ja: "追加修正を要請", zh: "申请进一步修改" },
+  "vc.reCounter": { ko: "대안 다시 제시", en: "Propose again", ja: "代案を再提示", zh: "重新提出替代方案" },
+  "vc.approveFinal": { ko: "최종안 승인", en: "Approve final", ja: "最終案を承認", zh: "批准最终版" },
+
   // Final approval page
   "fa.title": { ko: "최종안 승인", en: "Final Approval", ja: "最終案承認", zh: "最终版批准" },
   "fa.subtitle": {
@@ -739,17 +728,18 @@ const strings: Record<string, Dict> = {
   "fa.seller": { ko: "셀러", en: "Seller", ja: "セラー", zh: "卖家" },
   "fa.approved": { ko: "승인 완료", en: "Approved", ja: "承認済み", zh: "已批准" },
   "fa.waiting": { ko: "승인 대기", en: "Awaiting approval", ja: "承認待ち", zh: "等待批准" },
+  "fa.viewCompare": { ko: "버전 비교 보기", en: "View comparison", ja: "バージョン比較を見る", zh: "查看版本对比" },
   "fa.approveAsBuyer": { ko: "바이어로 최종안 승인", en: "Approve as buyer", ja: "バイヤーとして承認", zh: "以买家批准" },
   "fa.approveAsSeller": { ko: "셀러로 최종안 승인", en: "Approve as seller", ja: "セラーとして承認", zh: "以卖家批准" },
   "fa.requestMore": { ko: "추가 수정 요청", en: "Request more changes", ja: "追加修正を要請", zh: "申请进一步修改" },
   "fa.reCounter": { ko: "대안 다시 제시", en: "Propose again", ja: "代案を再提示", zh: "重新提出替代方案" },
-  "fa.goSign": { ko: "모두싸인 요청", en: "Request Modusign", ja: "モドゥサインを依頼", zh: "请求 Modusign" },
+  "fa.goSign": { ko: "전자서명으로 이동", en: "Go to e-signature", ja: "電子署名へ進む", zh: "前往电子签名" },
   "fa.approvedToast": { ko: "최종안을 승인했습니다.", en: "Final agreement approved.", ja: "最終案を承認しました。", zh: "已批准最终版。" },
   "fa.bothApproved": {
-    ko: "양측 승인이 완료되었습니다. 모두싸인 요청을 보내 서명을 시작하세요.",
-    en: "Both sides approved. Send the Modusign request to start signing.",
-    ja: "双方の承認が完了しました。モドゥサインの依頼を送って署名を開始してください。",
-    zh: "双方批准完成，请发送 Modusign 请求开始签署。",
+    ko: "양측 승인이 완료되었습니다. 전자서명을 진행하세요.",
+    en: "Both sides approved. Proceed to e-signature.",
+    ja: "双方の承認が完了しました。電子署名を進めてください。",
+    zh: "双方批准完成，请进行电子签名。",
   },
 
   // e-Signature page

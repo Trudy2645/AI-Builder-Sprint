@@ -70,8 +70,6 @@ export function UploadOcrPage() {
   const [analyzed, setAnalyzed] = useState(false);
   const [draft, setDraft] = useState<ListingDraft>(() => createEmptyDraft("upload"));
   const [applied, setApplied] = useState<Record<string, boolean>>({});
-  const [analysisNotes, setAnalysisNotes] = useState<string[]>([]);
-  const [extractedValues, setExtractedValues] = useState<Record<string, unknown> | null>(null);
   const [analysisStage, setAnalysisStage] = useState<ContractProcessingStage>("uploading");
   const [processedListing, setProcessedListing] = useState<{ id: string; versionNo: number; documentId: string; versionId?: string } | null>(null);
   const [riskFindings, setRiskFindings] = useState<ContractReviewFinding[] | null>(null);
@@ -101,8 +99,6 @@ export function UploadOcrPage() {
       setRiskClauses([]);
       setRiskError(null);
       setDraft((d) => ({ ...d, ...candidateToDraft(result.listingCandidate) }));
-      setAnalysisNotes([...result.confirmationRequired, ...result.validationWarnings]);
-      setExtractedValues(result.extraction);
       setAnalyzed(true);
       toast.success(t("ocr.analyzeDone"));
     } catch (error) {
@@ -329,34 +325,6 @@ export function UploadOcrPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("ocr.confirmTitle")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("ocr.confirmDesc")}</p>
-            {analysisNotes.length > 0 && (
-              <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                <p className="font-medium">AI 확인 필요 항목</p>
-                <ul className="mt-1 list-disc pl-5">
-                  {analysisNotes.map((note) => <li key={note}>{note}</li>)}
-                </ul>
-              </div>
-            )}
-            {extractedValues && (
-              <div className="mb-5 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
-                <p className="font-medium" style={{ color: "var(--navy)" }}>AI 원본 추출값</p>
-                <p className="mt-1 text-xs text-muted-foreground">아래 값은 OCR·Solar가 문서에서 읽은 결과입니다. 최종 공고에는 수정한 값이 반영됩니다.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {Object.entries(extractedValues).flatMap(([section, raw]) => {
-                    const fields = typeof raw === "object" && raw !== null && "fields" in raw
-                      ? (raw as { fields: Record<string, { value?: unknown; confidence?: number | null }> }).fields
-                      : {};
-                    return Object.entries(fields).map(([field, value]) => (
-                      <div key={`${section}.${field}`} className="rounded-md border border-blue-100 bg-white px-3 py-2 text-sm">
-                        <div className="text-xs text-muted-foreground">{section}.{field}</div>
-                        <div className="mt-1 break-words font-medium">{String(value.value ?? "없음")}</div>
-                        {value.confidence != null && <div className="mt-1 text-xs text-muted-foreground">신뢰도 {Math.round(value.confidence * 100)}%</div>}
-                      </div>
-                    ));
-                  })}
-                </div>
-              </div>
-            )}
             <div className="flex flex-col gap-6">
               <ProductFields draft={draft} onChange={patch} errors={fieldErrors} />
               <SupplyFields draft={draft} onChange={patch} errors={fieldErrors} />

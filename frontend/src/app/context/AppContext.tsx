@@ -1,6 +1,8 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import { translate, type Lang } from "../i18n/translations";
-import { clearApiSession, getAccessToken, setAccessToken } from "../lib/api";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { LANGUAGE_STORAGE_KEY, initialLanguage, i18n } from "../i18n/i18n";
+import { type Lang } from "../i18n/translations";
+import { ApiError, apiFetch, getAccessToken, setAccessToken } from "../lib/api";
 
 export type Role = "buyer" | "seller";
 
@@ -19,12 +21,13 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 const sessionKey = "busan-link-session";
+const organizationIdKey = "busanlink.organization_id";
 
 type StoredSession = { role: Role; companyName: string };
 
 function readStoredSession(): StoredSession | null {
   try {
-    const value = window.localStorage.getItem(sessionKey);
+    const value = window.sessionStorage.getItem(sessionKey);
     if (!value) return null;
     const parsed: unknown = JSON.parse(value);
     if (
@@ -43,23 +46,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // A remembered UI role alone is not authentication.  Do not render protected
   // pages as logged in after the API token has been removed or expired.
   const authenticatedSession = storedSession && getAccessToken() ? storedSession : null;
-  const [lang, setLang] = useState<Lang>("ko");
+  const { t: translate } = useTranslation();
+  const [lang, setLangState] = useState<Lang>(initialLanguage);
   const [companyName, setCompanyName] = useState<string>(authenticatedSession?.companyName ?? "");
   const [currentRole, setCurrentRole] = useState<Role | null>(authenticatedSession?.role ?? null);
   const [isDemoSession, setIsDemoSession] = useState(false);
+
+  // The stored UI role is only a convenience.  The authenticated user returned
+  // by the server is authoritative, especially after switching demo accounts.
+  useEffect(() => {
+    if (!authenticatedSession) return;
+
+    let cancelled = false;
+    void apiFetch<{ role: Role; display_name: string; organizations: Array<{ id: string }> }>("/me")
+      .then((me) => {
+        if (cancelled) return;
+        const organizationId = me.organizations[0]?.id;
+        if (organizationId) window.sessionStorage.setItem(organizationIdKey, organizationId);
+        else window.sessionStorage.removeItem(organizationIdKey);
+
+        if (me.role !== authenticatedSession.role) {
+          setCurrentRole(me.role);
+          setCompanyName(me.display_name);
+          window.sessionStorage.setItem(sessionKey, JSON.stringify({ role: me.role, companyName: me.display_name }));
+        }
+      })
+      .catch((error: unknown) => {
+        // An expired/invalid token must not leave a misleading protected UI on
+        // screen.  Transient server failures keep the current session intact.
+        if (!cancelled && error instanceof ApiError && error.code === "AUTH_REQUIRED") logout();
+      });
+
+    return () => { cancelled = true; };
+  // Run once for the persisted session. Login flows set state explicitly.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setLang = (nextLanguage: Lang) => {
+    setLangState(nextLanguage);
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+    document.documentElement.lang = nextLanguage === "ko" ? "ko-KR" : nextLanguage === "en" ? "en-US" : nextLanguage === "ja" ? "ja-JP" : "zh-CN";
+    void i18n.changeLanguage(nextLanguage);
+  };
+
+  useEffect(() => {
+    document.documentElement.lang = lang === "ko" ? "ko-KR" : lang === "en" ? "en-US" : lang === "ja" ? "ja-JP" : "zh-CN";
+  }, [lang]);
 
   const login = (role: Role, company?: string, isDemo = false) => {
     setCurrentRole(role);
     setCompanyName(company ?? "");
     setIsDemoSession(isDemo);
     if (!isDemo) {
-      window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
+      window.sessionStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
     }
   };
 
   const logout = () => {
-    clearApiSession();
-    window.localStorage.removeItem(sessionKey);
+    setAccessToken(null);
+    window.sessionStorage.removeItem(organizationIdKey);
+    window.sessionStorage.removeItem(sessionKey);
     setCurrentRole(null);
     setCompanyName("");
     setIsDemoSession(false);
@@ -67,7 +113,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loginWithSession = (role: Role, company: string, accessToken: string, organizationId?: string | null) => {
     setAccessToken(accessToken);
-    if (organizationId) window.localStorage.setItem("busanlink.organization_id", organizationId);
+    if (organizationId) window.sessionStorage.setItem(organizationIdKey, organizationId);
+    else window.sessionStorage.removeItem(organizationIdKey);
     login(role, company, false);
   };
 
@@ -75,7 +122,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       lang,
       setLang,
-      t: (key: string) => translate(key, lang),
+      t: (key: string) => translate(key),
       companyName,
       setCompanyName,
       currentRole,
