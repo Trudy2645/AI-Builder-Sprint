@@ -946,11 +946,10 @@ class SqlAlchemyRevisionRepository:
                 if row["current_version_id"] != row["contract_version_id"]:
                     raise RevisionVersionConflictError
                 revision_status = "accepted" if accepted else "rejected"
-                contract_status = "revision_requested"
+                contract_status = "seller_review"
                 version_no = None
                 if accepted:
                     version_no = await self._create_version(row, actor_user_id, version_clauses)
-                    contract_status = "signing"
                 await self._session.execute(
                     text(
                         """
@@ -1279,7 +1278,7 @@ class SqlAlchemyRevisionRepository:
             text(
                 """
                 update public.contracts
-                set current_version_id = :version_id, status = 'signing'
+                set current_version_id = :version_id, status = 'seller_review'
                 where id = :contract_id and current_version_id = :base_version_id
                 returning id
                 """
@@ -1292,6 +1291,32 @@ class SqlAlchemyRevisionRepository:
         )
         if updated.scalar_one_or_none() is None:
             raise RevisionVersionConflictError
+        seller_approver = await self._session.execute(
+            text(
+                """
+                select user_id
+                from public.organization_members
+                where organization_id = :organization_id
+                order by user_id
+                limit 1
+                """
+            ),
+            {"organization_id": row["seller_organization_id"]},
+        )
+        seller_user_id = seller_approver.scalar_one_or_none()
+        if seller_user_id is None:
+            raise RevisionReferenceError
+        await self._session.execute(
+            text(
+                """
+                insert into public.contract_version_approvals (
+                    contract_version_id, party_role, approved_by_user_id
+                ) values (:version_id, 'seller', :seller_user_id)
+                on conflict (contract_version_id, party_role) do nothing
+                """
+            ),
+            {"version_id": version_id, "seller_user_id": seller_user_id},
+        )
         return version_no
 
     async def _claim_idempotency(

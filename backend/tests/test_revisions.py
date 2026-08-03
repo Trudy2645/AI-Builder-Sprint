@@ -236,11 +236,11 @@ class FakeRevisionRepository:
         if "countered" in decisions:
             revision_status, contract_status, version_no = "countered", "revision_requested", None
         elif decisions == {"accepted"}:
-            revision_status, contract_status, version_no = "accepted", "signing", 2
+            revision_status, contract_status, version_no = "accepted", "seller_review", 2
             self.version_snapshots.append(version_clauses)
             self.context = replace(
                 self.context,
-                contract_status="signing",
+                contract_status="seller_review",
                 current_version_id=uuid4(),
                 version_no=2,
             )
@@ -307,7 +307,7 @@ class FakeRevisionRepository:
     ) -> RevisionMutationRecord:
         record = self.revisions[revision_id]
         revision_status = "accepted" if accepted else "rejected"
-        contract_status = "signing" if accepted else "revision_requested"
+        contract_status = "seller_review"
         version_no = 2 if accepted else None
         if accepted:
             self.version_snapshots.append(version_clauses)
@@ -624,7 +624,7 @@ def test_all_accepted_creates_immutable_new_version_and_notifies_buyer(
     )
     assert finalized.status_code == 200
     assert finalized.json()["data"] | {"replayed": False} == finalized.json()["data"]
-    assert finalized.json()["data"]["contract_status"] == "signing"
+    assert finalized.json()["data"]["contract_status"] == "seller_review"
     assert finalized.json()["data"]["version_no"] == 2
     assert revision_repository.clauses[0].body == "취소할 수 없습니다."
     assert revision_repository.version_snapshots[0][0].body.startswith("이용 7일")
@@ -675,7 +675,7 @@ def test_counter_preview_requires_buyer_response_and_acceptance_creates_version(
         json={"decision": "accepted", "message": "대안에 동의합니다."},
     )
     assert response.status_code == 200
-    assert response.json()["data"]["contract_status"] == "signing"
+    assert response.json()["data"]["contract_status"] == "seller_review"
     assert revision_repository.version_snapshots[0][0].body.startswith("이용 14일")
 
 

@@ -30,6 +30,7 @@ from app.integrations.storage import (
 )
 from app.repositories.contracts import (
     ContractCreatedRecord,
+    ContractApprovalOrderError,
     ContractRecord,
     ContractRepository,
     ContractRepositoryUnavailableError,
@@ -410,6 +411,12 @@ class ContractService:
                 status_code=status.HTTP_409_CONFLICT,
                 code="INVALID_STATE_TRANSITION",
                 message="The contract cannot be approved in its current state.",
+            ) from exc
+        except ContractApprovalOrderError as exc:
+            raise AppError(
+                status_code=status.HTTP_409_CONFLICT,
+                code="SELLER_APPROVAL_REQUIRED",
+                message="The seller must approve the final contract before the buyer can approve it.",
             ) from exc
         except ContractVersionApprovalAccessError as exc:
             raise AppError(
@@ -1007,6 +1014,7 @@ class ContractService:
                 "종료" if bucket == ContractBucket.FINISHED else _STATUS_LABELS[record.status]
             ),
             has_unread_response=has_unread_response,
+            seller_approved=record.seller_approved,
             initial_request_kind=record.initial_request_kind,
             request_message=record.request_message,
             requested_people=record.requested_people,

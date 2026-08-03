@@ -14,6 +14,7 @@ from app.integrations.auth import AuthenticatedUser
 from app.integrations.exchange_rates import FakeExchangeRateProvider
 from app.repositories.contracts import (
     ContractRepositoryUnavailableError,
+    ContractApprovalOrderError,
     ContractStateConflictError,
     ContractVersionApprovalAccessError,
     ContractVersionApprovalContextRecord,
@@ -105,6 +106,11 @@ class FakeContractApprovalRepository:
             actor_user_id, context.seller_organization_id
         ):
             raise ContractVersionApprovalAccessError
+        existing_approvals = await self.list_contract_version_approvals(contract_version_id)
+        if party_role == "buyer" and not any(
+            approval.party_role == "seller" for approval in existing_approvals
+        ):
+            raise ContractApprovalOrderError
         key = (contract_version_id, party_role)
         already_approved = key in self.approvals
         if not already_approved:
@@ -162,6 +168,13 @@ def seller_headers(app: FastAPI, user_id: UUID = SELLER_ID) -> dict[str, str]:
     return {"X-Organization-Id": str(ORGANIZATION_ID)}
 
 
+def buyer_headers(app: FastAPI) -> dict[str, str]:
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id=BUYER_ID, email="buyer@example.test"
+    )
+    return {}
+
+
 def test_approval_status_starts_empty(approval_client: TestClient) -> None:
     response = approval_client.get(
         f"/api/v1/contracts/{CONTRACT_ID}/versions/{CURRENT_VERSION_ID}/approvals"
@@ -175,22 +188,31 @@ def test_approval_status_starts_empty(approval_client: TestClient) -> None:
     assert data["all_approved"] is False
 
 
-def test_buyer_approval_is_naturally_idempotent(
+def test_buyer_approval_requires_seller_first_and_is_idempotent(
+    app: FastAPI,
     approval_client: TestClient,
     approval_repository: FakeContractApprovalRepository,
 ) -> None:
     url = f"/api/v1/contracts/{CONTRACT_ID}/versions/{CURRENT_VERSION_ID}/approve"
 
-    first = approval_client.post(url)
-    second = approval_client.post(url)
+    blocked = approval_client.post(url, headers=buyer_headers(app))
+    seller = approval_client.post(url, headers=seller_headers(app))
+    first = approval_client.post(url, headers=buyer_headers(app))
+    second = approval_client.post(url, headers=buyer_headers(app))
 
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "SELLER_APPROVAL_REQUIRED"
+    assert seller.status_code == 200
     assert first.status_code == 200
     assert first.json()["data"]["approved_role"] == "buyer"
     assert first.json()["data"]["already_approved"] is False
     assert second.json()["data"]["already_approved"] is True
-    assert len(approval_repository.approvals) == 1
-    assert approval_repository.audit_events == [("contract_version_approved", "buyer")]
-    assert approval_repository.notifications == [("seller", CURRENT_VERSION_ID)]
+    assert len(approval_repository.approvals) == 2
+    assert approval_repository.audit_events == [
+        ("contract_version_approved", "seller"),
+        ("contract_version_approved", "buyer"),
+    ]
+    assert approval_repository.notifications == [("buyer", CURRENT_VERSION_ID)]
 
 
 def test_buyer_and_seller_must_approve_same_version(
@@ -199,18 +221,19 @@ def test_buyer_and_seller_must_approve_same_version(
     approval_repository: FakeContractApprovalRepository,
 ) -> None:
     url = f"/api/v1/contracts/{CONTRACT_ID}/versions/{CURRENT_VERSION_ID}/approve"
-    buyer = approval_client.post(url)
     seller = approval_client.post(url, headers=seller_headers(app))
+    buyer = approval_client.post(url, headers=buyer_headers(app))
 
-    assert buyer.json()["data"]["all_approved"] is False
+    assert buyer.json()["data"]["all_approved"] is True
     assert seller.status_code == 200
-    data = seller.json()["data"]
+    assert buyer.status_code == 200
+    data = buyer.json()["data"]
     assert data["buyer"]["approved"] is True
     assert data["seller"]["approved"] is True
     assert data["all_approved"] is True
     assert data["contract_status"] == "signing"
     assert approval_repository.current_context.contract_status == "signing"
-    assert approval_repository.notifications == [("seller", CURRENT_VERSION_ID)]
+    assert approval_repository.notifications == [("buyer", CURRENT_VERSION_ID)]
 
 
 def test_seller_requires_matching_organization_membership(

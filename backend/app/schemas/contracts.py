@@ -216,6 +216,7 @@ class ContractSummary(BaseModel):
     service_end_date: date
     created_at: datetime
     updated_at: datetime
+    seller_approved: bool = False
 
 
 class ContractDetail(ContractSummary):

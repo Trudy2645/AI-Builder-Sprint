@@ -89,6 +89,7 @@ class ContractRecord:
     created_at: datetime
     updated_at: datetime
     cancelled_at: datetime | None
+    seller_approved: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +214,10 @@ class ContractVersionNotFoundError(Exception):
 
 
 class ContractVersionApprovalAccessError(Exception):
+    pass
+
+
+class ContractApprovalOrderError(Exception):
     pass
 
 
@@ -866,7 +871,13 @@ class SqlAlchemyContractRepository:
                            buyer.group_name_snapshot as buyer_group_name_snapshot,
                            buyer.signing_capacity::text as buyer_signing_capacity,
                            seller.name_snapshot as seller_name,
-                           c.created_at, c.updated_at, c.cancelled_at
+                           c.created_at, c.updated_at, c.cancelled_at,
+                           exists (
+                               select 1
+                               from public.contract_version_approvals seller_approval
+                               where seller_approval.contract_version_id = c.current_version_id
+                                 and seller_approval.party_role = 'seller'
+                           ) as seller_approved
                     from public.contracts c
                     left join public.listings l on l.id = c.listing_id
                     join public.contract_terms ct on ct.contract_id = c.id
@@ -1047,6 +1058,11 @@ class SqlAlchemyContractRepository:
                     actor_user_id, context.seller_organization_id
                 ):
                     raise ContractVersionApprovalAccessError
+                existing_approvals = await self._list_approvals_in_transaction(contract_version_id)
+                if party_role == "buyer" and not any(
+                    approval.party_role == "seller" for approval in existing_approvals
+                ):
+                    raise ContractApprovalOrderError
                 inserted = await self._session.execute(
                     text(
                         """
