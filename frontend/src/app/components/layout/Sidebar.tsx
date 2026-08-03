@@ -3,10 +3,10 @@ import { navForRole } from "../../config/nav";
 import { useApp, type Role } from "../../context/AppContext";
 
 export function Sidebar({ role, open, onNavigate }: { role: Role; open: boolean; onNavigate?: () => void }) {
-  const { t } = useApp();
+  const { t, companyName } = useApp();
   const items = navForRole(role);
   const roleLabel = t(role === "buyer" ? "role.buyer" : "role.seller");
-  const roleDesc = t(role === "buyer" ? "role.buyer.desc" : "role.seller.desc");
+  const displayName = companyName || roleLabel;
 
   return (
     <aside
@@ -15,12 +15,12 @@ export function Sidebar({ role, open, onNavigate }: { role: Role; open: boolean;
       style={{ width: open ? "230px" : "0px", borderRightWidth: open ? "1px" : "0px" }}
     >
       <div className="flex h-full w-[230px] flex-col">
-        <div className="border-b border-border px-5 py-4">
-          <div className="whitespace-nowrap" style={{ fontWeight: 700, color: "var(--navy)" }}>
+        <div className="border-b border-border px-5 py-5">
+          <div className="whitespace-nowrap" style={{ fontSize: "18px", fontWeight: 700, color: "var(--navy)" }}>
             {roleLabel}
           </div>
-          <div className="mt-0.5 text-muted-foreground" style={{ fontSize: "12px" }}>
-            {roleDesc}
+          <div className="mt-1 whitespace-nowrap text-muted-foreground" style={{ fontSize: "13px" }}>
+            {displayName} {t("common.honorific")}
           </div>
         </div>
 
@@ -37,7 +37,7 @@ export function Sidebar({ role, open, onNavigate }: { role: Role; open: boolean;
                     tabIndex={open ? 0 : -1}
                     className={({ isActive }) =>
                       [
-                        "flex items-center gap-3 rounded-md px-3 py-2 whitespace-nowrap transition-colors",
+                        "flex items-center gap-3 rounded-lg px-3 py-2.5 whitespace-nowrap transition-colors",
                         isActive
                           ? "text-ocean-foreground"
                           : "text-foreground hover:bg-secondary",
@@ -47,8 +47,8 @@ export function Sidebar({ role, open, onNavigate }: { role: Role; open: boolean;
                       isActive ? { background: "var(--ocean)", color: "var(--ocean-foreground)" } : undefined
                     }
                   >
-                    <Icon className="size-4 shrink-0" />
-                    <span className="truncate" style={{ fontSize: "14px" }}>
+                    <Icon className="size-5 shrink-0" />
+                    <span className="truncate" style={{ fontSize: "15px", fontWeight: 500 }}>
                       {t(item.labelKey)}
                     </span>
                   </NavLink>
@@ -58,7 +58,7 @@ export function Sidebar({ role, open, onNavigate }: { role: Role; open: boolean;
           </ul>
         </nav>
 
-        <div className="border-t border-border px-5 py-3 text-muted-foreground" style={{ fontSize: "11px" }}>
+        <div className="border-t border-border px-5 py-4 text-muted-foreground" style={{ fontSize: "12px" }}>
           © 2026 Busan Link
         </div>
       </div>

@@ -24,13 +24,13 @@ import { WriteContractPage } from "./pages/seller/WriteContractPage";
 import { ReceivedRequestsPage } from "./pages/seller/ReceivedRequestsPage";
 import { RevisionReviewPage } from "./pages/seller/RevisionReviewPage";
 import { SellerNegotiatingPage } from "./pages/seller/SellerNegotiatingPage";
-import { SellerContractsPage } from "./pages/seller/SellerContractsPage";
+import { ContractsPage } from "./pages/ContractsPage";
 import { SellerMyPage } from "./pages/seller/SellerMyPage";
-import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { FinalApprovePage } from "./pages/negotiation/FinalApprovePage";
 import { ESignaturePage } from "./pages/negotiation/ESignaturePage";
 import { CompletionPage } from "./pages/negotiation/CompletionPage";
 import { NegotiatingPage } from "./pages/negotiation/NegotiatingPage";
+import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { buyerNav, sellerNav } from "./config/nav";
 import { useApp, type Role } from "./context/AppContext";
@@ -73,6 +73,7 @@ const signingRoutes = [
 // Buyer nav items that now have dedicated pages instead of placeholders.
 const buyerRealPages: Record<string, ReactNode> = {
   "/buyer/sent": <SentRequestsPage />,
+  "/buyer/contracts": <ContractsPage role="buyer" />,
   "/buyer/mypage": <BuyerMyPage />,
 };
 
@@ -106,7 +107,7 @@ const sellerListingRoutes = [
 const sellerRealPages: Record<string, ReactNode> = {
   "/seller/dashboard": <SellerDashboardPage />,
   "/seller/negotiating": <SellerNegotiatingPage />,
-  "/seller/contracts": <SellerContractsPage />,
+  "/seller/contracts": <ContractsPage role="seller" />,
   "/seller/mypage": <SellerMyPage />,
 };
 

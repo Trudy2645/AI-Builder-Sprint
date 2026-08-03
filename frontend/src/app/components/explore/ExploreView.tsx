@@ -28,6 +28,7 @@ import {
 import { useApp } from "../../context/AppContext";
 import {
   CATEGORIES,
+  DEMO_SERVER_IDS,
   DISTRICTS,
   formatKRW,
   type Category,
@@ -37,6 +38,13 @@ import { friendlyApiError, getPublicListings, type PublicListing } from "../../l
 
 type Sort = "recommended" | "latest" | "popular" | "priceLow" | "priceHigh";
 const PRICE_MAX = 10_000_000;
+const HIDDEN_DEMO_LISTING_IDS = new Set(Object.values(DEMO_SERVER_IDS));
+const CATEGORY_VALUES = CATEGORIES.filter((category): category is { value: Category; labelKey: string } => category.value !== "all");
+
+function isBackendSeedListing(listing: PublicListing): boolean {
+  const haystack = `${listing.title} ${listing.seller.name}`.toLocaleLowerCase();
+  return haystack.includes("e2e") || haystack.includes("test") || haystack.includes("테스트");
+}
 
 const categoryByApiCategory: Record<PublicListing["category"], Category> = {
   accommodation: "accommodation",
@@ -101,7 +109,7 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
 export function ExploreView({ base }: { base: string }) {
   const { t } = useApp();
 
-  const [category, setCategory] = useState<Category | "all">("all");
+  const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState("");
   const [district, setDistrict] = useState<string>("all");
   const [guests, setGuests] = useState("");
@@ -118,7 +126,15 @@ export function ExploreView({ base }: { base: string }) {
     let active = true;
     const refresh = () => getPublicListings()
       .then((listings) => {
-        if (active) { setServerContracts(listings.map(toContract)); setLoadError(null); }
+        if (active) {
+          setServerContracts(
+            listings
+              .filter((listing) => !HIDDEN_DEMO_LISTING_IDS.has(listing.id))
+              .filter((listing) => !isBackendSeedListing(listing))
+              .map(toContract),
+          );
+          setLoadError(null);
+        }
       })
       .catch((error: unknown) => { if (active) setLoadError(friendlyApiError(error)); })
       .finally(() => { if (active) setLoading(false); });
@@ -128,7 +144,7 @@ export function ExploreView({ base }: { base: string }) {
   }, []);
 
   const reset = () => {
-    setCategory("all");
+    setSelectedCategories([]);
     setSearch("");
     setDistrict("all");
     setGuests("");
@@ -142,7 +158,7 @@ export function ExploreView({ base }: { base: string }) {
     const list: Contract[] = serverContracts.filter((c) => {
       const keyword = search.trim().toLocaleLowerCase();
       if (keyword && !`${c.seller} ${c.title}`.toLocaleLowerCase().includes(keyword)) return false;
-      if (category !== "all" && c.category !== category) return false;
+      if (selectedCategories.length > 0 && selectedCategories.length < CATEGORY_VALUES.length && !selectedCategories.includes(c.category)) return false;
       if (district !== "all" && c.district !== district) return false;
       const g = parseInt(guests, 10);
       if (!Number.isNaN(g) && g > 0 && c.capacity < g) return false;
@@ -161,18 +177,22 @@ export function ExploreView({ base }: { base: string }) {
       priceHigh: (a, b) => b.unitPrice - a.unitPrice,
     };
     return [...list].sort(sorters[sort]);
-  }, [search, category, district, guests, from, to, price, availableOnly, sort, serverContracts]);
+  }, [search, selectedCategories, district, guests, from, to, price, availableOnly, sort, serverContracts]);
 
-  const categoryLabel = CATEGORIES.find((c) => c.value === category);
   const hasPriceFilter = price !== null;
   const activeFilterCount = [
-    category !== "all",
+    selectedCategories.length > 0,
     district !== "all",
     !!guests,
     !!from || !!to,
     hasPriceFilter,
     availableOnly,
   ].filter(Boolean).length;
+  const allCategoriesSelected = selectedCategories.length === CATEGORY_VALUES.length;
+  const selectedCategoryLabels = CATEGORY_VALUES.filter((category) => selectedCategories.includes(category.value));
+  const toggleCategory = (value: Category) => {
+    setSelectedCategories((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  };
 
   return (
     <div className="space-y-6">
@@ -184,28 +204,31 @@ export function ExploreView({ base }: { base: string }) {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="업체명, 상품명 또는 계약명을 검색하세요"
+                placeholder={t("explore.searchPlaceholder")}
                 className="h-12 rounded-xl border-border bg-background pl-12 pr-4"
               />
             </div>
             <Button className="h-12 w-full gap-2 rounded-xl px-7 whitespace-nowrap lg:w-auto" style={{ background: "var(--navy)" }}>
               <Search className="size-4" />
-              계약 검색
+              {t("explore.searchButton")}
             </Button>
           </div>
 
           <div className="mt-5 border-t border-border pt-5">
             <div className="flex items-center gap-3 overflow-x-auto pb-1">
               <span className="mr-1 flex shrink-0 items-center gap-2 whitespace-nowrap" style={{ color: "var(--navy)", fontSize: "13px", fontWeight: 700 }}>
-                분야
+                {t("filter.categoryGroup")}
               </span>
               {CATEGORIES.map((c) => {
-                const active = category === c.value;
+                const active = c.value === "all" ? allCategoriesSelected : selectedCategories.includes(c.value);
                 return (
                   <button
                     key={c.value}
                     type="button"
-                    onClick={() => setCategory(c.value)}
+                    onClick={() => {
+                      if (c.value === "all") setSelectedCategories(allCategoriesSelected ? [] : CATEGORY_VALUES.map((item) => item.value));
+                      else toggleCategory(c.value);
+                    }}
                     className="h-9 shrink-0 rounded-full border px-4 transition-all whitespace-nowrap"
                     style={{
                       fontSize: "13px",
@@ -228,7 +251,7 @@ export function ExploreView({ base }: { base: string }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">전체 지역</SelectItem>
+                  <SelectItem value="all">{t("filter.districtAll")}</SelectItem>
                   {DISTRICTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -240,7 +263,7 @@ export function ExploreView({ base }: { base: string }) {
                   min={0}
                   value={guests}
                   onChange={(e) => setGuests(e.target.value)}
-                  placeholder="이용 인원"
+                  placeholder={t("filter.guests")}
                   className="h-10 rounded-lg pl-9"
                 />
               </div>
@@ -249,19 +272,19 @@ export function ExploreView({ base }: { base: string }) {
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="h-10 w-full gap-2 rounded-lg whitespace-nowrap sm:w-auto">
                     <CalendarRange className="size-4 text-muted-foreground" />
-                    {from || to ? `${from || "시작일"} ~ ${to || "종료일"}` : "이용 기간"}
+                    {from || to ? `${from || t("filter.from")} ~ ${to || t("filter.to")}` : t("filter.period")}
                     <ChevronDown className="size-3.5 opacity-60" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-[340px]">
                   <div className="space-y-3">
                     <div>
-                      <div style={{ fontWeight: 700, color: "var(--navy)" }}>이용 기간</div>
-                      <p className="mt-1 text-muted-foreground" style={{ fontSize: "12px" }}>계약 상품을 이용할 시작일과 종료일을 선택하세요.</p>
+                      <div style={{ fontWeight: 700, color: "var(--navy)" }}>{t("filter.period")}</div>
+                      <p className="mt-1 text-muted-foreground" style={{ fontSize: "12px" }}>{t("filter.periodDesc")}</p>
                     </div>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <div className="space-y-1.5"><Label>시작일</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-                      <div className="space-y-1.5"><Label>종료일</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+                      <div className="space-y-1.5"><Label>{t("filter.from")}</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+                      <div className="space-y-1.5"><Label>{t("filter.to")}</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
                     </div>
                   </div>
                 </PopoverContent>
@@ -271,15 +294,15 @@ export function ExploreView({ base }: { base: string }) {
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="h-10 w-full gap-2 rounded-lg whitespace-nowrap sm:w-auto">
                     <Banknote className="size-4 text-muted-foreground" />
-                    {price ? `${formatKRW(price[0])} ~ ${formatKRW(price[1])}` : "금액대"}
+                    {price ? `${formatKRW(price[0])} ~ ${formatKRW(price[1])}` : t("filter.priceShort")}
                     <ChevronDown className="size-3.5 opacity-60" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-[320px]">
                   <div className="space-y-4">
                     <div>
-                      <div style={{ fontWeight: 700, color: "var(--navy)" }}>기준 단가 범위</div>
-                      <p className="mt-1 text-muted-foreground" style={{ fontSize: "12px" }}>상품별 객실 또는 1인 기준 단가입니다.</p>
+                      <div style={{ fontWeight: 700, color: "var(--navy)" }}>{t("filter.priceTitle")}</div>
+                      <p className="mt-1 text-muted-foreground" style={{ fontSize: "12px" }}>{t("filter.priceDesc")}</p>
                     </div>
                     <Slider min={0} max={PRICE_MAX} step={5000} value={price ?? [0, PRICE_MAX]} onValueChange={(v) => setPrice([v[0], v[1]] as [number, number])} />
                     <div className="flex justify-between whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px" }}>
@@ -292,26 +315,28 @@ export function ExploreView({ base }: { base: string }) {
 
               <label className="flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-3 whitespace-nowrap">
                 <Checkbox checked={availableOnly} onCheckedChange={(v) => setAvailableOnly(!!v)} />
-                <span style={{ fontSize: "13px" }}>계약 가능만</span>
+                <span style={{ fontSize: "13px" }}>{t("filter.availableShort")}</span>
               </label>
 
               <Button variant="ghost" className="h-10 gap-1.5 whitespace-nowrap sm:ml-auto" onClick={reset} disabled={activeFilterCount === 0 && !search}>
                 <RotateCcw className="size-3.5" />
-                전체 초기화
+                {t("filter.resetAll")}
               </Button>
             </div>
 
             {activeFilterCount > 0 && (
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
                 <span className="flex items-center gap-1.5 whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px", fontWeight: 600 }}>
-                  <SlidersHorizontal className="size-3.5" /> 적용된 필터 {activeFilterCount}
+                  <SlidersHorizontal className="size-3.5" /> {t("filter.active")} {activeFilterCount}
                 </span>
-                {category !== "all" && categoryLabel && <FilterChip label={t(categoryLabel.labelKey)} onRemove={() => setCategory("all")} />}
+                {selectedCategoryLabels.map((category) => (
+                  <FilterChip key={category.value} label={t(category.labelKey)} onRemove={() => setSelectedCategories((current) => current.filter((item) => item !== category.value))} />
+                ))}
                 {district !== "all" && <FilterChip label={district} onRemove={() => setDistrict("all")} />}
-                {!!guests && <FilterChip label={`${guests}명`} onRemove={() => setGuests("")} />}
-                {(from || to) && <FilterChip label={`${from || "시작일"} ~ ${to || "종료일"}`} onRemove={() => { setFrom(""); setTo(""); }} />}
+                {!!guests && <FilterChip label={`${guests}${t("filter.peopleUnit")}`} onRemove={() => setGuests("")} />}
+                {(from || to) && <FilterChip label={`${from || t("filter.from")} ~ ${to || t("filter.to")}`} onRemove={() => { setFrom(""); setTo(""); }} />}
                 {price && <FilterChip label={`${formatKRW(price[0])} ~ ${formatKRW(price[1])}`} onRemove={() => setPrice(null)} />}
-                {availableOnly && <FilterChip label="계약 가능" onRemove={() => setAvailableOnly(false)} />}
+                {availableOnly && <FilterChip label={t("status.available")} onRemove={() => setAvailableOnly(false)} />}
               </div>
             )}
           </div>
@@ -322,10 +347,10 @@ export function ExploreView({ base }: { base: string }) {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="flex items-baseline gap-2">
-              <h2 style={{ color: "var(--navy)", fontSize: "20px", fontWeight: 750 }}>계약 가능한 상품</h2>
-              <span style={{ color: "var(--ocean)", fontWeight: 700 }}>{results.length}건</span>
+              <h2 style={{ color: "var(--navy)", fontSize: "20px", fontWeight: 750 }}>{t("explore.availableTitle")}</h2>
+              <span style={{ color: "var(--ocean)", fontWeight: 700 }}>{results.length}{t("explore.countUnit")}</span>
             </div>
-            <p className="mt-1 text-muted-foreground" style={{ fontSize: "13px" }}>조건을 비교하고 AI가 요약한 핵심 계약 내용을 확인하세요.</p>
+            <p className="mt-1 text-muted-foreground" style={{ fontSize: "13px" }}>{t("explore.availableSubtitle")}</p>
           </div>
           <Select value={sort} onValueChange={(v) => setSort(v as Sort)}>
             <SelectTrigger className="h-10 w-full rounded-lg whitespace-nowrap sm:w-[165px]"><SelectValue /></SelectTrigger>
@@ -341,15 +366,15 @@ export function ExploreView({ base }: { base: string }) {
 
         {loadError && (
           <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-            <div className="font-semibold">공고를 불러오지 못했습니다</div>
+            <div className="font-semibold">{t("explore.loadErrorTitle")}</div>
             <p className="mt-1">{loadError}</p>
             <Button className="mt-3" size="sm" variant="outline" onClick={() => window.location.reload()}>
-              다시 시도
+              {t("common.retry")}
             </Button>
           </div>
         )}
         {loading ? (
-          <div className="rounded-2xl border border-dashed border-border bg-card p-16 text-center text-muted-foreground">공고를 불러오는 중입니다…</div>
+          <div className="rounded-2xl border border-dashed border-border bg-card p-16 text-center text-muted-foreground">{t("explore.loading")}</div>
         ) : results.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border bg-card p-16 text-center text-muted-foreground">{t("explore.empty")}</div>
         ) : (
