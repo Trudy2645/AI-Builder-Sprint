@@ -14,14 +14,15 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { useApp } from "../../context/AppContext";
-import { useRequests, type RequestStatus, type RequestType } from "../../store/RequestsContext";
+import { useRequests, type RequestStatus, type SentRequest } from "../../store/RequestsContext";
 
 type Tab = "all" | RequestStatus;
-const TABS: Tab[] = ["all", "draft", "reviewing", "responded", "negotiating", "signing", "completed", "closed"];
+const TABS: Tab[] = ["all", "draft", "reviewing", "final_review", "responded", "negotiating", "signing", "completed", "closed"];
 const tabLabel: Record<Tab, string> = {
   all: "tab.all",
   draft: "lstatus.draft",
   reviewing: "rstatus.reviewing",
+  final_review: "rstatus.final_review",
   responded: "rstatus.responded",
   negotiating: "rstatus.negotiating",
   signing: "rstatus.signing",
@@ -43,23 +44,12 @@ export function SentRequestsPage() {
 
   const rows = tab === "all" ? requests : requests.filter((r) => r.status === tab);
 
-  const openRequest = (status: RequestStatus, contractId: string, type: RequestType) => {
-    if (status === "responded" || status === "negotiating") {
-      navigate("/buyer/negotiating");
+  const openRequest = (request: SentRequest) => {
+    if (request.type === "revision" && request.revisionRequestId) {
+      navigate(`/buyer/sent/revision/${request.revisionRequestId}`);
       return;
     }
-    if (status === "signing") {
-      // 계약 ID를 잃고 서명 화면을 직접 열면 전자서명 페이지가
-      // "계약을 선택해 주세요" 상태로 렌더링된다. 계약 상태 화면에서
-      // 서버의 현재 버전 ID를 확인한 뒤 서명 화면으로 이동한다.
-      navigate(`/buyer/contracts/${contractId}/status`);
-      return;
-    }
-    if (status === "completed") {
-      navigate("/buyer/contracts");
-      return;
-    }
-    navigate(`/buyer/explore/${contractId}`);
+    navigate(`/buyer/sent/contract/${request.contractId}`);
   };
 
   return (
@@ -127,7 +117,7 @@ export function SentRequestsPage() {
                   <div className="mt-1 whitespace-nowrap">{r.createdAt}</div>
                 </div>
               </div>
-              <Button variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => openRequest(r.status, r.contractId, r.type)}>
+              <Button variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => openRequest(r)}>
                 {t("sent.view")}
               </Button>
             </div>
@@ -173,7 +163,7 @@ export function SentRequestsPage() {
                   <TableCell className="whitespace-nowrap px-3 py-3 text-center text-muted-foreground">{r.createdAt}</TableCell>
                   <TableCell className="px-3 py-3 text-center"><StatusBadge status={r.status} /></TableCell>
                   <TableCell className="px-3 py-3 text-center">
-                    <Button variant="ghost" size="sm" className="whitespace-nowrap px-2" onClick={() => openRequest(r.status, r.contractId, r.type)}>
+                    <Button variant="ghost" size="sm" className="whitespace-nowrap px-2" onClick={() => openRequest(r)}>
                       {t("sent.view")}
                     </Button>
                   </TableCell>

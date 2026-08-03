@@ -11,7 +11,7 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { ContractStepper } from "../../components/contract/ContractStepper";
 import { useApp } from "../../context/AppContext";
 import { getContract, formatKRW, type Contract } from "../../data/contracts";
-import { createPublicContractRequest, friendlyApiError, getPublicListingAsContract } from "../../lib/api";
+import { createPublicContractRequest, friendlyApiError, getContractDetail, getPublicListingAsContract } from "../../lib/api";
 import { buyerProfile } from "../../data/profile";
 import { FieldError } from "../../components/auth/AuthFields";
 import { useRequests } from "../../store/RequestsContext";
@@ -90,14 +90,15 @@ export function RequestAsIsPage() {
       return;
     }
     try {
-      await createPublicContractRequest(contract.id, {
+      const created = await createPublicContractRequest(contract.id, {
         people: parseInt(guests, 10) || 1, quantity: roomsNum, quantity_unit: quantityUnit,
         nights: nightsNum, start_date: startDate, end_date: endDate, currency,
         request_message: message, initial_request_kind: "as_is",
       });
-      toast.success("계약 요청이 서버에 저장되었습니다. 셀러 검토가 끝난 뒤 전자서명을 진행할 수 있습니다.");
+      const createdDetail = await getContractDetail(created.contract_id);
+      toast.success("셀러에게 최종 승인 요청을 보냈습니다.");
       await refreshRequests();
-      navigate("/buyer/sent");
+      navigate(`/buyer/signing?contractId=${created.contract_id}&versionId=${createdDetail.current_version.id}`, { replace: true });
     } catch (error) { toast.error(friendlyApiError(error)); }
   };
 

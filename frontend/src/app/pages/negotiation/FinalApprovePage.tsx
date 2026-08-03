@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, CheckCircle2, Clock, FilePenLine, GitBranch, GitCompareArrows, PenLine } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -85,20 +85,33 @@ export function FinalApprovePage() {
     if (role === "seller" && !buyerApproved) approveDemo("buyer");
   }, [role, buyerApproved, sellerApproved, approveDemo, contractId, versionId]);
 
+  const loadApiState = useCallback(async (showLoading: boolean) => {
+    if (!contractId || !versionId) return;
+    if (showLoading) setLoading(true);
+    try {
+      const [contract, approvals] = await Promise.all([getContractDetail(contractId), getContractApprovals(contractId, versionId)]);
+      setDetail(contract);
+      setApproval(approvals);
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, [contractId, versionId]);
+
   useEffect(() => {
     if (!contractId || !versionId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
-    void Promise.all([getContractDetail(contractId), getContractApprovals(contractId, versionId)])
-      .then(([contract, approvals]) => {
-        setDetail(contract);
-        setApproval(approvals);
-      })
-      .catch((error) => toast.error(friendlyApiError(error)))
-      .finally(() => setLoading(false));
-  }, [contractId, versionId]);
+    void loadApiState(true);
+  }, [contractId, versionId, loadApiState]);
+
+  useEffect(() => {
+    if (role !== "buyer" || !detail || !approval || detail.status !== "seller_review" || approval.seller.approved) return;
+    const interval = window.setInterval(() => void loadApiState(false), 3000);
+    return () => window.clearInterval(interval);
+  }, [approval, detail, loadApiState, role]);
 
   useEffect(() => {
     if (contractId || versionId) return;
@@ -118,11 +131,11 @@ export function FinalApprovePage() {
       setApproval(next);
       if (next.all_approved) {
         const request = await dispatchSignatureRequest(contractId, versionId);
-        toast.success("양측 확정이 완료되어 바이어에게 모두싸인 이메일을 발송했습니다.");
+        toast.success("양측 최종 승인이 완료되어 모두싸인 서명 메일을 발송했습니다.");
         navigate(`${base}/signing/sign?contractId=${contractId}&versionId=${versionId}&signatureRequestId=${request.id}`, { replace: true });
         return;
       }
-      toast.success(t("fa.approvedToast"));
+      toast.success(role === "seller" ? "셀러 최종 승인이 완료되었습니다. 바이어 최종 승인을 기다립니다." : "최종안 승인이 완료되었습니다.");
     } catch (error) {
       toast.error(friendlyApiError(error));
     } finally {
@@ -135,11 +148,28 @@ export function FinalApprovePage() {
     if (loading) return <PageHeader title="최종안을 불러오는 중" description="현재 계약 버전과 승인 상태를 확인하고 있습니다." />;
     if (!detail || !approval) return <PageHeader title="계약을 불러올 수 없습니다" description="잠시 후 다시 시도해 주세요." />;
     const mine = role === "buyer" ? approval.buyer.approved : approval.seller.approved;
+    const sellerReviewWaiting = detail.status === "seller_review" && !approval.seller.approved;
+    const finalReviewReady = detail.status === "seller_review" && approval.seller.approved;
+    const currentStep = detail.status === "signed" ? 6 : detail.status === "signing" ? 5 : finalReviewReady ? 4 : 2;
+    const canApprove = detail.status === "seller_review" && !mine && (role === "seller" || approval.seller.approved);
     const query = `?contractId=${contractId}&versionId=${versionId}`;
     return (
       <div className="mx-auto max-w-[860px]">
-        <PageHeader title={t("fa.title")} description={t("fa.subtitle")} />
-        <div className="mb-5 rounded-xl border border-border bg-card p-4"><ContractStepper current={4} /></div>
+        <PageHeader
+          title={sellerReviewWaiting ? (role === "buyer" ? "셀러 검토 중" : "계약 요청 검토") : detail.status === "signing" ? "서명 대기" : t("fa.title")}
+          description={sellerReviewWaiting ? "셀러가 계약 요청을 검토하고 있습니다." : finalReviewReady ? "셀러가 승인한 최종 계약 내용을 확인하고 승인하세요." : detail.status === "signing" ? "양측 최종 승인이 완료되어 모두싸인 서명을 기다리고 있습니다." : t("fa.subtitle")}
+        />
+        <div className="mb-5 rounded-xl border border-border bg-card p-4"><ContractStepper current={currentStep} /></div>
+        {sellerReviewWaiting && (
+          <div className="mb-6 rounded-xl border border-[var(--warning)] bg-[var(--warning-soft)] p-4 text-sm" style={{ color: "var(--warning)" }}>
+            셀러에게 최종 승인 요청을 보냈습니다. 셀러가 승인하면 이 화면에서 바이어의 최종안 승인 버튼이 활성화됩니다.
+          </div>
+        )}
+        {finalReviewReady && role === "buyer" && !approval.buyer.approved && (
+          <div className="mb-6 rounded-xl border border-[var(--teal)] bg-[var(--success-soft)] p-4 text-sm" style={{ color: "var(--success)" }}>
+            셀러의 최종 승인이 완료되었습니다. 계약 내용을 확인한 뒤 최종안 승인을 진행하세요.
+          </div>
+        )}
         <div className="mb-6 rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -150,6 +180,17 @@ export function FinalApprovePage() {
           </div>
         </div>
         <div className="mb-6 rounded-xl border border-border bg-card p-5">
+          <h2 className="mb-4 font-semibold" style={{ color: "var(--navy)" }}>최종 계약 내용</h2>
+          <div className="space-y-3">
+            {detail.current_version.clauses.map((clause) => (
+              <section key={clause.id} className="rounded-lg border border-border p-4">
+                <h3 className="font-semibold"><span className="mr-2" style={{ color: "var(--ocean)" }}>제{clause.clause_order}조</span>{clause.title}</h3>
+                <p className="mt-2 text-sm leading-7">{clause.body}</p>
+              </section>
+            ))}
+          </div>
+        </div>
+        <div className="mb-6 rounded-xl border border-border bg-card p-5">
           <h2 className="mb-4 font-semibold">승인 상태</h2>
           <div className="grid gap-3 md:grid-cols-2">
             <ApiApprovalRow label="바이어" approved={approval.buyer.approved} />
@@ -157,13 +198,22 @@ export function FinalApprovePage() {
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-2 rounded-xl border border-border bg-card p-4">
-          <Button variant="outline" onClick={() => navigate(role === "buyer" ? `${base}/explore` : `${base}/received`)}>
+          <Button variant="outline" onClick={() => navigate(role === "buyer" ? `/buyer/sent/contract/${contractId}/revise` : `${base}/received`)}>
             {role === "buyer" ? <FilePenLine className="mr-1 size-4" /> : <GitBranch className="mr-1 size-4" />}수정 요청
           </Button>
-          {!mine && <Button disabled={submitting} style={{ background: "var(--navy)" }} onClick={() => void approveApi()}><CheckCircle2 className="mr-1 size-4" />확정하기</Button>}
-          {approval.all_approved && <Button disabled={submitting} style={{ background: "var(--teal)" }} onClick={() => void approveApi()}>
-            <PenLine className="mr-1 size-4" />모두싸인 발송 <ArrowRight className="ml-1 size-4" />
+          {canApprove && <Button disabled={submitting} style={{ background: "var(--navy)" }} onClick={() => void approveApi()}>
+            <CheckCircle2 className="mr-1 size-4" />{role === "buyer" ? "최종안 승인" : "셀러 최종 승인"}<ArrowRight className="ml-1 size-4" />
           </Button>}
+          {detail.status === "seller_review" && mine && !approval.all_approved && (
+            <span className="inline-flex items-center rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+              {role === "seller" ? "바이어 최종 승인 대기" : "셀러 최종 승인 대기"}
+            </span>
+          )}
+          {detail.status === "signing" && (
+            <span className="inline-flex items-center rounded-md bg-[var(--warning-soft)] px-3 py-2 text-sm" style={{ color: "var(--warning)" }}>
+              모두싸인 서명 대기 중
+            </span>
+          )}
         </div>
       </div>
     );
