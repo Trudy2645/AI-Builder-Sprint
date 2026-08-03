@@ -43,8 +43,13 @@ export function AppShell({ role }: { role: Role }) {
           if (window.innerWidth < 1024) setSidebarOpen(false);
         }} />
         <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 md:px-8 md:py-7 lg:px-10 lg:py-9">
-            <Outlet />
+          <div className="mx-auto w-full max-w-[1280px] px-4 py-5 sm:px-6 md:px-8 md:py-7 lg:px-10 lg:py-9">
+            {/* Every authenticated page starts on this same content grid. Individual
+                pages may still size internal cards/forms, but may not shift the
+                page-level title and content column independently. */}
+            <div className="[&>*]:!mx-0 [&>*]:!w-full [&>*]:!max-w-none">
+              <Outlet />
+            </div>
           </div>
         </main>
       </div>
