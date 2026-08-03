@@ -60,7 +60,7 @@ export function BuyerMyPage() {
   }, [requests]);
 
   return (
-    <div className="mx-auto max-w-[920px]">
+    <div>
       <PageHeader title={t("my.title")} />
 
       {/* Header card */}

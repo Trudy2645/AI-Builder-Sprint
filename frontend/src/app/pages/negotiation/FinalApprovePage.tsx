@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, CheckCircle2, Clock, FilePenLine, GitBranch, GitCompareArrows, PenLine } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, FilePenLine, GitBranch, PenLine } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { ContractStepper } from "../../components/contract/ContractStepper";
-import { VersionBadge } from "../../components/contract/VersionBadge";
 import { useApp } from "../../context/AppContext";
 import { useRoleBase } from "../../hooks/useRoleBase";
 import { useNegotiation } from "../../store/NegotiationContext";
@@ -116,16 +115,14 @@ export function FinalApprovePage() {
     const mine = role === "buyer" ? approval.buyer.approved : approval.seller.approved;
     const query = `?contractId=${contractId}&versionId=${versionId}`;
     return (
-      <div className="mx-auto max-w-[860px]">
+      <div>
         <PageHeader title={t("fa.title")} description={t("fa.subtitle")} />
         <div className="mb-5 rounded-xl border border-border bg-card p-4"><ContractStepper current={4} /></div>
         <div className="mb-6 rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="font-semibold" style={{ color: "var(--navy)" }}>{detail.current_version.title}</p>
-              <p className="text-sm text-muted-foreground">현재 버전 v{detail.current_version.version_no}</p>
             </div>
-            <Button variant="outline" onClick={() => navigate(`${base}/signing/compare${query}`)}><GitCompareArrows className="mr-1 size-4" />버전 비교</Button>
           </div>
         </div>
         <div className="mb-6 rounded-xl border border-border bg-card p-5">
@@ -155,7 +152,7 @@ export function FinalApprovePage() {
   };
 
   return (
-    <div className="mx-auto max-w-[860px]">
+    <div>
       <PageHeader title={t("fa.title")} description={t("fa.subtitle")} />
 
       <div className="mb-5 rounded-xl border border-border bg-card p-4 sm:mb-6 sm:p-5">
@@ -165,7 +162,6 @@ export function FinalApprovePage() {
       <div className="mb-6 rounded-xl border border-border bg-card p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
-            <VersionBadge version="v4" />
             <div className="min-w-0">
               <div className="break-words" style={{ fontWeight: 700, color: "var(--navy)" }}>2026 해운대 단체 객실 공급 계약</div>
               <div className="text-muted-foreground" style={{ fontSize: "13px" }}>
@@ -173,10 +169,6 @@ export function FinalApprovePage() {
               </div>
             </div>
           </div>
-          <Button variant="outline" className="w-full gap-1.5 whitespace-nowrap sm:w-auto" style={{ borderColor: "var(--ocean)", color: "var(--ocean)" }} onClick={() => navigate(`${base}/signing/compare`)}>
-            <GitCompareArrows className="size-4" />
-            {t("fa.viewCompare")}
-          </Button>
         </div>
       </div>
 

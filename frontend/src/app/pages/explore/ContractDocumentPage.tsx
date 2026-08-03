@@ -226,7 +226,6 @@ export function ContractDocumentPage() {
       <div className="mb-4">
         <div className="flex flex-wrap items-center gap-2">
           <h1 style={{ color: "var(--navy)" }}>{t("doc.title")}</h1>
-          <VersionBadge version="v1" />
         </div>
         <div className="mt-1 break-words text-muted-foreground" style={{ fontSize: "14px" }}>
           {contract.seller} · {translatedTitle}

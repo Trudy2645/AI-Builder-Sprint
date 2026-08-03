@@ -39,6 +39,12 @@ import { friendlyApiError, getPublicListings, type PublicListing } from "../../l
 
 type Sort = "recommended" | "latest" | "popular" | "priceLow" | "priceHigh";
 const PRICE_MAX = 250000;
+const HIDDEN_DEMO_LISTING_IDS = new Set(Object.values(DEMO_SERVER_IDS));
+
+function isBackendSeedListing(listing: PublicListing): boolean {
+  const haystack = `${listing.title} ${listing.seller.name}`.toLocaleLowerCase();
+  return haystack.includes("e2e") || haystack.includes("test") || haystack.includes("테스트");
+}
 
 const categoryByApiCategory: Record<PublicListing["category"], Category> = {
   accommodation: "accommodation",
@@ -121,7 +127,15 @@ export function ExploreView({ base }: { base: string }) {
     let active = true;
     const refresh = () => getPublicListings()
       .then((listings) => {
-        if (active) { setServerContracts(listings.map(toContract)); setLoadError(null); }
+        if (active) {
+          setServerContracts(
+            listings
+              .filter((listing) => !HIDDEN_DEMO_LISTING_IDS.has(listing.id))
+              .filter((listing) => !isBackendSeedListing(listing))
+              .map(toContract),
+          );
+          setLoadError(null);
+        }
       })
       .catch((error: unknown) => { if (active) setLoadError(friendlyApiError(error)); })
       .finally(() => { if (active) setLoading(false); });

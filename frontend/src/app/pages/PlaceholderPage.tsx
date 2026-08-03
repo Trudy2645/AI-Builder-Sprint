@@ -2,7 +2,6 @@ import {
   ArrowRight,
   Building2,
   FileCheck2,
-  GitCompareArrows,
   IdCard,
   Mail,
   MapPin,
@@ -16,7 +15,6 @@ import { PageHeader } from "../components/PageHeader";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
-import { VersionBadge } from "../components/contract/VersionBadge";
 import { ContractStepper } from "../components/contract/ContractStepper";
 import { useApp } from "../context/AppContext";
 import { useRequests } from "../store/RequestsContext";
@@ -43,7 +41,6 @@ function NegotiatingView({ base }: { base: string }) {
               <Badge className="border-transparent" style={{ background: "var(--warning-soft)", color: "var(--warning)" }}>
                 {request?.status === "responded" ? "셀러 응답 도착" : "협상 중"}
               </Badge>
-              <VersionBadge version={request?.currentVersion || "v3"} />
             </div>
             <h2 style={{ color: "var(--navy)" }}>{request?.title || "2026 해운대 단체 객실 공급 계약"}</h2>
             <p className="mt-1 text-sm text-muted-foreground">GlobalTrip Japan ↔ 해운대 오션스테이</p>
@@ -74,9 +71,6 @@ function NegotiatingView({ base }: { base: string }) {
         </div>
 
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-          <Button variant="outline" className="w-full gap-1.5 whitespace-nowrap sm:w-auto" onClick={() => navigate(`${base}/signing/compare`)}>
-            <GitCompareArrows className="size-4" />버전 비교
-          </Button>
           <Button className="w-full gap-1.5 whitespace-nowrap sm:w-auto" style={{ background: "var(--navy)" }} onClick={() => navigate(`${base}/signing`)}>
             최종안 검토 <ArrowRight className="size-4" />
           </Button>
@@ -106,24 +100,23 @@ function ContractsView({ base }: { base: string }) {
       <div className="mt-6 space-y-3 md:hidden">
         {rows.map((request) => (
           <Card key={request!.id} className="p-4">
-            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 text-base" style={{ color: "var(--navy)" }}>{request!.title}</h3><p className="mt-1 truncate text-sm text-muted-foreground">{request!.seller}</p></div><VersionBadge version={request!.currentVersion || "v4"} /></div>
+            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="line-clamp-2 text-base" style={{ color: "var(--navy)" }}>{request!.title}</h3><p className="mt-1 truncate text-sm text-muted-foreground">{request!.seller}</p></div></div>
             <div className="mt-3 border-y border-border py-3 text-sm"><span className="text-muted-foreground">체결일</span><span className="float-right">{bothSigned ? "2026.07.29" : request!.createdAt}</span></div>
-            <Button className="mt-3 w-full whitespace-nowrap" variant="outline" onClick={() => navigate(bothSigned ? `${base}/signing/complete` : `${base}/signing/compare`)}>{bothSigned ? "계약 상세" : "버전 보기"}</Button>
+            <Button className="mt-3 w-full whitespace-nowrap" variant="outline" onClick={() => navigate(bothSigned ? `${base}/signing/complete` : `${base}/signing`)}>{bothSigned ? "계약 상세" : "계약 확인"}</Button>
           </Card>
         ))}
       </div>
       <Card className="mt-6 hidden overflow-x-auto md:block">
-        <div className="grid min-w-[760px] grid-cols-[1.3fr_1.8fr_1fr_.8fr_1fr] gap-4 border-b bg-muted/40 px-5 py-3 text-xs font-semibold text-muted-foreground">
-          <div>상대 업체</div><div>계약명</div><div>체결일</div><div>최종 버전</div><div>작업</div>
+        <div className="grid min-w-[760px] grid-cols-[1.3fr_1.8fr_1fr_1fr] gap-4 border-b bg-muted/40 px-5 py-3 text-xs font-semibold text-muted-foreground">
+          <div>상대 업체</div><div>계약명</div><div>체결일</div><div>작업</div>
         </div>
         {rows.map((request) => (
-          <div key={request!.id} className="grid min-w-[760px] grid-cols-[1.3fr_1.8fr_1fr_.8fr_1fr] items-center gap-4 border-b px-5 py-4 last:border-b-0">
+          <div key={request!.id} className="grid min-w-[760px] grid-cols-[1.3fr_1.8fr_1fr_1fr] items-center gap-4 border-b px-5 py-4 last:border-b-0">
             <div className="font-semibold">{request!.seller}</div>
             <div className="truncate">{request!.title}</div>
             <div className="text-sm text-muted-foreground">{bothSigned ? "2026.07.29" : request!.createdAt}</div>
-            <div><VersionBadge version={request!.currentVersion || "v4"} /></div>
-            <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(bothSigned ? `${base}/signing/complete` : `${base}/signing/compare`)}>
-              {bothSigned ? "계약 상세" : "버전 보기"}
+            <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(bothSigned ? `${base}/signing/complete` : `${base}/signing`)}>
+              {bothSigned ? "계약 상세" : "계약 확인"}
             </Button>
           </div>
         ))}

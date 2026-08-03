@@ -18,7 +18,6 @@ import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { ContractStepper } from "../../components/contract/ContractStepper";
 import { PageHeader } from "../../components/PageHeader";
-import { VersionBadge } from "../../components/contract/VersionBadge";
 import { Separator } from "../../components/ui/separator";
 import { useApp } from "../../context/AppContext";
 import { useRoleBase } from "../../hooks/useRoleBase";
@@ -118,13 +117,13 @@ export function CompletionPage() {
       }
     };
     return (
-      <div className="mx-auto max-w-[720px]">
+      <div>
         <div className="mb-5 rounded-xl border border-border bg-card p-4"><ContractStepper current={6} /></div>
         <div className="rounded-xl border p-7 text-center" style={{ borderColor: "var(--success)", background: "var(--success-soft)" }}>
           <CheckCircle2 className="mx-auto size-12" style={{ color: "var(--success)" }} />
           <h1 className="mt-4 text-xl font-bold">계약 체결이 완료되었습니다</h1>
           <p className="mt-2 text-sm">{detail.current_version.title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">계약 UUID: {detail.id} · 최종 버전 v{detail.current_version.version_no}</p>
+          <p className="mt-1 text-xs text-muted-foreground">계약 UUID: {detail.id}</p>
         </div>
         <div className="mt-5 grid gap-2 sm:grid-cols-3">
           <Button disabled={!documentId} variant="outline" onClick={() => void download("signed")}><Download className="mr-1 size-4" />완료 PDF</Button>
@@ -144,7 +143,6 @@ export function CompletionPage() {
       `바이어: ${finalContractInfo.buyer}`,
       `셀러: ${contractSeller}`,
       `계약기간: ${contractPeriod}`,
-      `최종버전: ${isDirect ? "v1" : finalContractInfo.finalVersion}`,
       `체결시각: ${signedAt}`,
       "",
       "핵심 조건",
@@ -180,7 +178,7 @@ export function CompletionPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[720px]">
+    <div>
       <div className="mb-5 rounded-xl border border-border bg-card p-4 sm:mb-6 sm:p-5">
         <ContractStepper current={6} skipped={isDirect ? [3, 4] : []} />
       </div>
@@ -224,7 +222,6 @@ export function CompletionPage() {
           <DetailRow icon={CalendarRange} label="계약 기간">{contractPeriod}</DetailRow>
           <DetailRow icon={UsersRound} label="입력 조건">{quantityText}</DetailRow>
           <DetailRow icon={Wallet} label="계약 금액">{formatKRW(contractTotal)}</DetailRow>
-          <DetailRow icon={FileCheck2} label={t("cc.finalVersion")}><span className="inline-flex"><VersionBadge version={isDirect ? "v1" : finalContractInfo.finalVersion} /></span></DetailRow>
           <DetailRow icon={Clock} label={t("cc.signedAt")}>{signedAt}</DetailRow>
           <DetailRow icon={CheckCircle2} label={t(isDirect ? "cc.signingBasis" : "cc.bothSigned")}>
             <span className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-md px-2 py-0.5" style={{ background: "var(--success-soft)", color: "var(--success)", fontSize: "13px" }}>

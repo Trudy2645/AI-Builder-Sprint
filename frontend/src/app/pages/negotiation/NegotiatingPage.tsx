@@ -3,7 +3,6 @@ import {
   CheckCircle2,
   Clock3,
   FilePenLine,
-  GitCompareArrows,
   MessageSquareReply,
   Sparkles,
 } from "lucide-react";
@@ -12,9 +11,7 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { ContractStepper } from "../../components/contract/ContractStepper";
-import { VersionBadge } from "../../components/contract/VersionBadge";
 import { StatusBadge } from "../../components/requests/StatusBadge";
-import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Separator } from "../../components/ui/separator";
 import { formatKRW } from "../../data/contracts";
@@ -22,33 +19,9 @@ import {
   NEGOTIATION_CONTRACT_ID,
   finalContractInfo,
   getVersionDiff,
-  versionMetas,
 } from "../../data/negotiation";
 import { useRequests, type SentRequest } from "../../store/RequestsContext";
 import { useNegotiation } from "../../store/NegotiationContext";
-
-const TIMELINE = [
-  {
-    version: "v1" as const,
-    title: "셀러 공개 원본",
-    description: "공개 공고 조건으로 계약 요청을 시작했습니다.",
-  },
-  {
-    version: "v2" as const,
-    title: "바이어 수정 요청",
-    description: "취소, 노쇼, 정산 조건을 명확히 해달라고 요청했습니다.",
-  },
-  {
-    version: "v3" as const,
-    title: "셀러 응답안",
-    description: "셀러가 무료 취소 기한과 수수료를 대안으로 제시했습니다.",
-  },
-  {
-    version: "v4" as const,
-    title: "최종 합의안",
-    description: "양측이 전자서명으로 넘길 수 있는 최종안을 만들었습니다.",
-  },
-];
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
@@ -68,9 +41,6 @@ function RequestPreview({ request }: { request: SentRequest }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={request.status} />
-            <Badge variant="outline" className="whitespace-nowrap">
-              {request.currentVersion ?? "v3"}
-            </Badge>
           </div>
           <h2 className="mt-3 break-words text-lg font-semibold" style={{ color: "var(--navy)" }}>
             {request.title}
@@ -116,7 +86,7 @@ export function NegotiatingPage() {
     if (activeRequest) {
       updateRequestStatus(activeRequest.id, "signing", {
         currentVersion: "v4",
-        latestResponse: "최종 합의안(v4)을 승인하고 전자서명 단계로 이동했습니다.",
+        latestResponse: "최종 합의안을 승인하고 전자서명 단계로 이동했습니다.",
       });
     }
     approve("seller");
@@ -126,7 +96,7 @@ export function NegotiatingPage() {
 
   if (!activeRequest) {
     return (
-      <div className="mx-auto max-w-[720px] rounded-xl border border-dashed border-border bg-card p-10 text-center sm:p-14">
+      <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card p-10 text-center sm:p-14">
         <Clock3 className="mx-auto mb-3 size-8" style={{ color: "var(--muted-foreground)" }} />
         <h1 className="text-xl font-semibold" style={{ color: "var(--navy)" }}>
           진행 중인 협상이 없습니다
@@ -140,7 +110,7 @@ export function NegotiatingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1040px]">
+    <div>
       <PageHeader
         title="협상 중"
         description="셀러 응답을 확인하고 최종 합의안으로 전자서명을 진행하세요."
@@ -158,53 +128,6 @@ export function NegotiatingPage() {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-5">
           <RequestPreview request={activeRequest} />
-
-          <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-semibold" style={{ color: "var(--navy)" }}>
-                  버전 진행 타임라인
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">원본부터 최종 합의안까지 변경 흐름을 한 화면에서 확인합니다.</p>
-              </div>
-              <Button
-                variant="outline"
-                className="gap-1.5 whitespace-nowrap"
-                style={{ borderColor: "var(--ocean)", color: "var(--ocean)" }}
-                onClick={() => navigate("/buyer/signing/compare")}
-              >
-                <GitCompareArrows className="size-4" />
-                버전 비교
-              </Button>
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-4">
-              {TIMELINE.map((item, index) => {
-                const meta = versionMetas[item.version];
-                const isFinal = item.version === "v4";
-                return (
-                  <div
-                    key={item.version}
-                    className="rounded-lg border p-4"
-                    style={{
-                      borderColor: isFinal ? "var(--teal)" : "var(--border)",
-                      background: isFinal ? "var(--success-soft)" : "var(--card)",
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <VersionBadge version={item.version} />
-                      <span className="text-xs font-semibold text-muted-foreground">{index + 1}/4</span>
-                    </div>
-                    <div className="mt-3 text-sm font-semibold" style={{ color: "var(--navy)" }}>
-                      {item.title}
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
-                    <div className="mt-3 text-xs text-muted-foreground">{meta.authorName} · {meta.date}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
 
           <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
             <div className="flex items-center gap-2 font-semibold" style={{ color: "var(--ocean)" }}>

@@ -40,6 +40,16 @@ type ApiSession = {
 
 let activeSession: ApiSession | null = null;
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function clearApiSession(): void {
+  activeSession = null;
+  window.localStorage.removeItem("busanlink.access_token");
+  window.localStorage.removeItem("busanlink.refresh_token");
+  window.localStorage.removeItem("busanlink.organization_id");
+  setAccessToken(null);
+}
+
 type UploadedDocumentProcessingResult = {
   listingId: string;
   listingVersionNo: number;
@@ -65,6 +75,10 @@ function getApiSession(): ApiSession {
     ?? import.meta.env.VITE_SELLER_ORGANIZATION_ID;
   if (!accessToken || !organizationId) {
     throw new Error("API 로그인 정보가 없습니다. 로그인 후 다시 시도해 주세요.");
+  }
+  if (!uuidPattern.test(organizationId)) {
+    clearApiSession();
+    throw new Error("셀러 조직 정보가 만료되었습니다. 셀러 데모 계정으로 다시 로그인해 주세요.");
   }
   return { accessToken, organizationId };
 }

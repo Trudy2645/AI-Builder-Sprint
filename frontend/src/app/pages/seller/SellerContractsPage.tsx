@@ -263,7 +263,6 @@ export function SellerContractsPage() {
               <div className="flex items-center gap-2">
                 <Hash className="size-4" style={{ color: "var(--ocean)" }} />
                 <span className="font-mono text-sm">{contractNoFor(docTarget, contractNo)}</span>
-                <VersionBadge version={docTarget.currentVersion || "v4"} />
               </div>
               <Separator />
               <div className="flex items-center gap-2 text-sm">

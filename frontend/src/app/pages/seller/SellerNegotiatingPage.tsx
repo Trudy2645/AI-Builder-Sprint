@@ -20,11 +20,9 @@ import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
-import { VersionBadge, type ContractVersion } from "../../components/contract/VersionBadge";
 import { useRequests, type SentRequest } from "../../store/RequestsContext";
 import { useNegotiation } from "../../store/NegotiationContext";
 import { getContract, formatKRW } from "../../data/contracts";
-import { versionMetas } from "../../data/negotiation";
 
 const BUYER_NAME = "GlobalTrip Japan";
 const NEGOTIATING_STATUSES: SentRequest["status"][] = ["reviewing", "responded", "negotiating"];
@@ -100,7 +98,6 @@ function buildComparison(request: SentRequest): CompareRow[] {
 }
 
 interface TimelineItem {
-  version: ContractVersion;
   label: string;
   date: string;
   who: "buyer" | "seller";
@@ -108,19 +105,16 @@ interface TimelineItem {
 }
 
 function buildTimeline(request: SentRequest, signedAt?: string): TimelineItem[] {
-  const isMain = request.id === "req-summer-main";
   const items: TimelineItem[] = [
     {
-      version: "v1",
       label: "셀러 공고 공개",
-      date: isMain ? versionMetas.v1.date : "-",
+      date: "-",
       who: "seller",
       note: `${request.title} 공고를 등록·공개했습니다.`,
     },
     {
-      version: "v2",
       label: "바이어 수정 요청",
-      date: isMain ? versionMetas.v2.date : request.createdAt,
+      date: request.createdAt,
       who: "buyer",
       note: `${request.revisions?.length ?? 0}개 조항에 대해 수정을 요청했습니다.`,
     },
@@ -128,9 +122,8 @@ function buildTimeline(request: SentRequest, signedAt?: string): TimelineItem[] 
 
   if (request.status !== "reviewing" && request.latestResponse) {
     items.push({
-      version: request.currentVersion ?? "v3",
       label: "셀러 응답 제출",
-      date: isMain ? versionMetas.v3.date : "진행 중",
+      date: "진행 중",
       who: "seller",
       note: request.latestResponse,
     });
@@ -138,9 +131,8 @@ function buildTimeline(request: SentRequest, signedAt?: string): TimelineItem[] 
 
   if (request.status === "signing" || request.status === "completed") {
     items.push({
-      version: "v4",
       label: "최종 합의 완료",
-      date: isMain ? versionMetas.v4.date : "진행 중",
+      date: "진행 중",
       who: "seller",
       note: "양측이 최종안에 합의해 전자서명 절차로 넘어갔습니다.",
     });
@@ -148,7 +140,6 @@ function buildTimeline(request: SentRequest, signedAt?: string): TimelineItem[] 
 
   if (request.status === "completed" && signedAt) {
     items.push({
-      version: "v4",
       label: "전자서명 체결 완료",
       date: signedAt,
       who: "seller",
@@ -218,7 +209,6 @@ function RequestCard({ request }: { request: SentRequest }) {
             <Badge className="border-transparent whitespace-nowrap" style={{ background: statusBg, color: statusColor }}>
               {statusLabel}
             </Badge>
-            <VersionBadge version={request.currentVersion || "v2"} />
           </div>
           <h2 className="break-words" style={{ color: "var(--navy)" }}>{request.title}</h2>
           <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -302,7 +292,6 @@ function RequestCard({ request }: { request: SentRequest }) {
                   </div>
                   <div className="min-w-0 pb-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <VersionBadge version={item.version} showLabel={false} />
                       <span className="text-sm font-semibold">{item.label}</span>
                       <span className="whitespace-nowrap text-xs text-muted-foreground">{item.date}</span>
                     </div>
@@ -343,7 +332,7 @@ export function SellerNegotiatingPage() {
   );
 
   return (
-    <div className="mx-auto max-w-[1000px]">
+    <div>
       <PageHeader
         title="협상 중인 계약"
         description="바이어의 조항별 수정 요청과 셀러 응답을 비교하고 최종 합의를 진행하세요."

@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { translate, type Lang } from "../i18n/translations";
-import { setAccessToken } from "../lib/api";
+import { clearApiSession, setAccessToken } from "../lib/api";
 
 export type Role = "buyer" | "seller";
 
@@ -55,7 +55,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    setAccessToken(null);
+    clearApiSession();
     window.localStorage.removeItem(sessionKey);
     setCurrentRole(null);
     setCompanyName("");
