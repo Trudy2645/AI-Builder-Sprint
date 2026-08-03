@@ -14,12 +14,14 @@ export interface ReceivedRequest {
   buyer: string;
   contractId: string;
   contractTitle: string;
-  status: "new" | "negotiating" | "signing" | "signed";
+  status: "revision" | "final_approval";
   createdAt: string;
   period: string;
   estimatedAmount: string;
   currentVersion: string;
   revisions: ReceivedRevision[];
+  revisionRequestId?: string;
+  revisionCount?: number;
 }
 
 // 받은 요청은 백엔드 계약 요청 API에서만 제공한다.

@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from "react";
 import { Bell, CalendarDays, HelpCircle, Globe, ChevronDown, LogOut, ArrowLeftRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useNavigate } from "react-router";
 import { Logo } from "../brand/Logo";
@@ -24,7 +25,7 @@ import { useApp } from "../../context/AppContext";
 import { LANGUAGES, type Lang } from "../../i18n/translations";
 import type { Role } from "../../context/AppContext";
 import { useRequests } from "../../store/RequestsContext";
-import { loginWithDemoRole } from "../../lib/api";
+import { getNotifications, loginWithDemoRole, markNotificationRead, type NotificationItem } from "../../lib/api";
 
 export function Header({
   role,
@@ -40,7 +41,9 @@ export function Header({
   const otherRole: Role = role === "buyer" ? "seller" : "buyer";
   const roleLabel = t(role === "buyer" ? "role.buyer" : "role.seller");
   const homePath = role === "buyer" ? "/buyer/explore" : "/seller/dashboard";
-  const { requests } = useRequests();
+  const { requests, refreshRequests } = useRequests();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const calendarItems = requests
     .filter((request) => request.status === "completed" || request.status === "signing")
     .map((request) => ({
@@ -52,6 +55,26 @@ export function Header({
       tone: request.status === "completed" ? "var(--success)" : "var(--warning)",
     }));
   const calendarPath = role === "buyer" ? "/buyer/contracts" : "/seller/contracts";
+  const loadNotifications = useCallback(async () => {
+    try {
+      const result = await getNotifications();
+      setNotifications(result.items);
+      setUnreadNotificationCount(result.unread_count);
+    } catch {
+      setNotifications([]);
+      setUnreadNotificationCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadNotifications();
+    const interval = window.setInterval(() => {
+      void loadNotifications();
+      void refreshRequests();
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [loadNotifications, refreshRequests, role]);
+
   const calendarDays = Array.from({ length: 35 }, (_, index) => {
     const day = index - 2;
     if (day < 1 || day > 31) return null;
@@ -68,8 +91,22 @@ export function Header({
     return acc;
   }, {});
   const calendarRoleLabel = role === "buyer" ? "바이어 일정" : "셀러 일정";
-  // 셀러는 수정 요청과 조건 그대로 체결 완료 알림을 확인한다.
+  // API 알림이 아직 없는 데모 세션에서는 기존 요청 알림을 fallback으로 사용한다.
   const sellerNotif = role === "seller" && requests.some((request) => request.status === "reviewing" || request.status === "negotiating");
+  const openNotification = async (notification: NotificationItem) => {
+    try {
+      await markNotificationRead(notification.id);
+      setNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, is_read: true } : item));
+      setUnreadNotificationCount((count) => Math.max(0, count - (notification.is_read ? 0 : 1)));
+      await refreshRequests();
+    } catch {
+      // Navigate even if marking read fails.
+    }
+    const path = notification.resource_type === "contract" && notification.resource_id
+      ? role === "buyer" ? `/buyer/sent/contract/${notification.resource_id}` : `/seller/received/contract/${notification.resource_id}`
+      : role === "buyer" ? "/buyer/sent" : "/seller/received";
+    navigate(path);
+  };
   const displayName = companyName || "계정 정보 없음";
 
   return (
@@ -250,7 +287,7 @@ export function Header({
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative" aria-label={t("header.notifications")}>
               <Bell className="size-5" />
-              {sellerNotif && (
+              {(unreadNotificationCount > 0 || sellerNotif) && (
                 <span
                   className="absolute right-1.5 top-1.5 size-2 rounded-full"
                   style={{ background: "var(--coral)" }}
@@ -261,7 +298,15 @@ export function Header({
           <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] max-w-80">
             <DropdownMenuLabel>{t("notif.title")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {sellerNotif ? (
+            {notifications.length > 0 ? (
+              notifications.slice(0, 5).map((notification) => (
+                <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 whitespace-normal py-2.5" onClick={() => void openNotification(notification)}>
+                  <span style={{ fontSize: "13px", lineHeight: 1.5 }}>{notification.title}</span>
+                  <span className="line-clamp-2 text-muted-foreground" style={{ fontSize: "12px", lineHeight: 1.5 }}>{notification.body}</span>
+                  <span className="whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 600 }}>확인하기 →</span>
+                </DropdownMenuItem>
+              ))
+            ) : sellerNotif ? (
               requests.filter((request) => request.status === "reviewing" || request.status === "negotiating").slice(0, 3).map((request) => (
                 <DropdownMenuItem key={request.id} className="flex flex-col items-start gap-1 whitespace-normal py-2.5" onClick={() => navigate("/seller/received")}>
                   <span style={{ fontSize: "13px", lineHeight: 1.5 }}>{request.buyer ?? "바이어"}의 계약 요청 · {request.title}</span>

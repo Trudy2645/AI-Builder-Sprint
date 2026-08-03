@@ -110,6 +110,7 @@ export function friendlyApiError(error: unknown): string {
       UNSUPPORTED_DISPLAY_CURRENCY: "현재는 상품 기준 통화로만 예상 금액을 계산할 수 있습니다.",
       DATABASE_UNAVAILABLE: "서비스 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
       INVALID_STATE_TRANSITION: "이미 처리되었거나 현재 상태에서는 변경할 수 없는 요청입니다.",
+      SELLER_APPROVAL_REQUIRED: "셀러의 최종 승인이 완료된 뒤 바이어가 승인할 수 있습니다.",
     };
     return messages[error.code] ?? error.message;
   }
@@ -470,6 +471,7 @@ export type ContractListItem = {
   seller_name: string;
   initial_request_kind: "as_is" | "revision";
   status: "draft" | "seller_review" | "revision_requested" | "signing" | "signed" | "cancelled";
+  seller_approved?: boolean;
   service_start_date: string;
   service_end_date: string;
   requested_people: number;
@@ -480,6 +482,35 @@ export type ContractListItem = {
 
 export function getMyContracts(): Promise<ContractListItem[]> {
   return apiFetch<ContractListItem[]>("/me/contracts");
+}
+
+export type NotificationItem = {
+  id: string;
+  notification_type: string;
+  title: string;
+  body: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+};
+
+export type NotificationListResponse = {
+  items: NotificationItem[];
+  unread_count: number;
+};
+
+export function getNotifications(limit = 20): Promise<NotificationListResponse> {
+  return apiFetch<NotificationListResponse>(`/notifications?limit=${limit}`);
+}
+
+export function markNotificationRead(notificationId: string): Promise<NotificationItem> {
+  return apiFetch<NotificationItem>(`/notifications/${notificationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ read: true }),
+  });
 }
 
 export type SellerContractListItem = {
@@ -730,6 +761,10 @@ export type RevisionRequestResponse = {
     reason: string;
     requested_text?: string;
     document_ids?: string[];
+    decision: "pending" | "accepted" | "rejected" | "countered";
+    seller_reason?: string | null;
+    counter_text?: string | null;
+    decided_at?: string | null;
   }>;
   decision_preview: {
     resulting_clauses: Array<{ id: string; clause_order: number; clause_key: string | null; title: string; body: string }>;
@@ -784,6 +819,12 @@ export function getSellerRevisionRequests(): Promise<SellerRevisionRequestListIt
   return apiFetch<SellerRevisionRequestListItem[]>("/seller/revision-requests?status=sent&status=countered");
 }
 
+export function getBuyerRevisionRequests(): Promise<SellerRevisionRequestListItem[]> {
+  return apiFetch<SellerRevisionRequestListItem[]>(
+    "/me/revision-requests?status=sent&status=countered&status=accepted&status=rejected&status=partially_accepted",
+  );
+}
+
 export function decideRevisionRequest(
   revisionRequestId: string,
   payload: { seller_message?: string },
@@ -791,6 +832,17 @@ export function decideRevisionRequest(
   return apiFetch(`/revision-requests/${revisionRequestId}/decide`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-decide") },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function respondRevisionRequest(
+  revisionRequestId: string,
+  payload: { decision: "accepted" | "rejected"; message?: string },
+): Promise<{ revision_request_id: string; status: string; contract_id: string; contract_status: string; version_no: number | null; replayed: boolean }> {
+  return apiFetch(`/revision-requests/${revisionRequestId}/respond`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": requestIdempotencyKey("revision-respond") },
     body: JSON.stringify(payload),
   });
 }

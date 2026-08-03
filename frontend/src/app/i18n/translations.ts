@@ -45,7 +45,7 @@ const strings: Record<string, Dict> = {
 
   // Buyer nav
   "nav.buyer.explore": { ko: "계약 탐색", en: "Explore Contracts", ja: "契約を探す", zh: "浏览合约" },
-  "nav.buyer.sent": { ko: "보낸 요청", en: "Sent Requests", ja: "送信した要請", zh: "已发送请求" },
+  "nav.buyer.sent": { ko: "계약 관리", en: "Contract Management", ja: "契約管理", zh: "合同管理" },
   "nav.negotiating": { ko: "협상 중", en: "Negotiating", ja: "交渉中", zh: "协商中" },
   "nav.signing": { ko: "서명 대기", en: "Awaiting Signature", ja: "署名待ち", zh: "待签署" },
   "nav.contracts": { ko: "체결 계약", en: "Signed Contracts", ja: "締結済み契約", zh: "已签合约" },
@@ -53,7 +53,7 @@ const strings: Record<string, Dict> = {
 
   // Seller nav
   "nav.seller.dashboard": { ko: "대시보드", en: "Dashboard", ja: "ダッシュボード", zh: "仪表板" },
-  "nav.seller.listings": { ko: "계약 공고 관리", en: "Contract Listings", ja: "契約公告管理", zh: "合约公告管理" },
+  "nav.seller.listings": { ko: "등록 공고 관리", en: "Contract Listings", ja: "契約公告管理", zh: "合约公告管理" },
   "nav.seller.newListing": { ko: "새 공고 등록", en: "New Listing", ja: "新規公告登録", zh: "新建公告" },
   "nav.seller.received": { ko: "받은 요청", en: "Received Requests", ja: "受信した要請", zh: "收到的请求" },
 
@@ -312,14 +312,14 @@ const strings: Record<string, Dict> = {
   "asis.message": { ko: "요청 메시지", en: "Request message", ja: "要請メッセージ", zh: "申请留言" },
   "asis.messagePlaceholder": { ko: "셀러에게 전달할 메시지를 입력하세요.", en: "Message to the seller.", ja: "セラーへのメッセージ。", zh: "给卖家的留言。" },
   "asis.confirmCheck": { ko: "계약서 원문과 조건을 모두 확인했습니다.", en: "I have reviewed the full contract and terms.", ja: "契約書原文と条件をすべて確認しました。", zh: "我已阅读全部合约与条款。" },
-  "asis.directTitle": { ko: "즉시 체결 가능한 공개 계약", en: "Instantly available contract", ja: "すぐに締結できる公開契約", zh: "可即时签约的公开合同" },
+  "asis.directTitle": { ko: "조건 그대로 계약 요청", en: "Request the published terms", ja: "公開条件のまま契約を要請", zh: "按公开条件发送合约请求" },
   "asis.directDescription": {
-    ko: "셀러가 공개한 조건을 수락합니다. 아래 이용 정보를 반영한 최종 계약서를 확인한 뒤 모두싸인 전자서명으로 이동합니다.",
-    en: "Accept the seller's published terms. Review the final contract with your usage details, then continue to Modusign.",
-    ja: "セラーの公開条件を受諾します。利用情報を反映した最終契約書を確認後、モドゥサインへ進みます。",
-    zh: "接受卖家公开条款。确认包含使用信息的最终合同后，继续前往Modusign。",
+    ko: "공개된 조건 그대로 셀러에게 최종 승인 요청을 보냅니다. 셀러가 승인하면 최종안을 확인한 뒤 모두싸인으로 이동합니다.",
+    en: "Send the published terms to the seller for final approval. After the seller approves, review the final version and continue to Modusign.",
+    ja: "公開条件のままセラーに最終承認を依頼します。セラーの承認後に最終案を確認し、モドゥサインへ進みます。",
+    zh: "按公开条件向卖家发送最终审批请求。卖家批准后确认最终版本，再前往电子签名。",
   },
-  "asis.submit": { ko: "최종 계약서 확인", en: "Review final contract", ja: "最終契約書を確認", zh: "确认最终合同" },
+  "asis.submit": { ko: "셀러에게 최종 승인 요청", en: "Request seller approval", ja: "セラーに最終承認を依頼", zh: "请求卖家最终审批" },
   "asis.readyToSign": {
     ko: "최종 계약 정보를 반영했습니다. 모두싸인에서 전자서명을 진행하세요.",
     en: "The contract terms are confirmed. Please proceed with e-signature.",
@@ -359,8 +359,8 @@ const strings: Record<string, Dict> = {
   "opt.ct.add": { ko: "조항 추가", en: "Add clause", ja: "条項追加", zh: "新增条款" },
 
   // Sent requests
-  "sent.title": { ko: "보낸 요청", en: "Sent Requests", ja: "送信した要請", zh: "已发送请求" },
-  "sent.subtitle": { ko: "셀러에게 보낸 계약·수정 요청을 관리하세요.", en: "Manage contract and revision requests you sent.", ja: "セラーに送信した契約・修正要請を管理。", zh: "管理您发送的合约与修改请求。" },
+  "sent.title": { ko: "계약 관리", en: "Contract Management", ja: "契約管理", zh: "合同管理" },
+  "sent.subtitle": { ko: "보낸 계약과 수정 요청을 관리하세요.", en: "Manage sent contracts and revision requests.", ja: "送信した契約と修正要請を管理。", zh: "管理已发送的合同与修改请求。" },
   "sent.type.asis": { ko: "조건 그대로", en: "As-is", ja: "この条件", zh: "原条件" },
   "sent.type.revision": { ko: "수정 요청", en: "Revision", ja: "修正要請", zh: "修改" },
   "sent.col.contract": { ko: "계약", en: "Contract", ja: "契約", zh: "合约" },
@@ -374,6 +374,7 @@ const strings: Record<string, Dict> = {
   // Statuses & tabs
   "tab.all": { ko: "전체", en: "All", ja: "すべて", zh: "全部" },
   "rstatus.reviewing": { ko: "셀러 검토 중", en: "Seller reviewing", ja: "セラー確認中", zh: "卖家审核中" },
+  "rstatus.final_review": { ko: "최종 검토", en: "Final review", ja: "最終確認", zh: "最终审查" },
   "rstatus.responded": { ko: "응답 도착", en: "Response received", ja: "応答あり", zh: "已回复" },
   "rstatus.negotiating": { ko: "협상 중", en: "Negotiating", ja: "交渉中", zh: "协商中" },
   "rstatus.signing": { ko: "서명 대기", en: "Awaiting signature", ja: "署名待ち", zh: "待签署" },
@@ -408,7 +409,7 @@ const strings: Record<string, Dict> = {
     zh: "一目了然地查看公告状况与新收到的合约请求。",
   },
   "sdash.stat.public": { ko: "공개 중 공고", en: "Public listings", ja: "公開中の公告", zh: "公开中公告" },
-  "sdash.stat.newReq": { ko: "새 요청", en: "New requests", ja: "新規要請", zh: "新请求" },
+  "sdash.stat.newReq": { ko: "최종 승인 요청", en: "Final approval requests", ja: "最終承認要請", zh: "最终批准请求" },
   "sdash.stat.negotiating": { ko: "협상 중", en: "Negotiating", ja: "交渉中", zh: "协商中" },
   "sdash.stat.signing": { ko: "서명 대기", en: "Awaiting signature", ja: "署名待ち", zh: "待签署" },
   "sdash.stat.monthlyClosed": { ko: "이번 달 체결", en: "Signed this month", ja: "今月の締結", zh: "本月签署" },
@@ -418,7 +419,7 @@ const strings: Record<string, Dict> = {
   "sdash.unit": { ko: "건", en: "", ja: "件", zh: "个" },
 
   // ===== Seller: Listings management =====
-  "listings.title": { ko: "계약 공고 관리", en: "Contract Listings", ja: "契約公告管理", zh: "合约公告管理" },
+  "listings.title": { ko: "등록 공고 관리", en: "Contract Listings", ja: "契約公告管理", zh: "合约公告管理" },
   "listings.subtitle": {
     ko: "등록한 공고의 상태를 관리하고 새로운 공고를 등록하세요.",
     en: "Manage your listings and post new ones.",
