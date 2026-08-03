@@ -30,11 +30,14 @@ interface Stat {
 
 type DashboardRequestStatus = "new" | "negotiating" | "signing" | "signed";
 
-const requestStatusLabel: Record<"new" | "negotiating" | "signing" | "signed", string> = {
-  new: "새 요청", negotiating: "협상 중", signing: "서명 대기", signed: "체결 완료",
+const requestStatusLabelKey: Record<DashboardRequestStatus, string> = {
+  new: "sdash.status.new",
+  negotiating: "sdash.status.negotiating",
+  signing: "sdash.status.signing",
+  signed: "sdash.status.signed",
 };
 
-const requestStatusTone: Record<"new" | "negotiating" | "signing" | "signed", { bg: string; color: string }> = {
+const requestStatusTone: Record<DashboardRequestStatus, { bg: string; color: string }> = {
   new: { bg: "var(--info-soft)", color: "var(--ocean)" },
   negotiating: { bg: "var(--warning-soft)", color: "var(--warning)" },
   signing: { bg: "var(--success-soft)", color: "var(--teal)" },
@@ -45,7 +48,7 @@ export function SellerDashboardPage() {
   const { t, companyName } = useApp();
   const navigate = useNavigate();
   const { listings, publicCount } = useListings();
-  const company = companyName || "계정 정보 없음";
+  const company = companyName || t("sdash.noAccount");
   const { requests: sellerRequests } = useRequests();
   const newRequestCount = sellerRequests.filter((request) => request.status === "reviewing").length;
   const negotiatingCount = sellerRequests.filter((request) => request.status === "negotiating").length;
@@ -110,28 +113,34 @@ export function SellerDashboardPage() {
       <div className="mt-8 overflow-hidden rounded-xl border border-border bg-card">
         <div className="flex flex-col items-start justify-between gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:px-6">
           <div className="min-w-0">
-            <h3 className="flex items-start gap-2 break-words" style={{ color: "var(--navy)" }}><BellRing className="mt-1 size-4 shrink-0" style={{ color: "var(--ocean)" }} />받은 계약 요청</h3>
-            <p className="mt-1 text-xs text-muted-foreground">바이어의 수정 요청과 조건 그대로 체결된 계약 알림을 확인하세요.</p>
+            <h3 className="flex items-start gap-2 break-words" style={{ color: "var(--navy)" }}><BellRing className="mt-1 size-4 shrink-0" style={{ color: "var(--ocean)" }} />{t("sdash.requests.title")}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{t("sdash.requests.desc")}</p>
           </div>
-          <Button variant="ghost" size="sm" className="gap-1 whitespace-nowrap" onClick={() => navigate("/seller/received")}>전체 보기<ArrowRight className="size-4" /></Button>
+          <Button variant="ghost" size="sm" className="gap-1 whitespace-nowrap" onClick={() => navigate("/seller/received")}>{t("sdash.viewAll")}<ArrowRight className="size-4" /></Button>
         </div>
         <div className="hidden overflow-x-auto lg:block">
           <div className="grid min-w-[900px] grid-cols-[1fr_1.2fr_1.7fr_1fr_1fr_.8fr] gap-4 border-b bg-muted/40 px-6 py-3 text-xs font-semibold text-muted-foreground">
-            <div>요청 ID</div><div>바이어</div><div>계약명</div><div>기간·수량</div><div>상태</div><div>작업</div>
+            <div>{t("sdash.requests.id")}</div><div>{t("sdash.requests.buyer")}</div><div>{t("sdash.requests.contract")}</div><div>{t("sdash.requests.periodQty")}</div><div>{t("sdash.requests.status")}</div><div>{t("sdash.requests.action")}</div>
           </div>
-          {recentRequests.map((row) => (
-            <div key={row.id} className="grid min-w-[900px] grid-cols-[1fr_1.2fr_1.7fr_1fr_1fr_.8fr] items-center gap-4 border-b px-6 py-4 last:border-b-0">
-              <div className="text-xs font-semibold" style={{ color: "var(--ocean)" }}>{row.id}</div>
-              <div className="truncate font-semibold">{row.buyer}</div>
-              <div className="truncate text-sm">{row.title}</div>
-              <div className="text-sm text-muted-foreground">{row.period}</div>
-              <div><Badge className="whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge></div>
-              <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
-            </div>
-          ))}
+          {recentRequests.length === 0 ? (
+            <div className="px-6 py-10 text-center text-muted-foreground">{t("sdash.requests.empty")}</div>
+          ) : (
+            recentRequests.map((row) => (
+              <div key={row.id} className="grid min-w-[900px] grid-cols-[1fr_1.2fr_1.7fr_1fr_1fr_.8fr] items-center gap-4 border-b px-6 py-4 last:border-b-0">
+                <div className="text-xs font-semibold" style={{ color: "var(--ocean)" }}>{row.id}</div>
+                <div className="truncate font-semibold">{row.buyer}</div>
+                <div className="truncate text-sm">{row.title}</div>
+                <div className="text-sm text-muted-foreground">{row.period}</div>
+                <div><Badge className="whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{t(requestStatusLabelKey[row.displayStatus])}</Badge></div>
+                <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>{t("sdash.requests.view")}</Button>
+              </div>
+            ))
+          )}
         </div>
         <div className="divide-y divide-border lg:hidden">
-          {recentRequests.map((row) => (
+          {recentRequests.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">{t("sdash.requests.empty")}</div>
+          ) : recentRequests.map((row) => (
             <div key={row.id} className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -139,9 +148,9 @@ export function SellerDashboardPage() {
                   <div className="mt-1 truncate font-semibold">{row.title}</div>
                   <div className="mt-1 text-sm text-muted-foreground">{row.buyer} · {row.period}</div>
                 </div>
-                <Badge className="shrink-0 whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge>
+                <Badge className="shrink-0 whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{t(requestStatusLabelKey[row.displayStatus])}</Badge>
               </div>
-              <Button size="sm" variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
+              <Button size="sm" variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>{t("sdash.requests.view")}</Button>
             </div>
           ))}
         </div>
@@ -150,36 +159,42 @@ export function SellerDashboardPage() {
       {/* Recent listings */}
       <div className="mt-8 rounded-xl border border-border bg-card p-4 sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-          <h3 className="break-words" style={{ color: "var(--navy)" }}>공고</h3>
+          <h3 className="break-words" style={{ color: "var(--navy)" }}>{t("sdash.listings.title")}</h3>
           <Button variant="ghost" size="sm" className="gap-1 whitespace-nowrap" onClick={() => navigate("/seller/listings")}>
             {t("sdash.viewAll")}
             <ArrowRight className="size-4" />
           </Button>
         </div>
-        <div className="flex flex-col divide-y divide-border">
-          {recent.map((l) => {
-            const catKey = CATEGORIES.find((c) => c.value === l.category)?.labelKey ?? "cat.all";
-            return (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => navigate("/seller/listings")}
-                className="flex items-start gap-3 py-3 text-left transition-colors hover:bg-secondary sm:items-center sm:gap-4"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="truncate" style={{ fontWeight: 600, color: "var(--navy)" }}>{l.productName}</div>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground" style={{ fontSize: "12px" }}>
-                    <span>{t(catKey)}</span>
-                    <span>·</span>
-                    <span>{l.priceUnit} {formatKRW(l.unitPrice)}</span>
-                    <span>·</span>
-                    <span>{l.quantityLabel}</span>
+        {recent.length === 0 ? (
+          <div className="flex min-h-[140px] items-center justify-center rounded-lg border border-dashed border-border text-center text-muted-foreground">
+            {t("sdash.listings.empty")}
+          </div>
+        ) : (
+          <div className="flex flex-col divide-y divide-border">
+            {recent.map((l) => {
+              const catKey = CATEGORIES.find((c) => c.value === l.category)?.labelKey ?? "cat.all";
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => navigate("/seller/listings")}
+                  className="flex items-start gap-3 py-3 text-left transition-colors hover:bg-secondary sm:items-center sm:gap-4"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate" style={{ fontWeight: 600, color: "var(--navy)" }}>{l.productName}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground" style={{ fontSize: "12px" }}>
+                      <span>{t(catKey)}</span>
+                      <span>·</span>
+                      <span>{l.priceUnit} {formatKRW(l.unitPrice)}</span>
+                      <span>·</span>
+                      <span>{l.quantityLabel}</span>
+                    </div>
                   </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

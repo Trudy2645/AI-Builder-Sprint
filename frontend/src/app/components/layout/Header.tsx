@@ -40,6 +40,7 @@ export function Header({
   const otherRole: Role = role === "buyer" ? "seller" : "buyer";
   const roleLabel = t(role === "buyer" ? "role.buyer" : "role.seller");
   const homePath = role === "buyer" ? "/buyer/explore" : "/seller/dashboard";
+  const displayNameFromEmail = (value: string) => value.split("@")[0] || value;
   const { requests } = useRequests();
   const calendarItems = requests
     .filter((request) => request.status === "completed" || request.status === "signing")
@@ -310,7 +311,7 @@ export function Header({
             <DropdownMenuItem
               onClick={() => {
                 void loginWithDemoRole(otherRole).then((session) => {
-                  loginWithSession(otherRole, session.email, session.accessToken, session.organizationId);
+                  loginWithSession(otherRole, displayNameFromEmail(session.email), session.accessToken, session.organizationId);
                   window.setTimeout(() => navigate(`/${otherRole}`), 0);
                 });
               }}

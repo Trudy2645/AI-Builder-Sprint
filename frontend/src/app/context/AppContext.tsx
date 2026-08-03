@@ -22,6 +22,10 @@ const sessionKey = "busan-link-session";
 
 type StoredSession = { role: Role; companyName: string };
 
+function displayNameFrom(value: string): string {
+  return value.includes("@") ? value.split("@")[0] : value;
+}
+
 function readStoredSession(): StoredSession | null {
   try {
     const value = window.localStorage.getItem(sessionKey);
@@ -31,7 +35,10 @@ function readStoredSession(): StoredSession | null {
       typeof parsed === "object" && parsed !== null &&
       (parsed as StoredSession).role &&
       ["buyer", "seller"].includes((parsed as StoredSession).role)
-    ) return parsed as StoredSession;
+    ) {
+      const session = parsed as StoredSession;
+      return { ...session, companyName: displayNameFrom(session.companyName) };
+    }
   } catch {
     // An invalid local value must never prevent the app from rendering.
   }
@@ -49,11 +56,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isDemoSession, setIsDemoSession] = useState(false);
 
   const login = (role: Role, company?: string, isDemo = false) => {
+    const displayName = displayNameFrom(company ?? "");
     setCurrentRole(role);
-    setCompanyName(company ?? "");
+    setCompanyName(displayName);
     setIsDemoSession(isDemo);
     if (!isDemo) {
-      window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: company ?? "" }));
+      window.localStorage.setItem(sessionKey, JSON.stringify({ role, companyName: displayName }));
     }
   };
 

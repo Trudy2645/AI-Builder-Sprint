@@ -7,7 +7,7 @@ import { Label } from "../../components/ui/label";
 import { Plane, Building2 } from "lucide-react";
 import { Separator } from "../../components/ui/separator";
 import { useApp, type Role } from "../../context/AppContext";
-import { friendlyApiError, loginWithDemoRole, loginWithPassword } from "../../lib/api";
+import { friendlyApiError, getMe, getOrganization, loginWithDemoRole, loginWithPassword } from "../../lib/api";
 import { toast } from "sonner";
 
 export function LoginPage() {
@@ -28,6 +28,24 @@ export function LoginPage() {
   };
 
   const demoCompany = (role: Role) => role === "seller" ? "해운대 오션스테이" : "GlobalTrip Japan";
+  const fallbackDisplayName = (value: string) => value.split("@")[0] || value;
+  const resolveDisplayName = async (role: Role, fallbackEmail: string) => {
+    try {
+      const me = await getMe();
+      if (role === "seller") {
+        const organizationId = me.organizations[0]?.id;
+        const nickname = me.display_name || me.username;
+        if (organizationId) {
+          const organization = await getOrganization(organizationId);
+          return nickname || organization.legal_name || me.organizations[0]?.name || fallbackDisplayName(fallbackEmail);
+        }
+        return nickname || fallbackDisplayName(fallbackEmail);
+      }
+      return me.display_name || me.affiliation_name || me.username || fallbackDisplayName(fallbackEmail);
+    } catch {
+      return fallbackDisplayName(fallbackEmail);
+    }
+  };
   const isDemoEmail = (value: string) => {
     const normalized = value.toLocaleLowerCase();
     return normalized.includes("buyer@globaltrip") ||
@@ -43,8 +61,9 @@ export function LoginPage() {
     try {
       const result = await loginWithPassword(email, password);
       if (!result.session) throw new Error("Login session was not returned.");
-      const role = inferDemoRole(email);
-      loginWithSession(role, email, result.session.access_token, result.organization_id);
+      const role = result.role ?? inferDemoRole(email);
+      const displayName = await resolveDisplayName(role, email);
+      loginWithSession(role, displayName, result.session.access_token, result.organization_id);
       navigate(`/${role}`);
     } catch (error) {
       if (error instanceof TypeError && isDemoEmail(email)) {

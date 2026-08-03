@@ -22,6 +22,8 @@ import {
   type ContractDetail,
 } from "../../lib/api";
 
+const PAGE_CONTAINER_CLASS = "mx-auto w-full max-w-[1320px]";
+
 function DemoApprovalRow({
   label,
   name,
@@ -137,7 +139,7 @@ export function FinalApprovePage() {
     const mine = role === "buyer" ? approval.buyer.approved : approval.seller.approved;
     const query = `?contractId=${contractId}&versionId=${versionId}`;
     return (
-      <div className="mx-auto max-w-[860px]">
+      <div className={PAGE_CONTAINER_CLASS}>
         <PageHeader title={t("fa.title")} description={t("fa.subtitle")} />
         <div className="mb-5 rounded-xl border border-border bg-card p-4"><ContractStepper current={4} /></div>
         <div className="mb-6 rounded-xl border border-border bg-card p-5">
@@ -170,13 +172,13 @@ export function FinalApprovePage() {
   }
 
   return (
-    <div className="mx-auto max-w-[860px]">
+    <div className={PAGE_CONTAINER_CLASS}>
       <PageHeader title="최종안 승인" description="계약을 선택한 뒤 현재 버전과 양측 승인 상태를 확인하세요." />
       <div className="rounded-xl border border-border bg-card p-5">
         {pendingContracts.length === 0 ? <p className="py-8 text-center text-muted-foreground">최종안 확인이 필요한 계약이 없습니다.</p> : (
           <div className="space-y-3">{pendingContracts.map((contract) => (
-            <div key={contract.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4">
-              <div><p className="font-semibold" style={{ color: "var(--navy)" }}>{contract.title}</p><p className="mt-1 text-sm text-muted-foreground">{contract.status === "signing" ? "모두싸인 서명 대기" : "최종안 승인 대기"}</p></div>
+            <div key={contract.id} className="grid gap-3 rounded-lg border border-border p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div className="min-w-0"><p className="truncate font-semibold" style={{ color: "var(--navy)" }}>{contract.title}</p><p className="mt-1 text-sm text-muted-foreground">{contract.status === "signing" ? "모두싸인 서명 대기" : "최종안 승인 대기"}</p></div>
               <Button onClick={() => void getContractDetail(contract.id).then((detail) => navigate(`${base}/signing?contractId=${contract.id}&versionId=${detail.current_version.id}`)).catch((error) => toast.error(friendlyApiError(error)))}>최종안 확인</Button>
             </div>
           ))}</div>
@@ -192,7 +194,7 @@ export function FinalApprovePage() {
   };
 
   return (
-    <div className="mx-auto max-w-[860px]">
+    <div className={PAGE_CONTAINER_CLASS}>
       <PageHeader title={t("fa.title")} description={t("fa.subtitle")} />
 
       <div className="mb-5 rounded-xl border border-border bg-card p-4 sm:mb-6 sm:p-5">
