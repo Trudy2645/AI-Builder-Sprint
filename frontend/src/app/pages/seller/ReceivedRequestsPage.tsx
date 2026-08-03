@@ -18,18 +18,18 @@ import { friendlyApiError, getContractDetail, getSellerReceivedContracts, getSel
 
 type RequestTab = "all" | ReceivedRequest["status"];
 const TABS: RequestTab[] = ["all", "new", "negotiating", "signing", "signed"];
-const statusLabel: Record<RequestTab, string> = {
-  all: "전체",
-  new: "새 요청",
-  negotiating: "협상 중",
-  signing: "서명 대기",
-  signed: "체결 완료",
+const tabLabelKey: Record<RequestTab, string> = {
+  all: "recv.tab.all",
+  new: "recv.tab.new",
+  negotiating: "recv.tab.negotiating",
+  signing: "recv.tab.signing",
+  signed: "recv.tab.signed",
 };
-const statusTone: Record<ReceivedRequest["status"], { bg: string; color: string; label: string }> = {
-  new: { bg: "var(--info-soft)", color: "var(--ocean)", label: "새 요청" },
-  negotiating: { bg: "var(--warning-soft)", color: "var(--warning)", label: "협상 중" },
-  signing: { bg: "var(--success-soft)", color: "var(--teal)", label: "서명 대기" },
-  signed: { bg: "var(--success-soft)", color: "var(--success)", label: "체결 완료" },
+const statusTone: Record<ReceivedRequest["status"], { bg: string; color: string; labelKey: string }> = {
+  new: { bg: "var(--info-soft)", color: "var(--ocean)", labelKey: "recv.status.new" },
+  negotiating: { bg: "var(--warning-soft)", color: "var(--warning)", labelKey: "recv.status.negotiating" },
+  signing: { bg: "var(--success-soft)", color: "var(--teal)", labelKey: "recv.status.signing" },
+  signed: { bg: "var(--success-soft)", color: "var(--success)", labelKey: "recv.status.signed" },
 };
 
 export function ReceivedRequestsPage() {
@@ -40,6 +40,8 @@ export function ReceivedRequestsPage() {
   const tab: RequestTab = selected && TABS.includes(selected) ? selected : "all";
   const [serverRows, setServerRows] = useState<ReceivedRequest[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const displayError = (error: unknown) => error instanceof TypeError ? t("recv.networkError") : friendlyApiError(error);
+
   useEffect(() => {
     void Promise.all([getSellerReceivedContracts(), getSellerRevisionRequests()]).then(([items, revisions]) => {
       const revisionContractIds = new Set(revisions.map((item) => item.contract_id));
@@ -48,17 +50,17 @@ export function ReceivedRequestsPage() {
       id: item.contract_id, buyer: item.buyer_name, contractId: item.contract_id, contractTitle: item.listing_title,
       status: item.status === "signed" ? "signed" : item.status === "signing" ? "signing" : item.status === "revision_requested" ? "negotiating" : "new",
       createdAt: item.requested_at.slice(0, 10).replaceAll("-", "."), period: `${item.service_start_date} ~ ${item.service_end_date}`,
-      estimatedAmount: item.amount_minor == null ? "계산 중" : `${item.amount_minor.toLocaleString("ko-KR")} ${item.currency ?? "KRW"}`,
+      estimatedAmount: item.amount_minor == null ? t("recv.calculating") : `${item.amount_minor.toLocaleString("ko-KR")} ${item.currency ?? "KRW"}`,
       currentVersion: "v1", revisions: [],
       })),
       ...revisions.map((item) => ({
         id: item.id, buyer: item.buyer_name, contractId: item.contract_id, contractTitle: item.listing_title,
         status: "negotiating" as const, createdAt: (item.sent_at ?? item.updated_at).slice(0, 10).replaceAll("-", "."),
-        period: "계약 조건에서 확인", estimatedAmount: "계약 조건에서 확인", currentVersion: "v1", revisions: [],
+        period: t("recv.checkContractTerms"), estimatedAmount: t("recv.checkContractTerms"), currentVersion: "v1", revisions: [],
       })),
       ]);
-    }).catch((error: unknown) => setLoadError(friendlyApiError(error)));
-  }, []);
+    }).catch((error: unknown) => setLoadError(displayError(error)));
+  }, [t]);
   const sourceRows = serverRows.length ? serverRows : receivedRequests;
   const rows = tab === "all" ? sourceRows : sourceRows.filter((r) => r.status === tab);
   const counts = TABS.reduce<Record<string, number>>((acc, current) => {
@@ -75,7 +77,7 @@ export function ReceivedRequestsPage() {
     try {
       const detail = await getContractDetail(request.contractId);
       navigate(`/seller/signing?contractId=${detail.id}&versionId=${detail.current_version.id}`);
-    } catch (error) { setLoadError(friendlyApiError(error)); }
+    } catch (error) { setLoadError(displayError(error)); }
   };
 
   return (
@@ -99,7 +101,7 @@ export function ReceivedRequestsPage() {
                 color: active ? "#fff" : "var(--foreground)",
               }}
             >
-              {statusLabel[tb]}
+              {t(tabLabelKey[tb])}
               <span
                 className="rounded-full px-1.5"
                 style={{
@@ -129,15 +131,15 @@ export function ReceivedRequestsPage() {
                 </div>
                 <Badge className="shrink-0 gap-1 whitespace-nowrap border-transparent" style={{ background: statusTone[r.status].bg, color: statusTone[r.status].color }}>
                   <FilePenLine className="size-3" />
-                  {statusTone[r.status].label}
+                  {t(statusTone[r.status].labelKey)}
                 </Badge>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 border-y border-border py-3 text-sm">
-                <div><div className="text-xs text-muted-foreground">{t("recv.col.count")}</div><div className="mt-1">{r.revisions.length > 0 ? `${r.revisions.length}${t("recv.countUnit")}` : "조건 그대로"}</div></div>
+                <div><div className="text-xs text-muted-foreground">{t("recv.col.count")}</div><div className="mt-1">{r.revisions.length > 0 ? `${r.revisions.length}${t("recv.countUnit")}` : t("recv.asIs")}</div></div>
                 <div className="text-right"><div className="text-xs text-muted-foreground">{t("recv.col.date")}</div><div className="mt-1 whitespace-nowrap">{r.createdAt}</div></div>
               </div>
               <Button className="mt-3 w-full gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => openRequest(r)}>
-                상세 보기
+                {t("recv.review")}
                 <ArrowRight className="size-4" />
               </Button>
             </div>
@@ -177,16 +179,16 @@ export function ReceivedRequestsPage() {
                   <TableCell className="px-3 py-3 text-center">
                     <Badge className="gap-1 whitespace-nowrap border-transparent" style={{ background: statusTone[r.status].bg, color: statusTone[r.status].color }}>
                       <FilePenLine className="size-3" />
-                      {statusTone[r.status].label}
+                      {t(statusTone[r.status].labelKey)}
                     </Badge>
                   </TableCell>
                   <TableCell className="whitespace-nowrap px-3 py-3 text-center">
-                    {r.revisions.length > 0 ? `${r.revisions.length}${t("recv.countUnit")}` : "조건 그대로"}
+                    {r.revisions.length > 0 ? `${r.revisions.length}${t("recv.countUnit")}` : t("recv.asIs")}
                   </TableCell>
                   <TableCell className="whitespace-nowrap px-3 py-3 text-center text-muted-foreground">{r.createdAt}</TableCell>
                   <TableCell className="px-3 py-3 text-center">
                     <Button size="sm" className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => openRequest(r)}>
-                      상세 보기
+                      {t("recv.review")}
                       <ArrowRight className="size-4" />
                     </Button>
                   </TableCell>
