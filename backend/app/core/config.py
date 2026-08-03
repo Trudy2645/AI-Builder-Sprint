@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     supabase_jwt_audience: str = "authenticated"
     supabase_jwks_url: str | None = None
     supabase_jwks_cache_seconds: int = Field(default=600, ge=60, le=1200)
+    # Supabase and local clocks can differ by a second at token issuance.
+    supabase_jwt_leeway_seconds: int = Field(default=5, ge=0, le=60)
     supabase_auth_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     storage_request_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
     document_max_size_bytes: int = Field(default=20 * 1024 * 1024, gt=0)

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, Response, status
 
 from app.api.dependencies import (
     get_contract_review_service,
@@ -221,9 +221,32 @@ async def dispatch_contract_signature_request(
         settings.modusign_template_id,
         storage,
         manual_fields=[field.model_dump() for field in (payload.fields if payload else [])],
-        source_pdf_base64=payload.source_pdf_base64 if payload else None,
     )
     return typed_envelope(request, result)
+
+
+@router.get("/contracts/{contract_id}/versions/{version_id}/signature-source")
+async def get_signature_source_pdf(
+    contract_id: UUID,
+    version_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractService, Depends(get_contract_service)],
+    storage: Annotated[StorageProvider, Depends(get_storage_provider)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> Response:
+    """Return the exact immutable bytes that will be sent to Modusign."""
+    pdf_bytes, metadata = await service.get_signature_source_pdf(
+        contract_id, version_id, actor, organization_id, storage
+    )
+    return Response(
+        pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "X-BusanLink-Pdf-Sha256": metadata["sha256"],
+            "X-BusanLink-Pdf-Bytes": str(metadata["size_bytes"]),
+            "X-BusanLink-Pdf-Pages": str(metadata["page_count"]),
+        },
+    )
 
 
 @router.get(

@@ -23,7 +23,7 @@ from app.repositories.contracts import (
     SignatureRequestRecord,
     SqlAlchemyContractRepository,
 )
-from app.schemas.contracts import ContractSignatureRequestCreate
+from app.schemas.contracts import ContractSignatureRequestCreate, SignatureFieldPlacement
 
 CONTRACT_ID = UUID("b1000000-0000-0000-0000-000000000001")
 VERSION_ID = UUID("b2000000-0000-0000-0000-000000000001")
@@ -352,6 +352,32 @@ def test_invalid_candidates_fall_back_to_last_page_buyer_signature_area() -> Non
 
     fields = ContractService._source_pdf_fields(candidates, 1, [])
     assert fields[0].position == {"page": 1, "x": 0.62, "y": 0.72}
+
+
+def test_manual_fields_keep_one_based_pages_and_normalized_bounds() -> None:
+    fields = [
+        SignatureFieldPlacement(
+            field_type="SIGNATURE",
+            data_label=f"page-{page}",
+            position={"page": page, "x": 0.55, "y": 0.72},
+            size={"width": 0.14, "height": 0.04},
+        )
+        for page in range(1, 5)
+    ]
+
+    assert [field.position["page"] for field in fields] == [1, 2, 3, 4]
+    assert all(0 <= field.position["x"] <= 1 for field in fields)
+    assert all(0 <= field.position["y"] <= 1 for field in fields)
+
+
+def test_manual_field_rejects_a_page_overflow() -> None:
+    with pytest.raises(ValueError, match="fit inside the page"):
+        SignatureFieldPlacement(
+            field_type="SIGNATURE",
+            data_label="outside",
+            position={"page": 2, "x": 0.9, "y": 0.72},
+            size={"width": 0.14, "height": 0.04},
+        )
 
 
 @pytest.mark.asyncio

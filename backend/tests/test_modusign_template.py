@@ -121,3 +121,4 @@ async def test_client_sends_original_pdf_with_buyer_fields() -> None:
     assert payload["participants"][0]["fields"][0]["signatureTypes"] == ["SIGN"]
     assert payload["participants"][0]["fields"][1]["required"] is False
     assert payload["participants"][0]["fields"][2]["type"] == "SIGNING_DATE"
+    assert payload["participants"][0]["fields"][2]["displayFormat"] == "YYYY년 MM월 DD일"

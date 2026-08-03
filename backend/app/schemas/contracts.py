@@ -332,7 +332,27 @@ class SignatureFieldPlacement(BaseModel):
     text_align: Literal["LEFT", "CENTER", "RIGHT"] = "LEFT"
     options: list[dict[str, str]] | None = None
 
+    @model_validator(mode="after")
+    def validate_normalized_bounds(self) -> "SignatureFieldPlacement":
+        if not isinstance(self.position.get("page"), int) or self.position["page"] < 1:
+            raise ValueError("position.page must be a positive integer")
+        if not all(
+            isinstance(self.position.get(key), (int, float))
+            and not isinstance(self.position.get(key), bool)
+            and 0 <= float(self.position[key]) <= 1
+            for key in ("x", "y")
+        ):
+            raise ValueError("position coordinates must be between 0 and 1")
+        if self.size is not None:
+            if not all(0 < value <= 1 for value in self.size.values()):
+                raise ValueError("field size must be between 0 and 1")
+            if (
+                float(self.position["x"]) + self.size.get("width", 0) > 1
+                or float(self.position["y"]) + self.size.get("height", 0) > 1
+            ):
+                raise ValueError("field must fit inside the page")
+        return self
+
 
 class ContractSignatureDispatchCreate(BaseModel):
     fields: list[SignatureFieldPlacement] = Field(default_factory=list)
-    source_pdf_base64: str | None = None

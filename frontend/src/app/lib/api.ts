@@ -961,12 +961,27 @@ export function createSignatureRequest(
   });
 }
 
-export function dispatchSignatureRequest(contractId: string, versionId: string, fields: Array<Record<string, unknown>> = [], sourcePdfBase64?: string): Promise<SignatureRequest> {
+export function dispatchSignatureRequest(contractId: string, versionId: string, fields: Array<Record<string, unknown>> = []): Promise<SignatureRequest> {
   return apiFetch<SignatureRequest>(`/contracts/${contractId}/versions/${versionId}/signature-requests/dispatch`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-    body: JSON.stringify({ fields, source_pdf_base64: sourcePdfBase64 }),
+    body: JSON.stringify({ fields }),
   });
+}
+
+export async function getSignatureSourcePdf(contractId: string, versionId: string): Promise<{ bytes: ArrayBuffer; sha256: string; pageCount: number }> {
+  const response = await fetch(`${apiBaseUrl}/contracts/${contractId}/versions/${versionId}/signature-source`, {
+    headers: authenticatedHeaders(getApiSession()),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new ApiError(payload?.error ?? { code: "PDF_PREVIEW_FAILED", message: "계약서 PDF를 불러오지 못했습니다." });
+  }
+  return {
+    bytes: await response.arrayBuffer(),
+    sha256: response.headers.get("X-BusanLink-Pdf-Sha256") ?? "",
+    pageCount: Number(response.headers.get("X-BusanLink-Pdf-Pages") ?? 0),
+  };
 }
 
 export async function downloadModusignFile(documentId: string, kind: "signed" | "audit-trail"): Promise<void> {
@@ -1078,8 +1093,10 @@ export function getSellerListing(listingId: string): Promise<SellerListingDetail
   });
 }
 
-export function getPublicListings(): Promise<PublicListing[]> {
-  return apiFetch<PublicListing[]>("/public/listings");
+export function getPublicListings(
+  locale: "ko-KR" | "en-US" | "ja-JP" | "zh-CN" = "ko-KR",
+): Promise<PublicListing[]> {
+  return apiFetch<PublicListing[]>(`/public/listings?locale=${encodeURIComponent(locale)}`);
 }
 
 export type PublicListingClause = {

@@ -99,6 +99,28 @@ async def test_supabase_provider_rejects_wrong_audience() -> None:
 
 
 @pytest.mark.asyncio
+async def test_supabase_provider_accepts_small_issuer_clock_skew() -> None:
+    provider, private_key = build_provider_and_key()
+    now = datetime.now(UTC)
+    token = jwt.encode(
+        {
+            "iss": f"{SUPABASE_URL}/auth/v1",
+            "aud": "authenticated",
+            "sub": str(USER_ID),
+            "role": "authenticated",
+            "email": "verified@example.com",
+            "iat": now + timedelta(seconds=1),
+            "exp": now + timedelta(minutes=5),
+        },
+        private_key,
+        algorithm="ES256",
+        headers={"kid": KEY_ID},
+    )
+
+    assert (await provider.verify_access_token(token)).id == USER_ID
+
+
+@pytest.mark.asyncio
 async def test_account_provider_signs_up_and_parses_session() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/auth/v1/signup"

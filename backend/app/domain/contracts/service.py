@@ -1,5 +1,3 @@
-import base64
-import binascii
 import hashlib
 import json
 import logging
@@ -624,7 +622,6 @@ class ContractService:
         template_id: str | None,
         storage: StorageProvider,
         manual_fields: list[dict[str, Any]] | None = None,
-        source_pdf_base64: str | None = None,
     ) -> SignatureRequestCreated:
         try:
             contacts = await self._repository.get_signature_contacts(
@@ -673,22 +670,11 @@ class ContractService:
                 "FINAL_CONTRACT_PDF_UNAVAILABLE",
                 "The final PDF could not be prepared for signing.",
             )
-        if source_pdf_base64:
-            try:
-                uploaded_pdf = base64.b64decode(source_pdf_base64, validate=True)
-            except (binascii.Error, ValueError):
-                self._raise(
-                    status.HTTP_400_BAD_REQUEST,
-                    "INVALID_SOURCE_PDF",
-                    "The selected contract PDF could not be read.",
-                )
-            if not uploaded_pdf.startswith(b"%PDF"):
-                self._raise(
-                    status.HTTP_400_BAD_REQUEST,
-                    "INVALID_SOURCE_PDF",
-                    "The selected contract PDF is invalid.",
-                )
-            source_pdf = uploaded_pdf
+        logger.info(
+            "dispatching signature source PDF sha256=%s size_bytes=%s",
+            hashlib.sha256(source_pdf).hexdigest(),
+            len(source_pdf),
+        )
         stored_candidates = source.extracted_data.get("signature_field_candidates")
         manual_source_fields: list[ModusignParticipantField] | None = None
         if manual_fields:
@@ -726,6 +712,12 @@ class ContractService:
                         size=size if isinstance(size, dict) else None,
                         required=bool(field.get("required", True)),
                         signature_types=["SIGN"] if field_type == "SIGNATURE" else None,
+                        # Modusign validates displayFormat for both DATE and
+                        # SIGNING_DATE fields. Use one explicit Korean format
+                        # for every page rather than a per-page convention.
+                        display_format=(
+                            "YYYY년 MM월 DD일" if field_type in {"DATE", "SIGNING_DATE"} else None
+                        ),
                         text_style=(
                             {
                                 "size": min(
@@ -810,6 +802,22 @@ class ContractService:
             pdf_reader = PdfReader(BytesIO(source_pdf), strict=False)
             source_page_count = len(pdf_reader.pages)
             source_page_texts = [page.extract_text() or "" for page in pdf_reader.pages]
+            logger.info(
+                "signature PDF page geometry sha256=%s pages=%s geometry=%s",
+                hashlib.sha256(source_pdf).hexdigest(),
+                source_page_count,
+                [
+                    {
+                        "page": index + 1,
+                        "media_box": list(page.mediabox),
+                        "crop_box": list(page.cropbox),
+                        "rotation": page.rotation,
+                        "width": float(page.cropbox.width),
+                        "height": float(page.cropbox.height),
+                    }
+                    for index, page in enumerate(pdf_reader.pages)
+                ],
+            )
         except (KeyError, PdfReadError, TypeError, ValueError):
             source_page_count = 1
         return await self.create_signature_request(
@@ -831,6 +839,59 @@ class ContractService:
             source_page_texts,
             manual_source_fields,
         )
+
+    async def get_signature_source_pdf(
+        self,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+        storage: StorageProvider,
+    ) -> tuple[bytes, dict[str, object]]:
+        context = await self._approval_context(contract_id, contract_version_id)
+        await self._authorize_approval_context(context, actor, header_organization_id)
+        if context.current_version_id != contract_version_id:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "VERSION_CONFLICT",
+                "Only the current version can be previewed.",
+            )
+        source = await self._repository.get_signature_source_document(
+            contract_id, contract_version_id
+        )
+        if source is None:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "FINAL_CONTRACT_PDF_MISSING",
+                "The approved contract version does not have a final PDF for signing.",
+            )
+        try:
+            pdf_bytes = b"".join(
+                [
+                    chunk
+                    async for chunk in storage.iter_object(
+                        source.storage_bucket, source.storage_object_path
+                    )
+                ]
+            )
+            reader = PdfReader(BytesIO(pdf_bytes), strict=False)
+        except (
+            StorageObjectNotFoundError,
+            StorageProviderError,
+            PdfReadError,
+            ValueError,
+            KeyError,
+        ):
+            self._raise(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "FINAL_CONTRACT_PDF_UNAVAILABLE",
+                "The final PDF could not be prepared for preview.",
+            )
+        return pdf_bytes, {
+            "sha256": hashlib.sha256(pdf_bytes).hexdigest(),
+            "size_bytes": len(pdf_bytes),
+            "page_count": len(reader.pages),
+        }
 
     @staticmethod
     def _signature_field_candidates(parsed: DocumentParseResult) -> list[dict[str, Any]]:
