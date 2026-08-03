@@ -100,7 +100,7 @@ export function SellerSignupPage() {
       });
       if (!result.session) throw new Error("Signup session was not returned.");
       setCompanyName(company.trim());
-      loginWithSession("seller", company.trim(), result.session.access_token);
+      loginWithSession("seller", company.trim(), result.session.access_token, result.organization_id);
       navigate("/signup/complete?role=seller");
     } catch (error) {
       setSubmitError(friendlyApiError(error));

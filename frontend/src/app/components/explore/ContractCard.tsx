@@ -4,14 +4,14 @@ import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { useApp } from "../../context/AppContext";
-import { CATEGORIES, formatKRW, riskCount, type Contract } from "../../data/contracts";
+import { CATEGORIES, formatKRW, riskCount, type Contract } from "../../lib/catalog";
 
 const catKey = (c: Contract) => CATEGORIES.find((x) => x.value === c.category)?.labelKey ?? "cat.all";
 
 export function ContractCard({ contract, base, guests, from, to }: { contract: Contract; base: string; guests?: string; from?: string; to?: string }) {
   const { t } = useApp();
   const navigate = useNavigate();
-  const risks = riskCount(contract);
+  const risks = contract.attentionRequiredCount ?? riskCount(contract);
   const guestCount = parseInt(guests ?? "", 10) || 0;
   const isAccommodation = contract.category === "accommodation";
   const units = isAccommodation ? Math.ceil(guestCount / 2) : guestCount;
@@ -108,7 +108,14 @@ export function ContractCard({ contract, base, guests, from, to }: { contract: C
         <Button
           className="mt-auto w-full gap-1.5 whitespace-nowrap"
           style={{ background: "var(--navy)" }}
-          onClick={() => navigate(`${base}/${contract.id}`)}
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (from) params.set("from", from);
+            if (to) params.set("to", to);
+            if (guests) params.set("guests", guests);
+            const query = params.toString();
+            navigate(`${base}/${contract.id}${query ? `?${query}` : ""}`);
+          }}
         >
           {t("card.viewTerms")}
           <ArrowRight className="size-4" />

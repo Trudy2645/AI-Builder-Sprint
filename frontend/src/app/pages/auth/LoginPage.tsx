@@ -44,7 +44,7 @@ export function LoginPage() {
       const result = await loginWithPassword(email, password);
       if (!result.session) throw new Error("Login session was not returned.");
       const role = inferDemoRole(email);
-      loginWithSession(role, email, result.session.access_token);
+      loginWithSession(role, email, result.session.access_token, result.organization_id);
       navigate(`/${role}`);
     } catch (error) {
       if (error instanceof TypeError && isDemoEmail(email)) {
@@ -60,12 +60,15 @@ export function LoginPage() {
   };
 
   const demoLogin = async (r: Role, company: string) => {
+    setErrorMessage(null);
     try {
-      await loginWithDemoRole(r);
-      login(r, company, true);
+      const session = await loginWithDemoRole(r);
+      loginWithSession(r, company, session.accessToken, session.organizationId);
       navigate(`/${r}`);
     } catch (error) {
-      toast.error(friendlyApiError(error));
+      const message = `데모 로그인에 실패했습니다: ${friendlyApiError(error)}`;
+      setErrorMessage(message);
+      toast.error(message);
     }
   };
 

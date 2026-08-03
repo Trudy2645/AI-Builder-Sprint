@@ -177,6 +177,10 @@ export function CompletionPage() {
     );
   }
 
+  if (!bothSigned) {
+    return <div className="mx-auto max-w-[640px] rounded-xl border border-dashed p-12 text-center"><Clock className="mx-auto mb-3 size-8" style={{ color: "var(--warning)" }} /><p>모두싸인 이메일에서 서명이 완료된 뒤 계약 체결이 확정됩니다.</p><Button className="mt-4" onClick={() => navigate(`${base}/signing`)}>서명 대기 화면으로</Button></div>;
+  }
+
   return (
     <div>
       <div className="mb-5 rounded-xl border border-border bg-card p-4 sm:mb-6 sm:p-5">

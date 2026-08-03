@@ -107,6 +107,7 @@ class PublicListingCard(BaseModel):
     public_headline: str | None
     ai_summary: str | None
     base_price: Money | None
+    supply_quantity_description: str | None
     availability: Availability
     status: Literal["published", "paused"]
     contract_available: bool

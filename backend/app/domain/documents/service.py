@@ -231,6 +231,38 @@ class DocumentService:
             document_id=record.id, download_url=download_url, expires_at=expires_at
         )
 
+    async def create_buyer_listing_download_url(
+        self, listing_id: UUID, buyer_user_id: UUID
+    ) -> DocumentDownloadUrl:
+        """Sign a source PDF only for a buyer who has a contract for the listing."""
+        try:
+            record = await self._repository.get_buyer_listing_document(listing_id, buyer_user_id)
+        except DocumentRepositoryError as exc:
+            self._database_unavailable(exc)
+        if record is None:
+            raise AppError(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="PUBLIC_SOURCE_DOCUMENT_NOT_FOUND",
+                message="This published listing has no available source PDF.",
+            )
+        try:
+            download_url, expires_at = await self._storage.create_signed_download_url(
+                record.storage_bucket,
+                record.storage_object_path,
+                self._download_url_expires_seconds,
+            )
+        except StorageObjectNotFoundError as exc:
+            raise AppError(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="PUBLIC_SOURCE_DOCUMENT_NOT_FOUND",
+                message="The listing source PDF is unavailable.",
+            ) from exc
+        except StorageProviderError as exc:
+            self._storage_unavailable(exc)
+        return DocumentDownloadUrl(
+            document_id=record.id, download_url=download_url, expires_at=expires_at
+        )
+
     def _validate_upload_metadata(self, payload: DocumentUploadUrlRequest) -> tuple[str, str]:
         if payload.size_bytes > self._max_size_bytes:
             raise AppError(

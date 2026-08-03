@@ -12,11 +12,11 @@ import {
 import { useNavigate } from "react-router";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
+import { Badge } from "../../components/ui/badge";
 import { useApp } from "../../context/AppContext";
 import { useListings } from "../../store/ListingsContext";
-import { CATEGORIES, formatKRW } from "../../data/contracts";
-
-const SELLER_FALLBACK = "해운대 오션스테이";
+import { CATEGORIES, formatKRW } from "../../lib/catalog";
+import { useRequests } from "../../store/RequestsContext";
 
 interface Stat {
   key: string;
@@ -28,21 +28,51 @@ interface Stat {
   path: string;
 }
 
+type DashboardRequestStatus = "new" | "negotiating" | "signing" | "signed";
+
+const requestStatusLabel: Record<"new" | "negotiating" | "signing" | "signed", string> = {
+  new: "새 요청", negotiating: "협상 중", signing: "서명 대기", signed: "체결 완료",
+};
+
+const requestStatusTone: Record<"new" | "negotiating" | "signing" | "signed", { bg: string; color: string }> = {
+  new: { bg: "var(--info-soft)", color: "var(--ocean)" },
+  negotiating: { bg: "var(--warning-soft)", color: "var(--warning)" },
+  signing: { bg: "var(--success-soft)", color: "var(--teal)" },
+  signed: { bg: "var(--success-soft)", color: "var(--success)" },
+};
+
 export function SellerDashboardPage() {
-  const { t, companyName, isDemoSession } = useApp();
+  const { t, companyName } = useApp();
   const navigate = useNavigate();
   const { listings, publicCount } = useListings();
-  const company = companyName || (isDemoSession ? SELLER_FALLBACK : "계정 정보 없음");
+  const company = companyName || "계정 정보 없음";
+  const { requests: sellerRequests } = useRequests();
+  const newRequestCount = sellerRequests.filter((request) => request.status === "reviewing").length;
+  const negotiatingCount = sellerRequests.filter((request) => request.status === "negotiating").length;
+  const signingCount = sellerRequests.filter((request) => request.status === "signing").length;
+  const signedThisMonthCount = sellerRequests.filter((request) => request.status === "completed" && request.createdAt.slice(0, 7) === new Date().toISOString().slice(0, 7).replace("-", ".")).length;
 
   const stats: Stat[] = [
     { key: "public", labelKey: "sdash.stat.public", value: publicCount, icon: Globe, color: "var(--success)", bg: "var(--success-soft)", path: "/seller/listings?status=public" },
-    { key: "newReq", labelKey: "sdash.stat.newReq", value: 0, icon: Inbox, color: "var(--ocean)", bg: "var(--info-soft)", path: "/seller/received?status=new" },
-    { key: "negotiating", labelKey: "sdash.stat.negotiating", value: 0, icon: MessagesSquare, color: "var(--warning)", bg: "var(--warning-soft)", path: "/seller/received?status=negotiating" },
-    { key: "signing", labelKey: "sdash.stat.signing", value: 0, icon: PenLine, color: "var(--teal)", bg: "var(--success-soft)", path: "/seller/received?status=signing" },
-    { key: "monthlyClosed", labelKey: "sdash.stat.monthlyClosed", value: 0, icon: FileCheck2, color: "var(--navy)", bg: "var(--info-soft)", path: "/seller/received?status=signed" },
+    { key: "newReq", labelKey: "sdash.stat.newReq", value: newRequestCount, icon: Inbox, color: "var(--ocean)", bg: "var(--info-soft)", path: "/seller/received?status=new" },
+    { key: "negotiating", labelKey: "sdash.stat.negotiating", value: negotiatingCount, icon: MessagesSquare, color: "var(--warning)", bg: "var(--warning-soft)", path: "/seller/received?status=negotiating" },
+    { key: "signing", labelKey: "sdash.stat.signing", value: signingCount, icon: PenLine, color: "var(--teal)", bg: "var(--success-soft)", path: "/seller/received?status=signing" },
+    { key: "monthlyClosed", labelKey: "sdash.stat.monthlyClosed", value: signedThisMonthCount, icon: FileCheck2, color: "var(--navy)", bg: "var(--info-soft)", path: "/seller/received?status=signed" },
   ];
 
   const recent = listings.slice(0, 5);
+  const recentRequests = sellerRequests.slice(0, 4).flatMap((request) => {
+    const displayStatus: DashboardRequestStatus | null = request.status === "reviewing"
+      ? "new"
+      : request.status === "negotiating"
+        ? "negotiating"
+        : request.status === "signing"
+          ? "signing"
+          : request.status === "completed"
+            ? "signed"
+            : null;
+    return displayStatus ? [{ ...request, displayStatus, period: `${request.serviceStartDate ?? ""} ~ ${request.serviceEndDate ?? ""}` }] : [];
+  });
 
   return (
     <div>
@@ -85,8 +115,35 @@ export function SellerDashboardPage() {
           </div>
           <Button variant="ghost" size="sm" className="gap-1 whitespace-nowrap" onClick={() => navigate("/seller/received")}>전체 보기<ArrowRight className="size-4" /></Button>
         </div>
-        <div className="flex min-h-[160px] items-center justify-center px-6 py-10 text-center text-muted-foreground">
-          아직 받은 계약 요청이 없습니다.
+        <div className="hidden overflow-x-auto lg:block">
+          <div className="grid min-w-[900px] grid-cols-[1fr_1.2fr_1.7fr_1fr_1fr_.8fr] gap-4 border-b bg-muted/40 px-6 py-3 text-xs font-semibold text-muted-foreground">
+            <div>요청 ID</div><div>바이어</div><div>계약명</div><div>기간·수량</div><div>상태</div><div>작업</div>
+          </div>
+          {recentRequests.map((row) => (
+            <div key={row.id} className="grid min-w-[900px] grid-cols-[1fr_1.2fr_1.7fr_1fr_1fr_.8fr] items-center gap-4 border-b px-6 py-4 last:border-b-0">
+              <div className="text-xs font-semibold" style={{ color: "var(--ocean)" }}>{row.id}</div>
+              <div className="truncate font-semibold">{row.buyer}</div>
+              <div className="truncate text-sm">{row.title}</div>
+              <div className="text-sm text-muted-foreground">{row.period}</div>
+              <div><Badge className="whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge></div>
+              <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
+            </div>
+          ))}
+        </div>
+        <div className="divide-y divide-border lg:hidden">
+          {recentRequests.map((row) => (
+            <div key={row.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold" style={{ color: "var(--ocean)" }}>{row.id}</div>
+                  <div className="mt-1 truncate font-semibold">{row.title}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{row.buyer} · {row.period}</div>
+                </div>
+                <Badge className="shrink-0 whitespace-nowrap border-transparent" style={{ background: requestStatusTone[row.displayStatus].bg, color: requestStatusTone[row.displayStatus].color }}>{requestStatusLabel[row.displayStatus]}</Badge>
+              </div>
+              <Button size="sm" variant="outline" className="mt-3 w-full whitespace-nowrap" onClick={() => navigate(`/seller/received?status=${row.displayStatus}`)}>상세 보기</Button>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -99,36 +156,30 @@ export function SellerDashboardPage() {
             <ArrowRight className="size-4" />
           </Button>
         </div>
-        {recent.length === 0 ? (
-          <div className="flex min-h-[140px] items-center justify-center rounded-lg border border-dashed border-border text-center text-muted-foreground">
-            등록된 공고가 없습니다.
-          </div>
-        ) : (
-          <div className="flex flex-col divide-y divide-border">
-            {recent.map((l) => {
-              const catKey = CATEGORIES.find((c) => c.value === l.category)?.labelKey ?? "cat.all";
-              return (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => navigate("/seller/listings")}
-                  className="flex items-start gap-3 py-3 text-left transition-colors hover:bg-secondary sm:items-center sm:gap-4"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate" style={{ fontWeight: 600, color: "var(--navy)" }}>{l.productName}</div>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground" style={{ fontSize: "12px" }}>
-                      <span>{t(catKey)}</span>
-                      <span>·</span>
-                      <span>{l.priceUnit} {formatKRW(l.unitPrice)}</span>
-                      <span>·</span>
-                      <span>{l.quantityLabel}</span>
-                    </div>
+        <div className="flex flex-col divide-y divide-border">
+          {recent.map((l) => {
+            const catKey = CATEGORIES.find((c) => c.value === l.category)?.labelKey ?? "cat.all";
+            return (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => navigate("/seller/listings")}
+                className="flex items-start gap-3 py-3 text-left transition-colors hover:bg-secondary sm:items-center sm:gap-4"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate" style={{ fontWeight: 600, color: "var(--navy)" }}>{l.productName}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground" style={{ fontSize: "12px" }}>
+                    <span>{t(catKey)}</span>
+                    <span>·</span>
+                    <span>{l.priceUnit} {formatKRW(l.unitPrice)}</span>
+                    <span>·</span>
+                    <span>{l.quantityLabel}</span>
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

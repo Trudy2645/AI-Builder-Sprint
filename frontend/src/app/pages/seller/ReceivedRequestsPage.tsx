@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { FilePenLine, ArrowRight } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { PageHeader } from "../../components/PageHeader";
@@ -13,6 +14,7 @@ import {
 } from "../../components/ui/table";
 import { useApp } from "../../context/AppContext";
 import { receivedRequests, type ReceivedRequest } from "../../data/receivedRequests";
+import { friendlyApiError, getContractDetail, getSellerReceivedContracts, getSellerRevisionRequests } from "../../lib/api";
 
 type RequestTab = "all" | ReceivedRequest["status"];
 const TABS: RequestTab[] = ["all", "new", "negotiating", "signing", "signed"];
@@ -31,31 +33,55 @@ const statusTone: Record<ReceivedRequest["status"], { bg: string; color: string;
 };
 
 export function ReceivedRequestsPage() {
-  const { t, isDemoSession } = useApp();
+  const { t } = useApp();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const selected = params.get("status") as RequestTab | null;
   const tab: RequestTab = selected && TABS.includes(selected) ? selected : "all";
-  const sourceRows = isDemoSession ? receivedRequests : [];
+  const [serverRows, setServerRows] = useState<ReceivedRequest[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    void Promise.all([getSellerReceivedContracts(), getSellerRevisionRequests()]).then(([items, revisions]) => {
+      const revisionContractIds = new Set(revisions.map((item) => item.contract_id));
+      setServerRows([
+      ...items.filter((item) => !revisionContractIds.has(item.contract_id)).map((item) => ({
+      id: item.contract_id, buyer: item.buyer_name, contractId: item.contract_id, contractTitle: item.listing_title,
+      status: item.status === "signed" ? "signed" : item.status === "signing" ? "signing" : item.status === "revision_requested" ? "negotiating" : "new",
+      createdAt: item.requested_at.slice(0, 10).replaceAll("-", "."), period: `${item.service_start_date} ~ ${item.service_end_date}`,
+      estimatedAmount: item.amount_minor == null ? "계산 중" : `${item.amount_minor.toLocaleString("ko-KR")} ${item.currency ?? "KRW"}`,
+      currentVersion: "v1", revisions: [],
+      })),
+      ...revisions.map((item) => ({
+        id: item.id, buyer: item.buyer_name, contractId: item.contract_id, contractTitle: item.listing_title,
+        status: "negotiating" as const, createdAt: (item.sent_at ?? item.updated_at).slice(0, 10).replaceAll("-", "."),
+        period: "계약 조건에서 확인", estimatedAmount: "계약 조건에서 확인", currentVersion: "v1", revisions: [],
+      })),
+      ]);
+    }).catch((error: unknown) => setLoadError(friendlyApiError(error)));
+  }, []);
+  const sourceRows = serverRows.length ? serverRows : receivedRequests;
   const rows = tab === "all" ? sourceRows : sourceRows.filter((r) => r.status === tab);
   const counts = TABS.reduce<Record<string, number>>((acc, current) => {
     acc[current] = current === "all" ? sourceRows.length : sourceRows.filter((r) => r.status === current).length;
     return acc;
   }, {});
 
-  const openRequest = (request: ReceivedRequest) => {
+  const openRequest = async (request: ReceivedRequest) => {
     if (request.revisions.length > 0) {
       navigate(`/seller/received/${request.id}`);
       return;
     }
-    if (request.status === "signing") navigate("/seller/signing");
-    else if (request.status === "signed") navigate("/seller/contracts");
-    else navigate(`/seller/received/${request.id}`);
+    if (request.status === "signed") { navigate("/seller/contracts"); return; }
+    try {
+      const detail = await getContractDetail(request.contractId);
+      navigate(`/seller/signing?contractId=${detail.id}&versionId=${detail.current_version.id}`);
+    } catch (error) { setLoadError(friendlyApiError(error)); }
   };
 
   return (
     <div>
       <PageHeader title={t("recv.title")} description={t("recv.subtitle")} />
+      {loadError && <div className="mb-4 rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{loadError}</div>}
 
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map((tb) => {

@@ -1,11 +1,26 @@
-import { Check, X, GitBranch, Sparkles, AlertTriangle, Lightbulb, ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, X, GitBranch, Sparkles, AlertTriangle, Lightbulb, ArrowRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { VersionBadge } from "../contract/VersionBadge";
 import { useApp } from "../../context/AppContext";
-import type { ReceivedRevision } from "../../data/receivedRequests";
+import { friendlyApiError, generateRevisionGuidance } from "../../lib/api";
+
+export interface ReceivedRevision {
+  id: string;
+  clauseNo: string;
+  clauseTitle: string;
+  original: string;
+  requested: string;
+  reason: string;
+  aiImpact: string;
+  aiRecommend: string;
+  aiRejectReason: string;
+  aiLoading: boolean;
+  aiError: string | null;
+}
 
 export type DecisionKind = "accept" | "reject" | "counter";
 
@@ -62,7 +77,34 @@ interface Props {
 
 export function ReviewClauseCard({ index, revision, decision, onChange }: Props) {
   const { t } = useApp();
+  const [counterRecommendation, setCounterRecommendation] = useState(revision.aiRecommend);
+  const [generatingCounter, setGeneratingCounter] = useState(false);
   const set = (patch: Partial<Decision>) => onChange({ ...decision, ...patch });
+
+  useEffect(() => setCounterRecommendation(revision.aiRecommend), [revision.aiRecommend]);
+
+  const regenerateCounterRecommendation = async () => {
+    if (!decision.counterReason.trim()) {
+      toast.error(t("rvw.needCounterReason"));
+      return;
+    }
+    setGeneratingCounter(true);
+    try {
+      const result = await generateRevisionGuidance([{
+        id: revision.id,
+        clause_title: revision.clauseTitle,
+        original_text: revision.original,
+        requested_text: revision.requested,
+        reason: `바이어 수정 이유: ${revision.reason}\n셀러 제안 이유: ${decision.counterReason.trim()}`,
+      }]);
+      setCounterRecommendation(result.items[0].recommendation);
+      toast.success(t("rvw.aiRegenerated"));
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    } finally {
+      setGeneratingCounter(false);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-border bg-card p-6">
@@ -108,7 +150,9 @@ export function ReviewClauseCard({ index, revision, decision, onChange }: Props)
           <Sparkles className="size-4" />
           {t("rvw.aiImpact")}
         </div>
-        <p className="mt-1 text-foreground" style={{ fontSize: "13px", lineHeight: 1.7 }}>{revision.aiImpact}</p>
+        <p className="mt-1 text-foreground" style={{ fontSize: "13px", lineHeight: 1.7 }}>
+          {revision.aiLoading ? t("rvw.aiLoading") : revision.aiError ? t("rvw.aiFailed") : revision.aiImpact}
+        </p>
       </div>
 
       {/* Decision buttons */}
@@ -137,14 +181,27 @@ export function ReviewClauseCard({ index, revision, decision, onChange }: Props)
               <Lightbulb className="size-4" />
               {t("rvw.aiRecommend")}
             </div>
-            <p className="mt-1 text-foreground" style={{ fontSize: "13px", lineHeight: 1.7 }}>{revision.aiRecommend}</p>
+            <p className="mt-1 text-foreground" style={{ fontSize: "13px", lineHeight: 1.7 }}>
+              {revision.aiLoading ? t("rvw.aiLoading") : revision.aiError ? t("rvw.aiFailed") : counterRecommendation}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2 mr-2 gap-1.5 whitespace-nowrap"
+              disabled={generatingCounter || revision.aiLoading || !decision.counterReason.trim()}
+              onClick={() => void regenerateCounterRecommendation()}
+            >
+              {generatingCounter ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              {t("rvw.regenerateFromReason")}
+            </Button>
             <Button
               size="sm"
               variant="outline"
               className="mt-2 gap-1.5 whitespace-nowrap"
               style={{ borderColor: "var(--teal)", color: "var(--teal)" }}
+              disabled={revision.aiLoading || !counterRecommendation}
               onClick={() => {
-                set({ counterText: revision.aiRecommend });
+                set({ counterText: counterRecommendation });
                 toast.success(t("risk.applyToast"));
               }}
             >
@@ -162,7 +219,29 @@ export function ReviewClauseCard({ index, revision, decision, onChange }: Props)
 
       {/* Rejection note (optional message) */}
       {decision.kind === "reject" && (
-        <div className="mt-4 flex flex-col gap-1.5 rounded-lg border p-4" style={{ borderColor: "var(--coral)" }}>
+        <div className="mt-4 flex flex-col gap-3 rounded-lg border p-4" style={{ borderColor: "var(--coral)" }}>
+          <div className="rounded-lg p-3" style={{ background: "var(--surface)" }}>
+            <div className="flex items-center gap-1.5 whitespace-nowrap" style={{ color: "var(--ocean)", fontSize: "12px", fontWeight: 700 }}>
+              <Lightbulb className="size-4" />
+              {t("rvw.aiRejectReason")}
+            </div>
+            <p className="mt-1 text-foreground" style={{ fontSize: "13px", lineHeight: 1.7 }}>
+              {revision.aiLoading ? t("rvw.aiLoading") : revision.aiError ? t("rvw.aiFailed") : revision.aiRejectReason}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2 gap-1.5 whitespace-nowrap"
+              disabled={revision.aiLoading || Boolean(revision.aiError) || !revision.aiRejectReason}
+              onClick={() => {
+                set({ message: revision.aiRejectReason });
+                toast.success(t("risk.applyToast"));
+              }}
+            >
+              <Lightbulb className="size-4" />
+              {t("rvw.applyRejectReason")}
+            </Button>
+          </div>
           <div className="flex items-center gap-1.5 whitespace-nowrap" style={{ color: "var(--coral)", fontSize: "13px", fontWeight: 600 }}>
             <AlertTriangle className="size-4" />
             {t("rvw.message")}

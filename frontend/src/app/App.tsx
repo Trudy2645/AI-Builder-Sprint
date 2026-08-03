@@ -5,7 +5,6 @@ import { AppProvider } from "./context/AppContext";
 import { RequestsProvider } from "./store/RequestsContext";
 import { ListingsProvider } from "./store/ListingsContext";
 import { NegotiationProvider } from "./store/NegotiationContext";
-import { BuyerContractsProvider } from "./store/BuyerContractsContext";
 import { SellerProfileProvider } from "./store/SellerProfileContext";
 import { router } from "./routes";
 
@@ -14,16 +13,14 @@ export default function App() {
     <AppProvider>
       <RequestsProvider>
         <ListingsProvider>
-          <BuyerContractsProvider>
-            <SellerProfileProvider>
-              <NegotiationProvider>
-                <TooltipProvider delayDuration={200}>
-                  <RouterProvider router={router} />
-                  <Toaster />
-                </TooltipProvider>
-              </NegotiationProvider>
-            </SellerProfileProvider>
-          </BuyerContractsProvider>
+          <SellerProfileProvider>
+            <NegotiationProvider>
+              <TooltipProvider delayDuration={200}>
+                <RouterProvider router={router} />
+                <Toaster />
+              </TooltipProvider>
+            </NegotiationProvider>
+          </SellerProfileProvider>
         </ListingsProvider>
       </RequestsProvider>
     </AppProvider>

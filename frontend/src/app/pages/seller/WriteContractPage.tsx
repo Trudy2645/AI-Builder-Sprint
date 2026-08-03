@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Loader2, Sparkles, Save, Globe, FileText } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Sparkles, Globe, FileText } from "lucide-react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
 import { WizardStepper } from "../../components/listings/WizardStepper";
 import { ProductFields, SupplyFields, TermsFields } from "../../components/listings/ListingFormFields";
-import { RiskReviewStep, analyzeDraft } from "../../components/listings/RiskReviewStep";
+import { RiskReviewStep } from "../../components/listings/RiskReviewStep";
 import { PublishSettingsStep } from "../../components/listings/PublishSettingsStep";
 import { useApp } from "../../context/AppContext";
-import { useListings, createEmptyDraft, draftToListing, type ListingDraft } from "../../store/ListingsContext";
+import { createEmptyDraft, type ListingDraft, useListings } from "../../store/ListingsContext";
+import { friendlyApiError, registerPublishedSellerListing } from "../../lib/api";
 import { formatKRW } from "../../data/contracts";
 
 const STEPS = ["wz.product", "wz.supply", "wz.terms", "wz.generate", "wz.risk", "wz.publish"];
@@ -17,15 +18,24 @@ const STEPS = ["wz.product", "wz.supply", "wz.terms", "wz.generate", "wz.risk", 
 export function WriteContractPage() {
   const { t } = useApp();
   const navigate = useNavigate();
-  const { addListing } = useListings();
+  const { refreshListings } = useListings();
 
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<ListingDraft>(() => createEmptyDraft("write"));
   const [applied, setApplied] = useState<Record<string, boolean>>({});
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof ListingDraft, string>>>({});
 
-  const patch = (p: Partial<ListingDraft>) => setDraft((d) => ({ ...d, ...p }));
+  const patch = (p: Partial<ListingDraft>) => {
+    setDraft((d) => ({ ...d, ...p }));
+    setFieldErrors((current) => {
+      const next = { ...current };
+      Object.keys(p).forEach((key) => delete next[key as keyof ListingDraft]);
+      return next;
+    });
+  };
 
   const applyRisk = (field: keyof ListingDraft, value: string, id: string) => {
     patch({ [field]: value } as Partial<ListingDraft>);
@@ -44,27 +54,20 @@ export function WriteContractPage() {
 
   const isBlank = (value: unknown) => !String(value ?? "").trim();
   const validateCurrentStep = () => {
-    if (step === 0) {
-      if ([draft.productName, draft.category, draft.district].some(isBlank)) {
-        toast.error("다음 단계로 가기 전에 계약명, 상품 유형, 지역을 입력해주세요.");
-        return false;
-      }
-    }
-    if (step === 1) {
-      if ([draft.start, draft.end, draft.quantity, draft.priceUnit, draft.unitPrice].some(isBlank)) {
-        toast.error("다음 단계로 가기 전에 공급 기간, 공급 수량, 단가 기준, 단가를 입력해주세요.");
-        return false;
-      }
-      if ((parseInt(draft.unitPrice, 10) || 0) <= 0) {
-        toast.error("단가는 0원보다 큰 금액으로 입력해주세요.");
-        return false;
-      }
-    }
-    if (step === 2) {
-      if ([draft.cancellation, draft.noShow, draft.settlement, draft.liability, draft.termination].some(isBlank)) {
-        toast.error("다음 단계로 가기 전에 취소, 노쇼, 정산, 책임, 계약 해지 조건을 입력해주세요.");
-        return false;
-      }
+    const required = step === 0
+      ? ["productName", "category", "district"] as const
+      : step === 1
+        ? ["availabilityStart", "availabilityEnd", "quantity", "priceUnit", "unitPrice"] as const
+        : step === 2
+          ? ["cancellation", "noShow", "settlement", "liability", "termination"] as const
+          : [];
+    const errors: Partial<Record<keyof ListingDraft, string>> = {};
+    required.forEach((field) => { if (isBlank(draft[field])) errors[field] = "필수 입력 항목입니다."; });
+    if (step === 1 && !errors.unitPrice && (parseInt(draft.unitPrice, 10) || 0) <= 0) errors.unitPrice = "0원보다 큰 금액을 입력해 주세요.";
+    setFieldErrors(errors);
+    if (Object.keys(errors).length) {
+      toast.error("필수 항목을 모두 입력해 주세요.");
+      return false;
     }
     return true;
   };
@@ -78,7 +81,7 @@ export function WriteContractPage() {
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
 
-  const publish = (asDraft: boolean) => {
+  const publish = async () => {
     const requiredForPublish = [
       draft.productName,
       draft.category,
@@ -89,14 +92,19 @@ export function WriteContractPage() {
       draft.noShow,
       draft.settlement,
     ];
-    if (!asDraft && requiredForPublish.some((value) => !String(value).trim())) {
+    if (requiredForPublish.some((value) => !String(value).trim())) {
       toast.error("공개 전 계약명, 유형, 지역, 가격, 수량, 취소·노쇼·정산 조건을 모두 입력해주세요.");
       return;
     }
-    const risks = analyzeDraft(draft).length;
-    addListing(draftToListing(draft, asDraft ? "draft" : "public", risks));
-    toast.success(t(asDraft ? "pub.draftSaved" : "pub.published"));
-    navigate("/seller/listings");
+    setPublishing(true);
+    try {
+      await registerPublishedSellerListing(draft as Required<ListingDraft>);
+      await refreshListings();
+      toast.success(t("pub.published"));
+      navigate("/seller/listings");
+    } catch (error) {
+      toast.error(friendlyApiError(error));
+    } finally { setPublishing(false); }
   };
 
   const price = parseInt(draft.unitPrice, 10) || 0;
@@ -119,7 +127,7 @@ export function WriteContractPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("wz.product")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("write.productDesc")}</p>
-            <ProductFields draft={draft} onChange={patch} />
+            <ProductFields draft={draft} onChange={patch} errors={fieldErrors} />
           </div>
         )}
 
@@ -127,7 +135,7 @@ export function WriteContractPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("wz.supply")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("write.supplyDesc")}</p>
-            <SupplyFields draft={draft} onChange={patch} />
+            <SupplyFields draft={draft} onChange={patch} errors={fieldErrors} />
           </div>
         )}
 
@@ -135,7 +143,7 @@ export function WriteContractPage() {
           <div>
             <h3 style={{ color: "var(--navy)" }}>{t("wz.terms")}</h3>
             <p className="mt-1 mb-5 text-muted-foreground" style={{ fontSize: "14px" }}>{t("write.termsDesc")}</p>
-            <TermsFields draft={draft} onChange={patch} />
+            <TermsFields draft={draft} onChange={patch} errors={fieldErrors} />
           </div>
         )}
 
@@ -219,11 +227,7 @@ export function WriteContractPage() {
           </Button>
         ) : (
           <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-            <Button variant="outline" className="gap-1.5 whitespace-nowrap" onClick={() => publish(true)}>
-              <Save className="size-4" />
-              {t("pub.saveDraft")}
-            </Button>
-            <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => publish(false)}>
+            <Button disabled={publishing} className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={() => void publish()}>
               <Globe className="size-4" />
               {t("pub.publish")}
             </Button>

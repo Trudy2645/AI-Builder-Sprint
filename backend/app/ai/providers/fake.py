@@ -13,6 +13,7 @@ from app.ai.schemas import (
     ExtractedSection,
     FileSearchRequest,
     FileSearchResult,
+    InformationExtractionResult,
     KnowledgeFileRecord,
     LanguageModelRequest,
     ParsedBlock,
@@ -63,12 +64,20 @@ class FakeAIProvider:
             provider_request_id="fake-document-parse-request",
         )
 
-    async def extract_information(
-        self, document: DocumentInput, parsed: DocumentParseResult
-    ) -> ContractExtraction:
-        del parsed
+    async def request_information_extraction(
+        self, document: DocumentInput
+    ) -> InformationExtractionResult:
         self.calls.append(("information_extract", document.filename))
         self._raise_queued("information_extract")
+        return InformationExtractionResult(
+            values={},
+            provider_request_id="fake-information-extract-request",
+        )
+
+    def map_information_extraction(
+        self, result: InformationExtractionResult, parsed: DocumentParseResult
+    ) -> ContractExtraction:
+        del result, parsed
         if self.extraction_result is not None:
             return self.extraction_result
         missing = ExtractedSection(missing=True)
@@ -82,6 +91,12 @@ class FakeAIProvider:
             liability=missing,
             provider_request_id="fake-information-extract-request",
         )
+
+    async def extract_information(
+        self, document: DocumentInput, parsed: DocumentParseResult
+    ) -> ContractExtraction:
+        result = await self.request_information_extraction(document)
+        return self.map_information_extraction(result, parsed)
 
     async def generate_structured(
         self,

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApp } from "../context/AppContext";
 import type { Category } from "../data/contracts";
+import { changeSellerListingStatus, friendlyApiError, getSellerListings, type SellerListingSummary } from "../lib/api";
 
 // 계약 공고 상태: 임시저장 / AI 검토 필요 / 공개 중 / 공개 중지 / 기간 만료
 export type ListingStatus = "draft" | "needsReview" | "public" | "paused" | "expired";
@@ -87,80 +88,66 @@ export function createEmptyDraft(method: CreateMethod): ListingDraft {
   };
 }
 
-/** 위저드 초안을 공고 목록 항목으로 변환한다. */
-export function draftToListing(
-  draft: ListingDraft,
-  status: ListingStatus,
-  riskCount: number,
-): Omit<Listing, "id" | "updatedAt"> {
-  return {
-    productName: draft.productName || "제목 없는 공고",
-    category: (draft.category || "accommodation") as Category,
-    district: draft.district || "해운대구",
-    start: draft.availabilityStart,
-    end: draft.availabilityEnd,
-    unitPrice: parseInt(draft.unitPrice, 10) || 0,
-    priceUnit: draft.priceUnit,
-    quantityLabel: draft.quantity || "미정",
-    status,
-    method: draft.method,
-    requests: 0,
-    riskCount,
-  };
-}
-
 interface ListingsContextValue {
   listings: Listing[];
-  addListing: (l: Omit<Listing, "id" | "updatedAt">) => void;
-  updateListingStatus: (id: string, status: ListingStatus) => void;
-  deleteListing: (id: string) => void;
+  updateListingStatus: (id: string, status: ListingStatus) => Promise<void>;
+  deleteListing: (id: string) => Promise<void>;
   publicCount: number;
+  refreshListings: () => Promise<void>;
+  loadError: string | null;
 }
 
 const ListingsContext = createContext<ListingsContextValue | null>(null);
 
+function fromServer(item: SellerListingSummary): Listing {
+  const status: ListingStatus = item.status === "published" ? "public" : item.status === "processing" || item.status === "ready" ? "needsReview" : item.status === "paused" ? "paused" : item.status === "expired" ? "expired" : "draft";
+  return {
+    id: item.id, productName: item.title, category: item.category, district: item.district,
+    start: item.service_start_date ?? "", end: item.service_end_date ?? "",
+    unitPrice: item.base_price?.amount_minor ?? 0, priceUnit: item.base_price?.unit ?? "기준 단가",
+    quantityLabel: item.supply_quantity_description ?? "미정", status,
+    method: item.creation_method === "manual" ? "write" : "upload",
+    requests: item.contract_request_count, riskCount: item.attention_required_count,
+    updatedAt: item.updated_at.slice(0, 10).replaceAll("-", "."),
+  };
+}
+
 export function ListingsProvider({ children }: { children: ReactNode }) {
-  const { isDemoSession } = useApp();
+  const { currentRole } = useApp();
   const [listings, setListings] = useState<Listing[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const refreshListings = async () => {
+    const items = await getSellerListings();
+    setListings(items.map(fromServer));
+    setLoadError(null);
+  };
 
   useEffect(() => {
-    if (!isDemoSession) { setListings([]); return; }
-    try {
-      const saved = window.localStorage.getItem("busanlink.seller.listings");
-      setListings(saved ? JSON.parse(saved) as Listing[] : []);
-    } catch {
-      setListings([]);
-    }
-  }, [isDemoSession]);
-  const addListing: ListingsContextValue["addListing"] = (l) => {
-    const now = new Date();
-    const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-    setListings((prev) => {
-      const next = [{ ...l, id: `lst-${Date.now()}`, updatedAt }, ...prev];
-      window.localStorage.setItem("busanlink.seller.listings", JSON.stringify(next));
-      return next;
-    });
+    if (currentRole !== "seller") { setListings([]); return; }
+    void refreshListings().catch((error: unknown) => setLoadError(friendlyApiError(error)));
+  }, [currentRole]);
+
+  const updateListingStatus: ListingsContextValue["updateListingStatus"] = async (id, status) => {
+    await changeSellerListingStatus(id, status === "public" ? "publish" : "pause");
+    await refreshListings();
   };
 
-  const updateListingStatus: ListingsContextValue["updateListingStatus"] = (id, status) => {
-    const now = new Date();
-    const updatedAt = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")}`;
-    setListings((prev) => prev.map((listing) => listing.id === id ? { ...listing, status, updatedAt } : listing));
-  };
-
-  const deleteListing: ListingsContextValue["deleteListing"] = (id) => {
-    setListings((prev) => prev.filter((listing) => listing.id !== id));
+  const deleteListing: ListingsContextValue["deleteListing"] = async (id) => {
+    await changeSellerListingStatus(id, "archive");
+    await refreshListings();
   };
 
   const value = useMemo<ListingsContextValue>(
     () => ({
       listings,
-      addListing,
       updateListingStatus,
       deleteListing,
       publicCount: listings.filter((l) => l.status === "public").length,
+      refreshListings,
+      loadError,
     }),
-    [listings],
+    [listings, loadError],
   );
 
   return <ListingsContext.Provider value={value}>{children}</ListingsContext.Provider>;

@@ -27,8 +27,7 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { StatusBadge } from "../../components/requests/StatusBadge";
-import { maskBizNo } from "../../data/sellerProfile";
-import { useSellerProfile } from "../../store/SellerProfileContext";
+import { maskBizNo, useSellerProfile } from "../../store/SellerProfileContext";
 import { useRequests, type RequestStatus } from "../../store/RequestsContext";
 import { useListings } from "../../store/ListingsContext";
 
@@ -65,10 +64,14 @@ export function SellerMyPage() {
     setEditOpen(true);
   };
 
-  const save = () => {
-    updateProfile(form);
-    setEditOpen(false);
-    toast.success("사업자 정보가 수정되었습니다.");
+  const save = async () => {
+    try {
+      await updateProfile(form);
+      setEditOpen(false);
+      toast.success("사업자 정보가 수정되었습니다.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "사업자 정보 저장에 실패했습니다.");
+    }
   };
 
   return (
@@ -145,7 +148,7 @@ export function SellerMyPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>사업자 정보 수정</DialogTitle>
-            <DialogDescription>수정한 정보는 저장 즉시 마이페이지에 반영됩니다. (데모용 로컬 저장)</DialogDescription>
+          <DialogDescription>수정한 정보는 서버에 저장됩니다.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-1.5">
@@ -181,7 +184,7 @@ export function SellerMyPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>취소</Button>
-            <Button style={{ background: "var(--navy)" }} onClick={save}>저장</Button>
+            <Button style={{ background: "var(--navy)" }} onClick={() => void save()}>저장</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

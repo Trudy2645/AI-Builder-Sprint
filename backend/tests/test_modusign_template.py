@@ -95,6 +95,7 @@ async def test_client_sends_original_pdf_with_buyer_fields() -> None:
                 data_label="buyer_signature",
                 position={"anchor": {"text": "바이어 서명"}},
                 size={"width": 0.3, "height": 0.06},
+                signature_types=["SIGN"],
             ),
             ModusignParticipantField(
                 field_type="TEXT",
@@ -111,4 +112,5 @@ async def test_client_sends_original_pdf_with_buyer_fields() -> None:
     payload = captured["payload"]
     assert isinstance(payload, dict)
     assert payload["participants"][0]["fields"][0]["dataLabel"] == "buyer_signature"
+    assert payload["participants"][0]["fields"][0]["signatureTypes"] == ["SIGN"]
     assert payload["participants"][0]["fields"][1]["required"] is False

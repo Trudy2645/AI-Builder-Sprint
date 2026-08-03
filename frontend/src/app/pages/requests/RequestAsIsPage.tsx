@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { ArrowLeft, ArrowRight, Save, PenLine, FileCheck2, FastForward } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
+import { useEffect, useState } from "react";
+import { ArrowLeft, ArrowRight, PenLine, FileCheck2, FastForward } from "lucide-react";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/ui/button";
@@ -10,11 +10,11 @@ import { Textarea } from "../../components/ui/textarea";
 import { Checkbox } from "../../components/ui/checkbox";
 import { ContractStepper } from "../../components/contract/ContractStepper";
 import { useApp } from "../../context/AppContext";
-import { getContract, formatKRW } from "../../data/contracts";
+import { getContract, formatKRW, type Contract } from "../../data/contracts";
+import { createPublicContractRequest, friendlyApiError, getPublicListingAsContract } from "../../lib/api";
 import { buyerProfile } from "../../data/profile";
-import { useRequests } from "../../store/RequestsContext";
-import { useNegotiation } from "../../store/NegotiationContext";
 import { FieldError } from "../../components/auth/AuthFields";
+import { useRequests } from "../../store/RequestsContext";
 
 function ReadonlyRow({ label, value }: { label: string; value: string }) {
   return (
@@ -27,15 +27,25 @@ function ReadonlyRow({ label, value }: { label: string; value: string }) {
 
 export function RequestAsIsPage() {
   const { t } = useApp();
+  const { refreshRequests } = useRequests();
   const { id } = useParams();
   const navigate = useNavigate();
-  const contract = getContract(id);
-  const { addRequest } = useRequests();
-  const { startDirectSignature } = useNegotiation();
-
-  const [guests, setGuests] = useState("");
-  const [rooms, setRooms] = useState(contract?.category === "accommodation" ? "15" : "30");
-  const [nights, setNights] = useState(contract?.category === "accommodation" ? "2" : "1");
+  const [searchParams] = useSearchParams();
+  const initialFrom = searchParams.get("from") ?? "";
+  const initialTo = searchParams.get("to") ?? "";
+  const [serverContract, setServerContract] = useState<Contract | null>(null);
+  const [loading, setLoading] = useState(!getContract(id));
+  const demoContract = getContract(id);
+  useEffect(() => {
+    if (demoContract || !id) return;
+    void getPublicListingAsContract(id).then(setServerContract).catch((error: unknown) => toast.error(friendlyApiError(error))).finally(() => setLoading(false));
+  }, [demoContract, id]);
+  const contract = demoContract ?? serverContract;
+  const [guests, setGuests] = useState("1");
+  const [rooms, setRooms] = useState("1");
+  const [nights, setNights] = useState("1");
+  const [startDate, setStartDate] = useState(initialFrom || (contract?.start !== "미정" ? contract?.start ?? "" : ""));
+  const [endDate, setEndDate] = useState(initialTo || (contract?.end !== "미정" ? contract?.end ?? "" : ""));
   const currency = "KRW";
   const [name, setName] = useState(buyerProfile.contactName);
   const [email, setEmail] = useState(buyerProfile.email);
@@ -44,63 +54,51 @@ export function RequestAsIsPage() {
   const [confirmed, setConfirmed] = useState(false);
   const [confirmError, setConfirmError] = useState<string | undefined>();
 
+  useEffect(() => {
+    if (!contract) return;
+    if (!initialFrom && contract.start !== "미정") setStartDate(contract.start);
+    if (!initialTo && contract.end !== "미정") setEndDate(contract.end);
+  }, [contract, initialFrom, initialTo]);
+
+  useEffect(() => {
+    if (!startDate || !endDate) return;
+    const days = Math.round((Date.parse(`${endDate}T00:00:00`) - Date.parse(`${startDate}T00:00:00`)) / 86_400_000);
+    if (days > 0) setNights(String(days));
+  }, [startDate, endDate]);
+
   if (!contract) {
-    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">Not found</div>;
+    return <div className="rounded-xl border border-dashed p-16 text-center text-muted-foreground">{loading ? "계약 조건을 불러오는 중입니다…" : "공고를 찾을 수 없습니다."}</div>;
   }
 
   const roomsNum = parseInt(rooms, 10) || 0;
   const nightsNum = parseInt(nights, 10) || 1;
   const total = contract.unitPrice * roomsNum * nightsNum;
+  const quantityUnit = contract.quantityUnit ?? (contract.category === "accommodation" ? "room" : contract.category === "vehicle_rental" ? "vehicle" : "person");
 
-  const saveDraft = () => {
-    addRequest({
-      contractId: contract.id,
-      seller: contract.seller,
-      title: contract.title,
-      type: "asis",
-      status: "draft",
-      guests: parseInt(guests, 10) || undefined,
-      rooms: roomsNum,
-      total,
-      currency,
-      message,
-      currentVersion: "v1",
-    });
-    toast.success(t("req.draftSaved"));
-    navigate("/buyer/sent");
-  };
-
-  const submit = () => {
+  const submit = async () => {
     if (!confirmed) {
       setConfirmError("asis.needConfirm");
       return;
     }
-    const requestId = addRequest({
-      contractId: contract.id,
-      seller: contract.seller,
-      title: contract.title,
-      type: "asis",
-      status: "signing",
-      guests: parseInt(guests, 10) || undefined,
-      rooms: roomsNum,
-      total,
-      currency,
-      message,
-      currentVersion: "v1",
-      latestResponse: "셀러의 공개 조건을 그대로 수락했습니다. 바이어 전자서명 대기 중입니다.",
-    });
-    startDirectSignature(requestId, contract.id, {
-      title: contract.title,
-      seller: contract.seller,
-      period: `${contract.start} ~ ${contract.end}`,
-      total,
-      currency,
-      guests: parseInt(guests, 10) || undefined,
-      rooms: roomsNum,
-      nights: nightsNum,
-    });
-    toast.success(t("asis.readyToSign"));
-    navigate("/buyer/signing/sign");
+    if (!startDate || !endDate || endDate <= startDate) {
+      toast.error("이용 시작일과 종료일을 올바르게 입력해 주세요.");
+      return;
+    }
+    const requiredNights = Math.round((Date.parse(`${endDate}T00:00:00`) - Date.parse(`${startDate}T00:00:00`)) / 86_400_000);
+    if (nightsNum !== requiredNights) {
+      toast.error(`숙박 일수(${nightsNum}박)가 이용 기간(${requiredNights}박)과 다릅니다. 날짜 또는 숙박 일수를 맞춰 주세요.`);
+      return;
+    }
+    try {
+      await createPublicContractRequest(contract.id, {
+        people: parseInt(guests, 10) || 1, quantity: roomsNum, quantity_unit: quantityUnit,
+        nights: nightsNum, start_date: startDate, end_date: endDate, currency,
+        request_message: message, initial_request_kind: "as_is",
+      });
+      toast.success("계약 요청이 서버에 저장되었습니다. 셀러 검토가 끝난 뒤 전자서명을 진행할 수 있습니다.");
+      await refreshRequests();
+      navigate("/buyer/sent");
+    } catch (error) { toast.error(friendlyApiError(error)); }
   };
 
   return (
@@ -145,6 +143,8 @@ export function RequestAsIsPage() {
           <Label htmlFor="nights">숙박 일수</Label>
           <Input id="nights" type="number" min={1} value={nights} onChange={(e) => setNights(e.target.value)} />
         </div>
+        <div className="flex flex-col gap-1.5"><Label htmlFor="startDate">이용 시작일 *</Label><Input id="startDate" type="date" min={contract.start !== "미정" ? contract.start : undefined} max={contract.end !== "미정" ? contract.end : undefined} value={startDate} onChange={(e) => setStartDate(e.target.value)} /><span className="text-xs text-muted-foreground">공고 가능 기간 안에서 선택하세요.</span></div>
+        <div className="flex flex-col gap-1.5"><Label htmlFor="endDate">이용 종료일 *</Label><Input id="endDate" type="date" min={contract.start !== "미정" ? contract.start : undefined} max={contract.end !== "미정" ? contract.end : undefined} value={endDate} onChange={(e) => setEndDate(e.target.value)} /><span className="text-xs text-muted-foreground">공고 종료일과 같을 필요는 없습니다.</span></div>
         <div className="flex flex-col gap-1.5">
           <Label>{t("asis.currency")}</Label>
           <div className="flex h-9 items-center rounded-md px-3 text-sm" style={{ background: "var(--muted)" }}>
@@ -207,10 +207,6 @@ export function RequestAsIsPage() {
         <Button variant="ghost" className="gap-1.5 whitespace-nowrap" onClick={() => navigate(`/buyer/explore/${contract.id}/document`)}>
           <ArrowLeft className="size-4" />
           {t("req.exit")}
-        </Button>
-        <Button variant="outline" className="gap-1.5 whitespace-nowrap" onClick={saveDraft}>
-          <Save className="size-4" />
-          {t("req.saveDraft")}
         </Button>
         <Button className="gap-1.5 whitespace-nowrap" style={{ background: "var(--navy)" }} onClick={submit}>
           <PenLine className="size-4" />

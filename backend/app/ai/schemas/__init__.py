@@ -20,6 +20,7 @@ from app.ai.schemas.providers import (
     FileSearchHit,
     FileSearchRequest,
     FileSearchResult,
+    InformationExtractionResult,
     KnowledgeFileRecord,
     LanguageModelRequest,
     ListingMapping,
@@ -28,6 +29,7 @@ from app.ai.schemas.providers import (
     VectorStoreFileRecord,
     VectorStoreRecord,
 )
+from app.ai.schemas.public_summary import PublicSummaryOutput
 
 __all__ = [
     "BoundingBox",
@@ -44,6 +46,7 @@ __all__ = [
     "FileSearchHit",
     "FileSearchRequest",
     "FileSearchResult",
+    "InformationExtractionResult",
     "KnowledgeFileRecord",
     "GeneratedContractClause",
     "GeneratedContractDraft",
@@ -53,6 +56,7 @@ __all__ = [
     "LocalizedClause",
     "LocalizedFinding",
     "LocalizedPublicContent",
+    "PublicSummaryOutput",
     "ParsedBlock",
     "ParsedPage",
 ]

@@ -28,7 +28,6 @@ import {
 import { useApp } from "../../context/AppContext";
 import {
   CATEGORIES,
-  contracts as demoContracts,
   DEMO_SERVER_IDS,
   DISTRICTS,
   formatKRW,
@@ -38,7 +37,7 @@ import {
 import { friendlyApiError, getPublicListings, type PublicListing } from "../../lib/api";
 
 type Sort = "recommended" | "latest" | "popular" | "priceLow" | "priceHigh";
-const PRICE_MAX = 250000;
+const PRICE_MAX = 10_000_000;
 const HIDDEN_DEMO_LISTING_IDS = new Set(Object.values(DEMO_SERVER_IDS));
 const CATEGORY_VALUES = CATEGORIES.filter((category): category is { value: Category; labelKey: string } => category.value !== "all");
 
@@ -55,7 +54,6 @@ const categoryByApiCategory: Record<PublicListing["category"], Category> = {
 };
 
 function toContract(listing: PublicListing): Contract {
-  const demo = demoContracts.find((item) => DEMO_SERVER_IDS[item.id] === listing.id);
   const price = listing.base_price?.amount_minor ?? 0;
   const currency = listing.base_price?.currency ?? "KRW";
   const period = `${listing.availability.start_date ?? "미정"} ~ ${listing.availability.end_date ?? "미정"}`;
@@ -69,15 +67,15 @@ function toContract(listing: PublicListing): Contract {
     end: listing.availability.end_date ?? "미정",
     unitPrice: price,
     priceUnit: listing.base_price?.unit ?? "기준 단가",
-    quantityLabel: demo?.quantityLabel ?? "상세 페이지에서 공급 조건을 확인하세요",
-    capacity: demo?.capacity ?? Number.MAX_SAFE_INTEGER,
+    quantityLabel: listing.supply_quantity_description ?? "미정",
+    capacity: Number.MAX_SAFE_INTEGER,
     available: listing.contract_available,
-    popularity: demo?.popularity ?? 0,
-    createdOrder: demo?.createdOrder ?? 0,
-    recommendScore: demo?.recommendScore ?? 0,
-    image: listing.hero_image_url ?? demo?.image ?? "",
-    aiSummary: listing.ai_summary?.split("\n") ?? demo?.aiSummary ?? ["AI 요약이 아직 준비되지 않았습니다."],
-    details: demo?.details ?? {
+    popularity: 0,
+    createdOrder: 0,
+    recommendScore: 0,
+    image: listing.hero_image_url ?? "",
+    aiSummary: listing.ai_summary?.split("\n") ?? ["AI 요약이 아직 준비되지 않았습니다."],
+    details: {
       period,
       supplyQuantity: "상세 페이지에서 확인",
       unitPrice: `${price.toLocaleString("ko-KR")} ${currency}`,
@@ -85,7 +83,7 @@ function toContract(listing: PublicListing): Contract {
       noShow: "상세 페이지에서 확인",
       settlement: "상세 페이지에서 확인",
     },
-    clauses: demo?.clauses ?? [],
+    clauses: [],
   };
 }
 
@@ -117,7 +115,7 @@ export function ExploreView({ base }: { base: string }) {
   const [guests, setGuests] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [price, setPrice] = useState<[number, number]>([0, PRICE_MAX]);
+  const [price, setPrice] = useState<[number, number] | null>(null);
   const [availableOnly, setAvailableOnly] = useState(false);
   const [sort, setSort] = useState<Sort>("recommended");
   const [serverContracts, setServerContracts] = useState<Contract[]>([]);
@@ -141,9 +139,8 @@ export function ExploreView({ base }: { base: string }) {
       .catch((error: unknown) => { if (active) setLoadError(friendlyApiError(error)); })
       .finally(() => { if (active) setLoading(false); });
     refresh();
-    const timer = window.setInterval(refresh, 5000);
     window.addEventListener("focus", refresh);
-    return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+    return () => { active = false; window.removeEventListener("focus", refresh); };
   }, []);
 
   const reset = () => {
@@ -153,7 +150,7 @@ export function ExploreView({ base }: { base: string }) {
     setGuests("");
     setFrom("");
     setTo("");
-    setPrice([0, PRICE_MAX]);
+    setPrice(null);
     setAvailableOnly(false);
   };
 
@@ -167,7 +164,7 @@ export function ExploreView({ base }: { base: string }) {
       if (!Number.isNaN(g) && g > 0 && c.capacity < g) return false;
       if (from && toDate(c.end) < new Date(from)) return false;
       if (to && toDate(c.start) > new Date(to)) return false;
-      if (c.unitPrice < price[0] || c.unitPrice > price[1]) return false;
+      if (price && (c.unitPrice < price[0] || c.unitPrice > price[1])) return false;
       if (availableOnly && !c.available) return false;
       return true;
     });
@@ -182,7 +179,7 @@ export function ExploreView({ base }: { base: string }) {
     return [...list].sort(sorters[sort]);
   }, [search, selectedCategories, district, guests, from, to, price, availableOnly, sort, serverContracts]);
 
-  const hasPriceFilter = price[0] > 0 || price[1] < PRICE_MAX;
+  const hasPriceFilter = price !== null;
   const activeFilterCount = [
     selectedCategories.length > 0,
     district !== "all",
@@ -297,7 +294,7 @@ export function ExploreView({ base }: { base: string }) {
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="h-10 w-full gap-2 rounded-lg whitespace-nowrap sm:w-auto">
                     <Banknote className="size-4 text-muted-foreground" />
-                    {hasPriceFilter ? `${formatKRW(price[0])} ~ ${formatKRW(price[1])}` : t("filter.priceShort")}
+                    {price ? `${formatKRW(price[0])} ~ ${formatKRW(price[1])}` : t("filter.priceShort")}
                     <ChevronDown className="size-3.5 opacity-60" />
                   </Button>
                 </PopoverTrigger>
@@ -307,10 +304,10 @@ export function ExploreView({ base }: { base: string }) {
                       <div style={{ fontWeight: 700, color: "var(--navy)" }}>{t("filter.priceTitle")}</div>
                       <p className="mt-1 text-muted-foreground" style={{ fontSize: "12px" }}>{t("filter.priceDesc")}</p>
                     </div>
-                    <Slider min={0} max={PRICE_MAX} step={5000} value={price} onValueChange={(v) => setPrice([v[0], v[1]] as [number, number])} />
+                    <Slider min={0} max={PRICE_MAX} step={5000} value={price ?? [0, PRICE_MAX]} onValueChange={(v) => setPrice([v[0], v[1]] as [number, number])} />
                     <div className="flex justify-between whitespace-nowrap text-muted-foreground" style={{ fontSize: "12px" }}>
-                      <span>{formatKRW(price[0])}</span>
-                      <span>{formatKRW(price[1])}{price[1] === PRICE_MAX ? "+" : ""}</span>
+                      <span>{formatKRW(price?.[0] ?? 0)}</span>
+                      <span>{formatKRW(price?.[1] ?? PRICE_MAX)}{(price?.[1] ?? PRICE_MAX) === PRICE_MAX ? "+" : ""}</span>
                     </div>
                   </div>
                 </PopoverContent>
@@ -338,7 +335,7 @@ export function ExploreView({ base }: { base: string }) {
                 {district !== "all" && <FilterChip label={district} onRemove={() => setDistrict("all")} />}
                 {!!guests && <FilterChip label={`${guests}${t("filter.peopleUnit")}`} onRemove={() => setGuests("")} />}
                 {(from || to) && <FilterChip label={`${from || t("filter.from")} ~ ${to || t("filter.to")}`} onRemove={() => { setFrom(""); setTo(""); }} />}
-                {hasPriceFilter && <FilterChip label={`${formatKRW(price[0])} ~ ${formatKRW(price[1])}`} onRemove={() => setPrice([0, PRICE_MAX])} />}
+                {price && <FilterChip label={`${formatKRW(price[0])} ~ ${formatKRW(price[1])}`} onRemove={() => setPrice(null)} />}
                 {availableOnly && <FilterChip label={t("status.available")} onRemove={() => setAvailableOnly(false)} />}
               </div>
             )}

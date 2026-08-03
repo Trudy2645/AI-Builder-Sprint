@@ -8,7 +8,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useApp } from "../../context/AppContext";
-import type { ChangeLabel } from "../../data/negotiation";
+type ChangeLabel = "deleted" | "added" | "priceChange" | "periodChange" | "riskUp" | "riskDown";
 
 // 변경 라벨은 색상 + 아이콘 + 텍스트로 구분한다 (색상만으로 구분하지 않음).
 const config: Record<ChangeLabel, { icon: LucideIcon; color: string; bg: string; key: string }> = {

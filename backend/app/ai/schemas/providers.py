@@ -49,6 +49,17 @@ class DocumentParseResult(BaseModel):
     model_name: str = "document-parse"
 
 
+class InformationExtractionResult(BaseModel):
+    """Provider response captured before Document Parse provenance is applied."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    values: dict[str, Any]
+    additional_values: dict[str, Any] = Field(default_factory=dict)
+    provider_request_id: str | None = None
+    model_name: str = "information-extract"
+
+
 class ExtractedValue(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

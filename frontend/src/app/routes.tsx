@@ -30,6 +30,7 @@ import { FinalApprovePage } from "./pages/negotiation/FinalApprovePage";
 import { ESignaturePage } from "./pages/negotiation/ESignaturePage";
 import { CompletionPage } from "./pages/negotiation/CompletionPage";
 import { NegotiatingPage } from "./pages/negotiation/NegotiatingPage";
+import { VersionComparePage } from "./pages/negotiation/VersionComparePage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { buyerNav, sellerNav } from "./config/nav";
 import { useApp, type Role } from "./context/AppContext";
@@ -64,6 +65,7 @@ const buyerNegotiationRoutes = [
 // Mounted under both /buyer and /seller; pages detect the role from the URL.
 const signingRoutes = [
   { path: "signing", element: <FinalApprovePage /> },
+  { path: "signing/compare", element: <VersionComparePage /> },
   { path: "signing/sign", element: <ESignaturePage /> },
   { path: "signing/complete", element: <CompletionPage /> },
 ];

@@ -343,7 +343,9 @@ async def test_upstage_maps_universal_extraction_values_and_provenance() -> None
         ]
     )
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        result = await provider(client).extract_information(document(), parsed)
+        upstage = provider(client)
+        extraction_result = await upstage.request_information_extraction(document())
+        result = upstage.map_information_extraction(extraction_result, parsed)
 
     amount = result.price.fields["amount_minor"]
     assert amount.value == 145000
@@ -360,3 +362,33 @@ async def test_upstage_maps_universal_extraction_values_and_provenance() -> None
     assert result.price.fields["currency"].confidence == 0.0
     assert result.refund.missing is True
     assert result.provider_request_id == "extract-request"
+
+
+def test_upstage_keeps_usable_values_when_location_or_date_format_is_imperfect() -> None:
+    parsed = DocumentParseResult(
+        pages=[ParsedPage(page_number=1, blocks=[])],
+    )
+
+    result = UpstageAIProvider._map_contract_extraction(
+        {
+            "price_amount_minor": "145,000원",
+            "service_start_date": "2026년 8월 3일",
+            "service_end_date": "2026.08.05",
+        },
+        {
+            "price_amount_minor": {
+                "page": 0,
+                "coordinates": {"x": "unknown", "y": 1, "width": 2, "height": 3},
+            },
+            "service_start_date": {"page": 99},
+        },
+        parsed,
+        "extract-request",
+    )
+
+    assert result.price.fields["amount_minor"].value == 145000
+    assert result.price.fields["amount_minor"].source_page is None
+    assert result.price.fields["amount_minor"].bbox is None
+    assert result.service_period.fields["start_date"].value == "2026-08-03"
+    assert result.service_period.fields["start_date"].source_page is None
+    assert result.service_period.fields["end_date"].value == "2026-08-05"
