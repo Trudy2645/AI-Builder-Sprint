@@ -13,8 +13,8 @@ from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.exchange_rates import FakeExchangeRateProvider
 from app.repositories.contracts import (
-    ContractRepositoryUnavailableError,
     ContractApprovalOrderError,
+    ContractRepositoryUnavailableError,
     ContractStateConflictError,
     ContractVersionApprovalAccessError,
     ContractVersionApprovalContextRecord,
@@ -215,10 +215,7 @@ def test_buyer_can_request_seller_final_approval(
     approval_client: TestClient,
     approval_repository: FakeContractApprovalRepository,
 ) -> None:
-    url = (
-        f"/api/v1/contracts/{CONTRACT_ID}/versions/{CURRENT_VERSION_ID}"
-        "/final-approval-requests"
-    )
+    url = f"/api/v1/contracts/{CONTRACT_ID}/versions/{CURRENT_VERSION_ID}/final-approval-requests"
 
     first = approval_client.post(url, headers=buyer_headers(app))
     second = approval_client.post(url, headers=buyer_headers(app))

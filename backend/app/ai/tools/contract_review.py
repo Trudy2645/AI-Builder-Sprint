@@ -48,9 +48,7 @@ class ContractReviewTools:
         self._clauses = clauses
         self._clause_map = {str(clause.id): clause for clause in clauses}
         self._clause_key_map = {
-            clause.clause_key: clause
-            for clause in clauses
-            if clause.clause_key
+            clause.clause_key: clause for clause in clauses if clause.clause_key
         }
         self._category = category
         self._provider = provider
