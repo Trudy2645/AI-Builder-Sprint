@@ -119,6 +119,7 @@ interface RiskReviewStepProps {
   findings?: ContractReviewFinding[] | null;
   clauses?: ListingClause[];
   loading?: boolean;
+  elapsedSeconds?: number;
   error?: string | null;
   onRetry?: () => void;
 }
@@ -165,6 +166,7 @@ export function RiskReviewStep({
   findings,
   clauses = [],
   loading = false,
+  elapsedSeconds = 0,
   error = null,
   onRetry,
 }: RiskReviewStepProps) {
@@ -179,6 +181,11 @@ export function RiskReviewStep({
         <div>
           <p style={{ color: "var(--navy)", fontWeight: 700 }}>AI가 계약서 조항을 검토하고 있습니다.</p>
           <p className="mt-1 text-sm text-muted-foreground">OCR로 추출한 조항과 계약 조건을 바탕으로 위험 요소를 분석하는 중입니다.</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {elapsedSeconds > 30
+              ? `AI 서버 응답을 기다리는 중입니다 · ${elapsedSeconds}초 경과`
+              : `보통 1~2분 정도 걸립니다 · ${elapsedSeconds}초 경과`}
+          </p>
         </div>
       </div>
     );

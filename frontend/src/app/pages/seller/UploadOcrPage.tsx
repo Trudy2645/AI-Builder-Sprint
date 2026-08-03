@@ -25,6 +25,7 @@ import {
 } from "../../lib/api";
 
 const STEPS = ["wz.upload", "wz.ocr", "wz.confirm", "wz.risk", "wz.publish"];
+const RISK_REVIEW_TIMEOUT_MS = 180_000;
 
 type ListingCandidate = {
   title?: string;
@@ -36,18 +37,39 @@ function stringValue(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
 }
 
+function dateValue(value: unknown): string {
+  const text = stringValue(value);
+  return text.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? "";
+}
+
+function displayPriceUnit(value: unknown): string {
+  const unit = stringValue(value);
+  const labels: Record<string, string> = {
+    room_night: "객실당",
+    room: "1동당",
+    person: "1인당",
+    seat: "1좌석당",
+    team: "1팀당",
+  };
+  return labels[unit] ?? (unit || "1인당");
+}
+
 function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDraft> {
   const terms = candidate?.terms ?? {};
   const cancellation = stringValue(terms.cancellation_policy);
   const refund = stringValue(terms.refund_policy);
+  const availabilityStart = dateValue(terms.service_start_date);
+  const availabilityEnd = dateValue(terms.service_end_date);
   return {
     productName: candidate?.title ?? "",
     category: candidate?.category ?? "accommodation",
     district: stringValue(terms.district) || "해운대구",
-    start: "",
-    end: "",
+    availabilityStart,
+    availabilityEnd,
+    start: availabilityStart,
+    end: availabilityEnd,
     unitPrice: stringValue(terms.base_price_amount_minor),
-    priceUnit: stringValue(terms.price_unit) || "1인당",
+    priceUnit: displayPriceUnit(terms.price_unit),
     quantity: stringValue(terms.quantity) || "공급 수량은 바이어 요청 시 확정",
     cancellation,
     // Contracts often state cancellation and refund in one combined clause.
@@ -56,6 +78,7 @@ function candidateToDraft(candidate: ListingCandidate | null): Partial<ListingDr
     settlement: stringValue(terms.settlement_terms) || "계약서 기준",
     liability: stringValue(terms.liability_policy),
     termination: stringValue(terms.termination_policy),
+    special: stringValue(terms.special_terms),
   };
 }
 
@@ -75,6 +98,7 @@ export function UploadOcrPage() {
   const [riskFindings, setRiskFindings] = useState<ContractReviewFinding[] | null>(null);
   const [riskClauses, setRiskClauses] = useState<Array<{ id: string; clause_order: number; title: string; body: string }>>([]);
   const [riskLoading, setRiskLoading] = useState(false);
+  const [riskElapsedSeconds, setRiskElapsedSeconds] = useState(0);
   const [riskError, setRiskError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof ListingDraft, string>>>({});
@@ -127,12 +151,17 @@ export function UploadOcrPage() {
 
   const runRiskReview = async (reviewDraft: ListingDraft, listing: { id: string; versionNo: number }) => {
     setRiskLoading(true);
+    setRiskElapsedSeconds(0);
     setRiskError(null);
     setRiskFindings(null);
+    const riskStartedAt = Date.now();
+    const riskTimer = window.setInterval(() => {
+      setRiskElapsedSeconds(Math.floor((Date.now() - riskStartedAt) / 1000));
+    }, 1000);
     try {
       const saved = await updateSellerListingTerms(
         listing.id,
-        sellerListingTerms(reviewDraft as Required<ListingDraft>),
+        sellerListingTerms(reviewDraft),
         listing.versionNo,
       );
       const versionId = saved.current_version.id;
@@ -143,7 +172,8 @@ export function UploadOcrPage() {
 
       const accepted = await startSellerListingReview(listing.id, versionId);
       let job = await getAIJob(accepted.job_id);
-      for (let attempt = 0; attempt < 45; attempt += 1) {
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < RISK_REVIEW_TIMEOUT_MS) {
         if (job.status === "failed") {
           throw new Error(job.failure_code ? `AI 분석에 실패했습니다 (${job.failure_code}).` : "AI 분석에 실패했습니다.");
         }
@@ -155,14 +185,15 @@ export function UploadOcrPage() {
           }
           if (run.status === "failed") throw new Error("AI 계약 검토가 실패했습니다.");
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
         job = await getAIJob(accepted.job_id);
       }
-      throw new Error("AI 위험 검토 시간이 초과되었습니다. 다시 시도해 주세요.");
+      throw new Error("AI 위험 검토가 3분 안에 끝나지 않았습니다. 작업은 백그라운드에서 계속될 수 있으니 잠시 후 다시 확인해 주세요.");
     } catch (error) {
       setRiskFindings(null);
       setRiskError(error instanceof ApiError ? friendlyApiError(error) : error instanceof Error ? error.message : friendlyApiError(error));
     } finally {
+      window.clearInterval(riskTimer);
       setRiskLoading(false);
     }
   };
@@ -211,7 +242,14 @@ export function UploadOcrPage() {
     if (!processedListing) { toast.error("OCR 결과가 없습니다. 다시 분석해 주세요."); return; }
     setPublishing(true);
     try {
-      await registerPublishedSellerListing({ ...draft, listingId: processedListing.id, baseVersionNo: processedListing.versionNo, sourceDocumentId: processedListing.documentId } as Required<ListingDraft>);
+      const publishDraft = {
+        ...draft,
+        category: draft.category as Exclude<ListingDraft["category"], "">,
+        listingId: processedListing.id,
+        baseVersionNo: processedListing.versionNo,
+        sourceDocumentId: processedListing.documentId,
+      };
+      await registerPublishedSellerListing(publishDraft);
       await refreshListings();
       toast.success(t("pub.published"));
       navigate("/seller/listings");
@@ -345,6 +383,7 @@ export function UploadOcrPage() {
               findings={riskFindings}
               clauses={riskClauses}
               loading={riskLoading}
+              elapsedSeconds={riskElapsedSeconds}
               error={riskError}
               onRetry={() => {
                 if (processedListing) void runRiskReview(draft, processedListing);

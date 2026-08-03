@@ -276,6 +276,24 @@ export type SellerListingDraftInput = {
   available: boolean;
 };
 
+export type SellerListingTermsInput = Pick<
+  SellerListingDraftInput,
+  | "availabilityStart"
+  | "availabilityEnd"
+  | "quantity"
+  | "unitPrice"
+  | "priceUnit"
+  | "minQty"
+  | "maxQty"
+  | "cancellation"
+  | "noShow"
+  | "settlement"
+  | "liability"
+  | "termination"
+  | "special"
+  | "available"
+>;
+
 const PRICE_UNIT_MAP: Record<string, { apiUnit: string; quantityUnit: string }> = {
   "객실당": { apiUnit: "room_night", quantityUnit: "room" },
   "1인당": { apiUnit: "person", quantityUnit: "person" },
@@ -291,7 +309,7 @@ function positiveInteger(value: string): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function sellerListingTerms(draft: SellerListingDraftInput): Record<string, unknown> {
+export function sellerListingTerms(draft: SellerListingTermsInput): Record<string, unknown> {
   const priceUnit = PRICE_UNIT_MAP[draft.priceUnit] ?? PRICE_UNIT_MAP["1인당"];
   return {
     service_start_date: draft.availabilityStart || null,
@@ -336,7 +354,7 @@ export async function updateSellerListingTerms(
   listingId: string,
   terms: Record<string, unknown> = {},
   baseVersionNo = 1,
-): Promise<void> {
+): Promise<SellerListingDetail> {
   const session = getApiSession();
   const body = {
     ...terms,
@@ -356,7 +374,7 @@ export async function updateSellerListingTerms(
     liability_policy: terms.liability_policy == null ? null : String(terms.liability_policy),
     termination_policy: terms.termination_policy == null ? null : String(terms.termination_policy),
   };
-  await apiFetch(`/seller/listings/${listingId}/terms`, {
+  return apiFetch<SellerListingDetail>(`/seller/listings/${listingId}/terms`, {
     method: "PATCH",
     headers: authenticatedHeaders(session, { "Content-Type": "application/json" }),
     body: JSON.stringify({ base_version_no: baseVersionNo, terms: body }),
