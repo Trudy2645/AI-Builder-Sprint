@@ -13,8 +13,8 @@ from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.exchange_rates import FakeExchangeRateProvider
 from app.repositories.contracts import (
-    ContractRepositoryUnavailableError,
     ContractApprovalOrderError,
+    ContractRepositoryUnavailableError,
     ContractStateConflictError,
     ContractVersionApprovalAccessError,
     ContractVersionApprovalContextRecord,

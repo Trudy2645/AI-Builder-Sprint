@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, Response, status
 
 from app.api.dependencies import (
     get_contract_review_service,
@@ -23,12 +23,13 @@ from app.schemas.contracts import (
     ContractBucket,
     ContractCancelResponse,
     ContractDetail,
+    ContractFinalApprovalRequestResponse,
     ContractRequestCreate,
     ContractRequestCreated,
+    ContractSignatureDispatchCreate,
     ContractSignatureRequestCreate,
     ContractVersionApprovalsResponse,
     ContractVersionApproveResponse,
-    ContractFinalApprovalRequestResponse,
     SellerContractListItem,
     SellerDashboard,
     SignatureRequestCreated,
@@ -191,6 +192,7 @@ async def dispatch_contract_signature_request(
     settings: Annotated[Settings, Depends(get_settings)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)],
     organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+    payload: ContractSignatureDispatchCreate | None = None,
 ) -> SuccessEnvelope[SignatureRequestCreated]:
     result = await service.dispatch_signature_request_from_snapshots(
         contract_id,
@@ -201,8 +203,33 @@ async def dispatch_contract_signature_request(
         client,
         settings.modusign_template_id,
         storage,
+        manual_fields=[field.model_dump() for field in (payload.fields if payload else [])],
     )
     return typed_envelope(request, result)
+
+
+@router.get("/contracts/{contract_id}/versions/{version_id}/signature-source")
+async def get_signature_source_pdf(
+    contract_id: UUID,
+    version_id: UUID,
+    actor: Annotated[AuthenticatedUser, Depends(get_current_user)],
+    service: Annotated[ContractService, Depends(get_contract_service)],
+    storage: Annotated[StorageProvider, Depends(get_storage_provider)],
+    organization_id: Annotated[str | None, Header(alias="X-Organization-Id")] = None,
+) -> Response:
+    """Return the exact immutable bytes that will be sent to Modusign."""
+    pdf_bytes, metadata = await service.get_signature_source_pdf(
+        contract_id, version_id, actor, organization_id, storage
+    )
+    return Response(
+        pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "X-BusanLink-Pdf-Sha256": metadata["sha256"],
+            "X-BusanLink-Pdf-Bytes": str(metadata["size_bytes"]),
+            "X-BusanLink-Pdf-Pages": str(metadata["page_count"]),
+        },
+    )
 
 
 @router.get(

@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.errors import AppError
 from app.domain.modusign.service import ModusignService
@@ -31,6 +32,7 @@ class Client:
     async def create_signature_request_from_pdf(self, **kwargs):
         assert kwargs["pdf_bytes"].startswith(b"%PDF")
         assert kwargs["buyer"].email == "buyer@example.com"
+        assert kwargs["buyer_fields"][0].signature_types == ["SIGN"]
         return {"id": "modu-1", "title": kwargs["title"], "status": "ON_PROCESSING"}
 
 
@@ -72,6 +74,7 @@ async def test_create_from_document_reads_original_and_sends_buyer_fields():
                 "field_type": "SIGNATURE",
                 "data_label": "buyer_signature",
                 "position": {"anchor": {"text": "바이어 서명"}},
+                "size": {"width": 0.15, "height": 0.05},
             }
         ],
     )
@@ -79,6 +82,23 @@ async def test_create_from_document_reads_original_and_sends_buyer_fields():
         payload, AuthenticatedUser(uuid4(), "buyer@example.com"), str(organization_id)
     )
     assert result.document_id == "modu-1"
+
+
+def test_signature_field_rejects_coordinates_outside_page() -> None:
+    with pytest.raises(ValidationError, match="must fit inside the page"):
+        SignatureRequestFromDocumentCreate(
+            document_id=str(uuid4()),
+            title="숙박 계약",
+            buyer={"role": "바이어", "name": "Buyer", "email": "buyer@example.com"},
+            fields=[
+                {
+                    "field_type": "SIGNATURE",
+                    "data_label": "buyer_signature",
+                    "position": {"page": 1, "x": 0.9, "y": 0.5},
+                    "size": {"width": 0.2, "height": 0.06},
+                }
+            ],
+        )
 
 
 @pytest.mark.asyncio
@@ -114,6 +134,7 @@ async def test_create_from_document_rejects_wrong_organization():
                 "field_type": "SIGNATURE",
                 "data_label": "buyer_signature",
                 "position": {"page": 1, "x": 0.5, "y": 0.5},
+                "size": {"width": 0.20, "height": 0.06},
             }
         ],
     )

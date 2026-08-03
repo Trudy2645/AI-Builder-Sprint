@@ -48,7 +48,9 @@ class ModusignParticipantField:
     size: dict[str, float] | None = None
     required: bool = True
     signature_types: list[str] | None = None
+    display_format: str | None = None
     text_style: dict[str, Any] | None = None
+    options: list[dict[str, str]] | None = None
 
     def as_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -61,8 +63,15 @@ class ModusignParticipantField:
             payload["size"] = self.size
         if self.signature_types is not None:
             payload["signatureTypes"] = self.signature_types
+        display_format = self.display_format
+        if display_format is None and self.field_type in {"DATE", "SIGNING_DATE"}:
+            display_format = "YYYY년 MM월 DD일"
+        if display_format is not None:
+            payload["displayFormat"] = display_format
         if self.text_style is not None:
             payload["textStyle"] = self.text_style
+        if self.options is not None:
+            payload["options"] = self.options
         return payload
 
 

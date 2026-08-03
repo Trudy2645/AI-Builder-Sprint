@@ -13,7 +13,11 @@ from pypdf.errors import PdfReadError
 
 from app.ai.schemas import DocumentParseResult
 from app.core.errors import AppError
-from app.domain.contracts.signature_fields import signature_field_candidates
+from app.domain.contracts.signature_fields import (
+    SignatureFieldPositionError,
+    select_signature_field,
+    signature_field_candidates,
+)
 from app.domain.pricing.service import PriceCalculator
 from app.integrations.auth import AuthenticatedUser
 from app.integrations.modusign import (
@@ -29,8 +33,8 @@ from app.integrations.storage import (
     StorageProviderError,
 )
 from app.repositories.contracts import (
-    ContractCreatedRecord,
     ContractApprovalOrderError,
+    ContractCreatedRecord,
     ContractRecord,
     ContractRepository,
     ContractRepositoryUnavailableError,
@@ -51,6 +55,7 @@ from app.schemas.contracts import (
     ContractCancelResponse,
     ContractClauseResponse,
     ContractDetail,
+    ContractFinalApprovalRequestResponse,
     ContractPartySummary,
     ContractRequestCreate,
     ContractRequestCreated,
@@ -59,7 +64,6 @@ from app.schemas.contracts import (
     ContractTermsResponse,
     ContractVersionApprovalsResponse,
     ContractVersionApproveResponse,
-    ContractFinalApprovalRequestResponse,
     ContractVersionPartyApproval,
     ContractVersionResponse,
     InitialRequestKind,
@@ -139,6 +143,18 @@ class ContractService:
                     status.HTTP_404_NOT_FOUND,
                     "PROFILE_NOT_FOUND",
                     "Buyer profile was not found.",
+                )
+            try:
+                is_listing_seller = await self._repository.is_seller_member(
+                    actor.id, source.seller_organization_id
+                )
+            except ContractRepositoryUnavailableError as exc:
+                self._database_unavailable(exc)
+            if is_listing_seller:
+                self._raise(
+                    status.HTTP_403_FORBIDDEN,
+                    "CONTRACT_PARTY_CONFLICT",
+                    "A seller organization member cannot create a contract as the buyer.",
                 )
             estimate = await self._price_calculator.calculate(
                 ListingPriceTermsRecord(
@@ -356,7 +372,9 @@ class ContractService:
             raise AppError(
                 status_code=status.HTTP_409_CONFLICT,
                 code="BUYER_APPROVAL_REQUIRED",
-                message="The buyer must approve the final contract before the seller can approve it.",
+                message=(
+                    "The buyer must approve the final contract before the seller can approve it."
+                ),
             ) from exc
         except ContractVersionApprovalAccessError as exc:
             raise AppError(
@@ -465,6 +483,8 @@ class ContractService:
         source_pdf: bytes | None = None,
         source_page_count: int | None = None,
         source_field_candidates: list[dict[str, Any]] | None = None,
+        source_page_texts: list[str] | None = None,
+        source_fields: list[ModusignParticipantField] | None = None,
     ) -> SignatureRequestCreated:
         if source_pdf is None and not template_id:
             self._raise(
@@ -480,6 +500,23 @@ class ContractService:
                 "VERSION_CONFLICT",
                 "Only the current contract version can be sent for signature.",
             )
+        resolved_source_fields = source_fields
+        if source_pdf is not None and resolved_source_fields is None:
+            try:
+                resolved_source_fields = self._source_pdf_fields(
+                    source_field_candidates,
+                    source_page_count,
+                    source_page_texts,
+                )
+            except SignatureFieldPositionError:
+                self._raise(
+                    status.HTTP_409_CONFLICT,
+                    "SIGNATURE_FIELD_POSITION_REQUIRED",
+                    (
+                        "The final PDF has no trustworthy buyer signature position. "
+                        "Add a unique buyer signature label or save a manual coordinate."
+                    ),
+                )
         try:
             signature_request = await self._repository.begin_signature_request(
                 contract_id=contract_id,
@@ -531,9 +568,7 @@ class ContractService:
                     buyer=ModusignParticipant(
                         role="바이어", name=payload.buyer.name, email=payload.buyer.email
                     ),
-                    buyer_fields=self._source_pdf_fields(
-                        source_field_candidates, source_page_count
-                    ),
+                    buyer_fields=resolved_source_fields or [],
                 )
             else:
                 provider_document = await client.create_signature_request(
@@ -557,8 +592,9 @@ class ContractService:
             await self._mark_signature_failed(signature_request.id)
             if isinstance(exc, ModusignRequestError):
                 logger.warning(
-                    "Modusign signature request rejected: status=%s",
+                    "Modusign signature request rejected: status=%s detail=%s",
                     exc.status_code,
+                    exc.detail[:1000],
                 )
                 self._raise(
                     status.HTTP_502_BAD_GATEWAY,
@@ -576,39 +612,25 @@ class ContractService:
 
     @staticmethod
     def _source_pdf_fields(
-        candidates: list[dict[str, Any]] | None, page_count: int | None
+        candidates: list[dict[str, Any]] | None,
+        page_count: int | None,
+        page_texts: list[str] | None = None,
     ) -> list[ModusignParticipantField]:
-        fields: list[ModusignParticipantField] = []
-        for candidate in candidates or []:
-            if not isinstance(candidate.get("position"), dict):
-                continue
-            fields.append(
-                ModusignParticipantField(
-                    field_type=str(candidate.get("field_type", "TEXT")),
-                    data_label=str(candidate.get("data_label")),
-                    position=candidate["position"],
-                    size=candidate.get("size"),
-                    required=bool(candidate.get("required", False)),
-                    signature_types=["SIGN"]
-                    if candidate.get("field_type") == "SIGNATURE"
-                    else None,
-                    text_style={"size": 12, "font": "NOTO_SANS", "align": "LEFT"}
-                    if candidate.get("field_type") == "TEXT"
-                    else None,
-                )
-            )
-        if any(field.field_type == "SIGNATURE" for field in fields):
-            return fields
-        fields.append(
+        selected = select_signature_field(
+            page_texts=page_texts or [],
+            candidates=candidates,
+            page_count=page_count or 1,
+        )
+        return [
             ModusignParticipantField(
                 field_type="SIGNATURE",
                 data_label="buyer_signature",
-                position={"page": page_count or 1, "x": 0.56, "y": 0.76},
-                size={"width": 0.30, "height": 0.06},
+                position=selected["position"],
+                size=selected["size"],
+                required=True,
                 signature_types=["SIGN"],
             )
-        )
-        return fields
+        ]
 
     async def dispatch_signature_request_from_snapshots(
         self,
@@ -620,6 +642,7 @@ class ContractService:
         client: ModusignClient,
         template_id: str | None,
         storage: StorageProvider,
+        manual_fields: list[dict[str, Any]] | None = None,
     ) -> SignatureRequestCreated:
         try:
             contacts = await self._repository.get_signature_contacts(
@@ -649,8 +672,8 @@ class ContractService:
         if source is None:
             self._raise(
                 status.HTTP_409_CONFLICT,
-                "SOURCE_CONTRACT_MISSING",
-                "The seller's original PDF is not available for signing.",
+                "FINAL_CONTRACT_PDF_MISSING",
+                "The approved contract version does not have a final PDF for signing.",
             )
         try:
             source_pdf = b"".join(
@@ -662,14 +685,120 @@ class ContractService:
                 ]
             )
         except (StorageObjectNotFoundError, StorageProviderError):
-            logger.exception("original contract PDF could not be read for signature dispatch")
+            logger.exception("final contract PDF could not be read for signature dispatch")
             self._raise(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
-                "SOURCE_CONTRACT_UNAVAILABLE",
-                "The original PDF could not be prepared for signing.",
+                "FINAL_CONTRACT_PDF_UNAVAILABLE",
+                "The final PDF could not be prepared for signing.",
             )
-        candidates = source.extracted_data.get("signature_field_candidates")
-        if not candidates and source.parsed_storage_bucket and source.parsed_storage_object_path:
+        logger.info(
+            "dispatching signature source PDF sha256=%s size_bytes=%s",
+            hashlib.sha256(source_pdf).hexdigest(),
+            len(source_pdf),
+        )
+        stored_candidates = source.extracted_data.get("signature_field_candidates")
+        manual_source_fields: list[ModusignParticipantField] | None = None
+        if manual_fields:
+            # The placement UI stores normalized coordinates. Keep every field
+            # the seller placed and send it directly to Modusign; the old
+            # signature-candidate selector only supported one OCR signature.
+            manual_source_fields = []
+            for field in manual_fields:
+                field_type = str(field.get("field_type", "")).upper()
+                # Preserve the actual Modusign field type. In particular,
+                # SIGNING_DATE is filled automatically by Modusign, whereas a
+                # TEXT field forces the buyer to enter an arbitrary date.
+                if field_type not in {
+                    "TEXT",
+                    "SIGNATURE",
+                    "CHECKBOX",
+                    "SIGNING_DATE",
+                    "DATE",
+                    "IMAGE",
+                    "DROPDOWN",
+                    "NAME",
+                    "COMPANY_NAME",
+                    "ADDRESS",
+                }:
+                    continue
+                position = field.get("position")
+                if not isinstance(position, dict):
+                    continue
+                size = field.get("size")
+                manual_source_fields.append(
+                    ModusignParticipantField(
+                        field_type=field_type,
+                        data_label=str(field.get("data_label") or "buyer_field"),
+                        position=position,
+                        size=size if isinstance(size, dict) else None,
+                        required=bool(field.get("required", True)),
+                        signature_types=["SIGN"] if field_type == "SIGNATURE" else None,
+                        # Modusign validates displayFormat for both DATE and
+                        # SIGNING_DATE fields. Use one explicit Korean format
+                        # for every page rather than a per-page convention.
+                        display_format=(
+                            "YYYY년 MM월 DD일" if field_type in {"DATE", "SIGNING_DATE"} else None
+                        ),
+                        text_style=(
+                            {
+                                "size": min(
+                                    (
+                                        4,
+                                        5,
+                                        6,
+                                        7,
+                                        8,
+                                        9,
+                                        10,
+                                        11,
+                                        12,
+                                        13,
+                                        14,
+                                        15,
+                                        16,
+                                        17,
+                                        18,
+                                        24,
+                                        30,
+                                        36,
+                                        48,
+                                        60,
+                                    ),
+                                    key=lambda value: abs(value - int(field.get("font_size", 12))),
+                                ),
+                                "font": "NOTO_SANS",
+                                "align": str(field.get("text_align", "LEFT")).upper(),
+                            }
+                            if field_type
+                            in {
+                                "TEXT",
+                                "SIGNING_DATE",
+                                "DATE",
+                                "DROPDOWN",
+                                "NAME",
+                                "COMPANY_NAME",
+                                "ADDRESS",
+                            }
+                            else None
+                        ),
+                        options=(
+                            [
+                                {"value": str(option["value"])}
+                                for option in field.get("options", [])
+                                if isinstance(option, dict) and option.get("value")
+                            ]
+                            if field_type == "DROPDOWN" and isinstance(field.get("options"), list)
+                            else None
+                        ),
+                    )
+                )
+        candidates = manual_fields or [
+            candidate
+            for candidate in stored_candidates or []
+            if isinstance(candidate, dict)
+            and candidate.get("placement_strategy") in {"manual_coordinate", "ocr_marker_bbox"}
+        ]
+        if source.parsed_storage_bucket and source.parsed_storage_object_path:
             try:
                 parsed_bytes = b"".join(
                     [
@@ -679,17 +808,38 @@ class ContractService:
                         )
                     ]
                 )
-                candidates = self._signature_field_candidates(
+                manual_candidates = [
+                    candidate
+                    for candidate in candidates
+                    if candidate.get("placement_strategy") == "manual_coordinate"
+                ]
+                candidates = manual_candidates + self._signature_field_candidates(
                     DocumentParseResult.model_validate_json(parsed_bytes)
                 )
             except (StorageProviderError, ValueError):
-                candidates = []
+                pass
+        source_page_texts: list[str] = []
         try:
-            source_page_count = len(PdfReader(BytesIO(source_pdf), strict=False).pages)
-        except (PdfReadError, ValueError):
-            # Modusign still receives the untouched original.  A page-one
-            # fallback is safer than rejecting an otherwise valid PDF merely
-            # because local metadata parsing was incomplete.
+            pdf_reader = PdfReader(BytesIO(source_pdf), strict=False)
+            source_page_count = len(pdf_reader.pages)
+            source_page_texts = [page.extract_text() or "" for page in pdf_reader.pages]
+            logger.info(
+                "signature PDF page geometry sha256=%s pages=%s geometry=%s",
+                hashlib.sha256(source_pdf).hexdigest(),
+                source_page_count,
+                [
+                    {
+                        "page": index + 1,
+                        "media_box": list(page.mediabox),
+                        "crop_box": list(page.cropbox),
+                        "rotation": page.rotation,
+                        "width": float(page.cropbox.width),
+                        "height": float(page.cropbox.height),
+                    }
+                    for index, page in enumerate(pdf_reader.pages)
+                ],
+            )
+        except (KeyError, PdfReadError, TypeError, ValueError):
             source_page_count = 1
         return await self.create_signature_request(
             contract_id,
@@ -707,7 +857,62 @@ class ContractService:
             source_pdf,
             source_page_count,
             candidates if isinstance(candidates, list) else [],
+            source_page_texts,
+            manual_source_fields,
         )
+
+    async def get_signature_source_pdf(
+        self,
+        contract_id: UUID,
+        contract_version_id: UUID,
+        actor: AuthenticatedUser,
+        header_organization_id: str | None,
+        storage: StorageProvider,
+    ) -> tuple[bytes, dict[str, object]]:
+        context = await self._approval_context(contract_id, contract_version_id)
+        await self._authorize_approval_context(context, actor, header_organization_id)
+        if context.current_version_id != contract_version_id:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "VERSION_CONFLICT",
+                "Only the current version can be previewed.",
+            )
+        source = await self._repository.get_signature_source_document(
+            contract_id, contract_version_id
+        )
+        if source is None:
+            self._raise(
+                status.HTTP_409_CONFLICT,
+                "FINAL_CONTRACT_PDF_MISSING",
+                "The approved contract version does not have a final PDF for signing.",
+            )
+        try:
+            pdf_bytes = b"".join(
+                [
+                    chunk
+                    async for chunk in storage.iter_object(
+                        source.storage_bucket, source.storage_object_path
+                    )
+                ]
+            )
+            reader = PdfReader(BytesIO(pdf_bytes), strict=False)
+        except (
+            StorageObjectNotFoundError,
+            StorageProviderError,
+            PdfReadError,
+            ValueError,
+            KeyError,
+        ):
+            self._raise(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "FINAL_CONTRACT_PDF_UNAVAILABLE",
+                "The final PDF could not be prepared for preview.",
+            )
+        return pdf_bytes, {
+            "sha256": hashlib.sha256(pdf_bytes).hexdigest(),
+            "size_bytes": len(pdf_bytes),
+            "page_count": len(reader.pages),
+        }
 
     @staticmethod
     def _signature_field_candidates(parsed: DocumentParseResult) -> list[dict[str, Any]]:

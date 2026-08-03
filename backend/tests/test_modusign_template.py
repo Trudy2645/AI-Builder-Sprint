@@ -104,6 +104,12 @@ async def test_client_sends_original_pdf_with_buyer_fields() -> None:
                 size={"width": 0.3, "height": 0.04},
                 required=False,
             ),
+            ModusignParticipantField(
+                field_type="SIGNING_DATE",
+                data_label="buyer_signed_at",
+                position={"x": 0.55, "y": 0.75, "page": 2},
+                size={"width": 0.14, "height": 0.035},
+            ),
         ],
     )
 
@@ -114,3 +120,5 @@ async def test_client_sends_original_pdf_with_buyer_fields() -> None:
     assert payload["participants"][0]["fields"][0]["dataLabel"] == "buyer_signature"
     assert payload["participants"][0]["fields"][0]["signatureTypes"] == ["SIGN"]
     assert payload["participants"][0]["fields"][1]["required"] is False
+    assert payload["participants"][0]["fields"][2]["type"] == "SIGNING_DATE"
+    assert payload["participants"][0]["fields"][2]["displayFormat"] == "YYYY년 MM월 DD일"

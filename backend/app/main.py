@@ -36,6 +36,11 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Organization-Id"],
+        expose_headers=[
+            "X-BusanLink-Pdf-Sha256",
+            "X-BusanLink-Pdf-Bytes",
+            "X-BusanLink-Pdf-Pages",
+        ],
     )
     register_exception_handlers(application)
     application.include_router(health_router)
