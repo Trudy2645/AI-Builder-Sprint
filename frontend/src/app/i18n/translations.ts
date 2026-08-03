@@ -12,10 +12,10 @@ export type TranslationDictionary = Record<string, string>;
 // Flat dictionary keyed by string id. Each entry has all 4 languages.
 export const strings: Record<string, TranslationDictionary> = {
   "brand.tagline": {
-    ko: "부산 관광 B2B 계약 플랫폼",
-    en: "Busan Tourism B2B Contract Platform",
-    ja: "釜山観光B2B契約プラットフォーム",
-    zh: "釜山旅游B2B合约平台",
+    ko: "찍어보소 · 부산 관광 B2B 계약 플랫폼",
+    en: "찍어보소 · Busan Tourism B2B Contract Platform",
+    ja: "찍어보소 · 釜山観光B2B契約プラットフォーム",
+    zh: "찍어보소 · 釜山旅游B2B合约平台",
   },
 
   // Roles
@@ -97,10 +97,10 @@ export const strings: Record<string, TranslationDictionary> = {
   // Role selection
   "auth.chooseRole": { ko: "역할을 선택하세요", en: "Choose your role", ja: "役割を選択してください", zh: "请选择您的角色" },
   "auth.chooseRole.desc": {
-    ko: "Busan Link에서 어떤 역할로 활동하실지 선택해 주세요.",
-    en: "Select how you will use Busan Link.",
-    ja: "Busan Linkでの利用方法を選択してください。",
-    zh: "请选择您在 Busan Link 的使用方式。",
+    ko: "찍어보소에서 어떤 역할로 활동하실지 선택해 주세요.",
+    en: "Select how you will use 찍어보소.",
+    ja: "찍어보소での利用方法を選択してください。",
+    zh: "请选择您在 찍어보소 的使用方式。",
   },
   "auth.buyerCard.desc": {
     ko: "부산 관광상품을 탐색하고 계약을 요청하는 여행사, 학교, 회사, 단체 대표.",
@@ -232,6 +232,13 @@ export const strings: Record<string, TranslationDictionary> = {
   },
   "explore.resultCount": { ko: "건의 계약", en: "contracts", ja: "件の契約", zh: "个合约" },
   "explore.empty": { ko: "조건에 맞는 계약이 없습니다.", en: "No contracts match your filters.", ja: "条件に合う契約がありません。", zh: "没有符合条件的合约。" },
+  "explore.searchPlaceholder": { ko: "공고명이나 셀러명으로 검색", en: "Search by listing or seller", ja: "公告名またはセラー名で検索", zh: "按公告或卖家搜索" },
+  "explore.searchButton": { ko: "검색", en: "Search", ja: "検索", zh: "搜索" },
+  "explore.availableTitle": { ko: "계약 가능한 공고", en: "Available listings", ja: "契約可能な公告", zh: "可签约公告" },
+  "explore.countUnit": { ko: "건", en: " listings", ja: "件", zh: "个" },
+  "explore.availableSubtitle": { ko: "조건에 맞는 부산 관광 공급 계약을 확인하세요.", en: "Find Busan tourism supply contracts that match your needs.", ja: "条件に合う釜山観光の供給契約を確認してください。", zh: "查看符合条件的釜山旅游供应合约。" },
+  "explore.loadErrorTitle": { ko: "공고를 불러오지 못했습니다", en: "Could not load listings", ja: "公告を読み込めませんでした", zh: "无法加载公告" },
+  "explore.loading": { ko: "공고를 불러오는 중입니다...", en: "Loading listings...", ja: "公告を読み込んでいます…", zh: "正在加载公告……" },
 
   // Filters
   "filter.title": { ko: "필터", en: "Filters", ja: "フィルター", zh: "筛选" },
@@ -246,6 +253,15 @@ export const strings: Record<string, TranslationDictionary> = {
   "filter.availableOnly": { ko: "계약 가능한 계약만 보기", en: "Available only", ja: "契約可能のみ", zh: "仅显示可签约" },
   "filter.from": { ko: "시작일", en: "From", ja: "開始日", zh: "开始" },
   "filter.to": { ko: "종료일", en: "To", ja: "終了日", zh: "结束" },
+  "filter.categoryGroup": { ko: "카테고리", en: "Category", ja: "カテゴリ", zh: "类别" },
+  "filter.periodDesc": { ko: "이용 가능한 기간을 선택하세요.", en: "Choose an available usage period.", ja: "利用可能な期間を選択してください。", zh: "请选择可用的使用期间。" },
+  "filter.priceShort": { ko: "금액", en: "Price", ja: "金額", zh: "金额" },
+  "filter.priceTitle": { ko: "예상 금액 범위", en: "Estimated price range", ja: "予想金額の範囲", zh: "预估金额范围" },
+  "filter.priceDesc": { ko: "계약 1건 기준 예상 금액을 설정하세요.", en: "Set the estimated price for one contract.", ja: "契約1件あたりの予想金額を設定してください。", zh: "设置一份合约的预估金额。" },
+  "filter.availableShort": { ko: "계약 가능한 공고만", en: "Available only", ja: "契約可能のみ", zh: "仅显示可签约" },
+  "filter.resetAll": { ko: "필터 초기화", en: "Reset filters", ja: "フィルターをリセット", zh: "重置筛选" },
+  "filter.active": { ko: "적용된 필터", en: "Active filters", ja: "適用中のフィルター", zh: "已应用筛选" },
+  "filter.peopleUnit": { ko: "명", en: " guests", ja: "名", zh: "人" },
 
   // Categories
   "cat.all": { ko: "전체", en: "All", ja: "すべて", zh: "全部" },
@@ -270,6 +286,7 @@ export const strings: Record<string, TranslationDictionary> = {
   "card.riskUnit": { ko: "개", en: "", ja: "件", zh: "个" },
   "card.viewTerms": { ko: "계약 조건 보기", en: "View terms", ja: "契約条件を見る", zh: "查看合约条件" },
   "card.perUnit": { ko: "단가", en: "Unit price", ja: "単価", zh: "单价" },
+  "common.retry": { ko: "다시 시도", en: "Try again", ja: "再試行", zh: "重试" },
 
   // Summary page
   "summary.backToList": { ko: "목록으로", en: "Back to list", ja: "一覧へ", zh: "返回列表" },

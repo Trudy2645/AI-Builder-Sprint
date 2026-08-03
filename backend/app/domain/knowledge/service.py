@@ -21,7 +21,7 @@ _CORPUS_CONFIG = {
         "Official contract knowledge",
         "official",
     ),
-    "approved_templates": ("busan_link_templates", "BusanLink approved templates", "template"),
+    "approved_templates": ("busan_link_templates", "찍어보소 approved templates", "template"),
     "case_reference": ("case_reference", "Approved court case references", "case_reference"),
 }
 

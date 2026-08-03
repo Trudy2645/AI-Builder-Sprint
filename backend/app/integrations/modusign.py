@@ -81,7 +81,7 @@ def build_accommodation_template_payload(
     pdf_bytes: bytes,
     buyer_role: str = "바이어",
 ) -> dict[str, Any]:
-    """Build the one-buyer accommodation template from BusanLink's final PDF.
+    """Build the one-buyer accommodation template from 찍어보소's final PDF.
 
     The PDF is the canonical contract artifact. Only the buyer signature is
     interactive in Modusign, so the text displayed in Modusign stays identical

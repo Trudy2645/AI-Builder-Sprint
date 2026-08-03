@@ -1,4 +1,4 @@
-# Busan Link RAG 지식베이스 설계
+# 찍어보소 RAG 지식베이스 설계
 
 > 버전: Special-challenge-aligned MVP v1.1  
 > 작성 기준일: 2026-07-28  
@@ -171,7 +171,7 @@ rag-knowledge/
 | `terms_regulation_act`<br>`terms_regulation_act__current__2026-07-28.pdf` | 중요 조항 설명, 모호하거나 일방적인 약관 검토 근거 후보 | ingestion 시 현행 시행일 고정 | [국가법령정보센터 원문 다운로드](https://www.law.go.kr/법령/약관의규제에관한법률) | 특정 조항의 무효·위법 여부를 AI가 단정하지 않음 |
 | `consumer_framework_act`<br>`consumer_framework_act__2026-01-02__2026-07-28.pdf` | 개인 바이어/사업자 관계와 분쟁해결 체계의 상위 배경 | 2026-01-02 시행 | [국가법령정보센터 원문 다운로드](https://www.law.go.kr/법령/소비자기본법) | 구체적 환불률의 직접 근거처럼 사용하지 않음 |
 | `tourism_promotion_act`<br>`common/tourism_promotion_act__2026-05-12__2026-07-28.pdf` | 투어·숙박·일부 액티비티의 관광사업 정의와 제도적 범위 | 2026-05-12 시행, 법률 제21087호 | [국가법령정보센터 원문 다운로드](https://www.law.go.kr/법령/관광진흥법) | 정의·등록 범위와 개별 계약 책임 판단을 구분 |
-| `ecommerce_consumer_protection_act`<br>`ecommerce_consumer_protection_act__2026-07-21__2026-07-28.pdf` | 온라인 청약·표시·철회 관련 근거 후보 | 2026-07-21 시행, 법률 제21312호 | [국가법령정보센터 원문 다운로드](https://www.law.go.kr/법령/전자상거래등에서의소비자보호에관한법률) | Busan Link의 실제 거래 구조·중개 지위에 따라 적용 가능성이 달라지므로 사전 검토 필요 |
+| `ecommerce_consumer_protection_act`<br>`ecommerce_consumer_protection_act__2026-07-21__2026-07-28.pdf` | 온라인 청약·표시·철회 관련 근거 후보 | 2026-07-21 시행, 법률 제21312호 | [국가법령정보센터 원문 다운로드](https://www.law.go.kr/법령/전자상거래등에서의소비자보호에관한법률) | 찍어보소의 실제 거래 구조·중개 지위에 따라 적용 가능성이 달라지므로 사전 검토 필요 |
 
 ### P1: 카테고리 확장 시 수집
 

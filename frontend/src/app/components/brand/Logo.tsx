@@ -32,7 +32,7 @@ export function Logo({ compact = false, className = "" }: LogoProps) {
       </svg>
       {!compact && (
         <span className="whitespace-nowrap" style={{ fontWeight: 700, color: "var(--navy)" }}>
-          Busan&nbsp;Link
+          찍어보소
         </span>
       )}
     </div>

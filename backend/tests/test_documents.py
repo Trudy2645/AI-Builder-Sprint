@@ -30,7 +30,7 @@ OTHER_LISTING_ID = UUID("d3000000-0000-0000-0000-000000000002")
 CONTRACT_ID = UUID("d4000000-0000-0000-0000-000000000001")
 OTHER_CONTRACT_ID = UUID("d4000000-0000-0000-0000-000000000002")
 NOW = datetime(2026, 8, 1, 12, tzinfo=UTC)
-PDF = b"%PDF-1.7\nBusanLink test contract\n%%EOF"
+PDF = b"%PDF-1.7\n" + "찍어보소 test contract\n".encode() + b"%%EOF"
 PNG = b"\x89PNG\r\n\x1a\n" + b"image-data"
 
 

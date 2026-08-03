@@ -1,1 +1,1 @@
-"""BusanLink backend application."""
+"""찍어보소 backend application."""

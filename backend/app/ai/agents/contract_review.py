@@ -55,6 +55,7 @@ class ContractReviewAgent:
         model_name: str,
         prompt_version: str,
         max_search_iterations: int = 2,
+        fast_mode: bool = False,
     ) -> None:
         if not 1 <= max_search_iterations <= 2:
             raise ValueError("ContractReviewAgent search iterations must be between 1 and 2.")
@@ -63,6 +64,7 @@ class ContractReviewAgent:
         self._model_name = model_name
         self._prompt_version = prompt_version
         self._max_search_iterations = max_search_iterations
+        self._fast_mode = fast_mode
 
     async def run(
         self,
@@ -85,25 +87,44 @@ class ContractReviewAgent:
             }
             for clause in clauses
         ]
+        full_clauses = [
+            {
+                "id": str(clause.id),
+                "clause_order": clause.clause_order,
+                "clause_key": clause.clause_key,
+                "title": clause.title,
+                "body": clause.body,
+                "source_location": clause.source_location,
+            }
+            for clause in clauses
+        ]
         base_input = {
             "target_type": target_type,
             "target_id": str(target_id),
             "viewer_role": viewer_role,
             "category": category,
             "clause_inventory": inventory,
+            "clause_text": full_clauses if self._fast_mode else None,
             "structured_terms": terms,
             "rule_findings": [self._serialize_rule(item) for item in rule_findings],
             "available_tools": [
-                "get_clause_context",
-                "search_official_evidence",
-                "search_approved_templates",
+                *(
+                    []
+                    if self._fast_mode
+                    else [
+                        "get_clause_context",
+                        "search_official_evidence",
+                        "search_approved_templates",
+                    ]
+                ),
                 "submit_review",
             ],
             "max_search_iterations": self._max_search_iterations,
+            "review_mode": "fast_form_values" if self._fast_mode else "evidence_bounded",
         }
 
         # Four planning turns allow context lookup, two bounded searches, and submission.
-        for _ in range(4):
+        for _ in range(1 if self._fast_mode else 4):
             batch = await self._language_model.generate_structured(
                 LanguageModelRequest(
                     task_type="contract_review",

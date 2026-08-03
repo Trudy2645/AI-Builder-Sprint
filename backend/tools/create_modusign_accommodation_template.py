@@ -1,4 +1,4 @@
-"""Create BusanLink's reusable accommodation template in Modusign.
+"""Create 찍어보소's reusable accommodation template in Modusign.
 
 Run from the backend directory after configuring MODUSIGN_API_KEY and
 MODUSIGN_AUTH_EMAIL in .env. The command prints the template id to copy into
@@ -32,7 +32,7 @@ async def main() -> None:
     )
     try:
         template = await client.create_accommodation_template(
-            title="BusanLink 숙박시설 이용 및 제공 계약서 v1",
+            title="찍어보소 숙박시설 이용 및 제공 계약서 v1",
             pdf_bytes=SOURCE_PDF.read_bytes(),
         )
     except ModusignRequestError as exc:

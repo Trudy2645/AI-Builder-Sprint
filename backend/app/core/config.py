@@ -16,7 +16,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    app_name: str = "BusanLink API"
+    app_name: str = "찍어보소 API"
     app_version: str = "0.1.0"
     app_environment: str = "local"
     docs_enabled: bool = True

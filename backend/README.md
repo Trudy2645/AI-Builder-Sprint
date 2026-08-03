@@ -1,4 +1,4 @@
-# BusanLink Backend
+# 찍어보소 Backend
 
 구현 기준 문서는 [`docs/`](docs/)에서 확인할 수 있습니다.
 
@@ -29,7 +29,7 @@ database connection configured by `DATABASE_URL`.
 
 ## Supabase authentication configuration
 
-BusanLink keeps passwords in Supabase Auth only. The frontend signs users in with
+찍어보소 keeps passwords in Supabase Auth only. The frontend signs users in with
 Supabase, then sends the returned access token as `Authorization: Bearer <token>`.
 FastAPI verifies asymmetric tokens with the project's public JWKS. Projects still using
 the legacy HS256 signing secret are verified through the Supabase Auth `/user` endpoint;

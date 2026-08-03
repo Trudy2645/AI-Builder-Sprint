@@ -156,6 +156,12 @@ class ContractReviewService:
             rules = review_contract_rules(
                 category=target.category, terms=target.terms, clauses=target.clauses
             )
+            fast_mode = (
+                self._provider_name == "upstage"
+                and target.target_type == "listing_version"
+                and viewer_role == "seller"
+            )
+            review_max_iterations = 1 if fast_mode else self._max_iterations
             input_sha256 = self._hash(
                 {
                     "target_type": target.target_type,
@@ -181,7 +187,7 @@ class ContractReviewService:
                 model_name=self._model_name,
                 prompt_version=self._prompt_version,
                 input_sha256=input_sha256,
-                max_iterations=self._max_iterations,
+                max_iterations=review_max_iterations,
             )
             tools = ContractReviewTools(
                 clauses=target.clauses,
@@ -194,14 +200,15 @@ class ContractReviewService:
                 evidence_locator=self._evidence_locator,
                 minimum_evidence_score=self._minimum_evidence_score,
                 as_of=self._effective_date(target.terms),
-                max_searches=self._max_iterations,
+                max_searches=0 if fast_mode else self._max_iterations,
             )
             agent = ContractReviewAgent(
                 self._language_model,
                 tools,
                 model_name=self._model_name,
                 prompt_version=self._prompt_version,
-                max_search_iterations=self._max_iterations,
+                max_search_iterations=review_max_iterations,
+                fast_mode=fast_mode,
             )
             result = await agent.run(
                 target_type=target.target_type,
@@ -225,6 +232,7 @@ class ContractReviewService:
                     "tool_sequence": result.tool_sequence,
                     "search_count": result.iterations_used,
                     "rule_finding_count": len(rules),
+                    "fast_mode": fast_mode,
                 },
             )
         except Exception as exc:

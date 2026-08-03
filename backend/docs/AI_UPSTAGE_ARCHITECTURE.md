@@ -38,7 +38,7 @@ Document Parse
 
 한 줄 정의:
 
-> **Busan Link의 AI는 셀러가 작성한 관광상품 이용·공급 계약을 구조화하고, 역할별 위험 후보와 근거를 생성하며, 외국인 개인 바이어가 자신의 언어로 이해할 수 있게 설명하는 계약 검토 보조 시스템이다.**
+> **찍어보소의 AI는 셀러가 작성한 관광상품 이용·공급 계약을 구조화하고, 역할별 위험 후보와 근거를 생성하며, 외국인 개인 바이어가 자신의 언어로 이해할 수 있게 설명하는 계약 검토 보조 시스템이다.**
 > 
 
 ## 2. 사용자와 AI 결과 범위
@@ -915,6 +915,6 @@ AI_REQUEST_TIMEOUT_SECONDS=60
 - [Upstage File Search](https://console.upstage.ai/docs/capabilities/search/file-search)
 - [Upstage Agents](https://console.upstage.ai/docs/agents)
 - [Upstage API Keys and examples](https://console.upstage.ai/api-keys)
-- [Busan Link RAG 지식베이스 설계](https://app.notion.com/p/RAG_KNOWLEDGE_BASE.md)
+- [찍어보소 RAG 지식베이스 설계](https://app.notion.com/p/RAG_KNOWLEDGE_BASE.md)
 
 구현 직전 콘솔 문서에서 endpoint, model id, 지원 파일 형식, 용량 제한과 응답 schema를 다시 확인한다. 이 문서는 제품 구조의 기준이며 외부 API의 세부 schema를 복제한 문서가 아니다.
